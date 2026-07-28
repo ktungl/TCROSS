@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>活動紀錄平台（原型）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#14202B;
+  --ink-soft:#3D5163;
+  --paper:#F7F6F2;
+  --card:#FFFFFF;
+  --line:#DFDCD3;
+  --stamp:#B0463C;
+  --flag:#C98A16;
+  --ok:#3E7A62;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Noto Sans TC",system-ui,sans-serif;font-size:14px;line-height:1.7}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink);
+  background:var(--card);border:1px solid var(--line);border-radius:2px;padding:7px 9px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+textarea{resize:vertical;min-height:70px}
+label{display:block;font-size:11.5px;letter-spacing:.12em;color:var(--ink-soft);margin-bottom:5px}
+.mono{font-family:"IBM Plex Mono",monospace}
+
+/* shell */
+.shell{display:grid;grid-template-columns:206px 1fr;min-height:100vh}
+aside{background:var(--ink);color:#fff;padding:22px 16px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{font-weight:700;font-size:16px;letter-spacing:.02em;line-height:1.35}
+.brand small{display:block;font-weight:300;font-size:10.5px;letter-spacing:.24em;color:#7E93A6;margin-top:6px}
+nav{margin-top:30px;display:flex;flex-direction:column;gap:2px}
+nav button{background:none;border:0;color:#A9BCCB;text-align:left;padding:9px 10px;border-radius:2px;font-size:13.5px;width:100%}
+nav button:hover{color:#fff;background:rgba(255,255,255,.07)}
+nav button[aria-current="true"]{background:#fff;color:var(--ink);font-weight:500}
+.note{position:absolute;bottom:20px;width:174px;font-size:10.5px;color:#61798D;line-height:1.6}
+
+main{padding:34px 40px 80px;max-width:1080px}
+h1{font-size:25px;font-weight:700;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--ink-soft);font-size:13px;margin:0 0 26px}
+h2{font-size:12px;letter-spacing:.18em;color:var(--ink-soft);font-weight:500;margin:30px 0 12px;
+   padding-bottom:7px;border-bottom:1px solid var(--line)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:18px 20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+.btn{background:var(--ink);color:#fff;border:0;border-radius:2px;padding:9px 16px;font-size:13.5px}
+.btn:hover{background:#0A1721}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+.btn.ghost:hover{background:#EEEBE3}
+.btn.sm{padding:5px 11px;font-size:12.5px}
+
+/* activity list — the ledger */
+.ledger{border-top:2px solid var(--ink)}
+.entry{display:grid;grid-template-columns:78px 1fr 190px 92px;gap:16px;align-items:start;
+  padding:15px 4px;border-bottom:1px solid var(--line);background:none;border-left:0;border-right:0;border-top:0;
+  width:100%;text-align:left;font-size:14px;color:var(--ink)}
+.entry:hover{background:#EFEDE6}
+.entry .date{font-size:12px;color:var(--ink-soft)}
+.entry .name{font-weight:500}
+.entry .meta{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.plans{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:99px;color:var(--ink-soft);background:var(--paper);white-space:nowrap}
+
+/* completeness dial */
+.dial{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+.bars{display:flex;gap:2px}
+.bars i{width:5px;height:15px;background:var(--line);border-radius:1px;display:block}
+.bars i.on{background:var(--ok)}
+.bars i.gap{background:var(--flag)}
+.pct{font-size:11px;color:var(--ink-soft)}
+
+.flagbox{border-left:3px solid var(--flag);background:#FDF7E9;padding:11px 14px;font-size:13px;margin:14px 0}
+.flagbox b{color:#8A5E06}
+
+.folder{border:1px solid var(--line);border-radius:3px;margin-bottom:10px;background:var(--card)}
+.folder header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.folder h3{margin:0;font-size:13.5px;font-weight:500}
+.folder .count{font-size:11.5px;color:var(--ink-soft)}
+.files{list-style:none;margin:0;padding:0}
+.files li{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid #EFEDE6;font-size:13px}
+.files li:last-child{border-bottom:0}
+.files .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files .fsize{font-size:11px;color:var(--ink-soft);margin-left:10px;flex-shrink:0}
+.empty{padding:12px 14px;font-size:12.5px;color:var(--ink-soft)}
+.x{background:none;border:0;color:var(--ink-soft);font-size:15px;line-height:1;padding:0 4px}
+.x:hover{color:var(--stamp)}
+
+.kpi{display:grid;grid-template-columns:1fr 110px 90px 34px;gap:8px;margin-bottom:8px;align-items:center}
+
+.modal{position:fixed;inset:0;background:rgba(20,32,43,.45);display:flex;align-items:flex-start;
+  justify-content:center;padding:40px 20px;overflow:auto;z-index:50}
+.modal .card{width:100%;max-width:660px}
+.modal h2:first-child{margin-top:0}
+.hide{display:none!important}
+.back{background:none;border:0;color:var(--ink-soft);font-size:13px;padding:0;margin-bottom:14px}
+.back:hover{color:var(--ink)}
+.stamp{display:inline-block;border:1.5px solid var(--stamp);color:var(--stamp);font-size:11px;
+  letter-spacing:.14em;padding:2px 8px;border-radius:2px;transform:rotate(-2deg)}
+table.out{width:100%;border-collapse:collapse;font-size:13px}
+table.out th,table.out td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.out th{font-size:11px;letter-spacing:.1em;color:var(--ink-soft);font-weight:500}
+.chk{display:flex;align-items:center;gap:7px;font-size:13px}
+.chk input{width:auto}
+@media(max-width:860px){
+  .shell{grid-template-columns:1fr}
+  aside{position:static;height:auto}
+  .note{position:static;width:auto;margin-top:24px}
+  main{padding:24px 18px 60px}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .entry{grid-template-columns:1fr;gap:6px}
+  .dial{justify-content:flex-start}
+}
+@media(prefers-reduced-motion:no-preference){.entry,.btn{transition:background .12s}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand">活動紀錄平台<small>ACTIVITY RECORDS</small></div>
+    <nav>
+      <button data-view="list" aria-current="true">活動列表</button>
+      <button data-view="plans">計畫</button>
+      <button data-view="export">匯出成果</button>
+    </nav>
+    <p class="note">原型示範。檔案僅記錄名稱與大小，不會實際上傳；資料存在瀏覽器本機。</p>
+  </aside>
+
+  <main>
+    <!-- LIST -->
+    <section id="view-list">
+      <h1>活動列表</h1>
+      <p class="sub">一個活動建立一次，可掛在多個計畫底下重複使用。</p>
+      <div class="row" style="margin-bottom:18px">
+        <button class="btn" id="newAct">建立活動</button>
+        <select id="fPlan" style="width:190px"></select>
+        <input type="month" id="fMonth" style="width:150px">
+        <button class="btn ghost sm" id="clearF">清除篩選</button>
+        <label class="chk" style="margin:0 0 0 auto"><input type="checkbox" id="fGap">只看有缺漏</label>
+      </div>
+      <div id="ledger" class="ledger"></div>
+      <p id="listEmpty" class="empty"></p>
+    </section>
+
+    <!-- DETAIL -->
+    <section id="view-detail" class="hide"></section>
+
+    <!-- PLANS -->
+    <section id="view-plans" class="hide">
+      <h1>計畫</h1>
+      <p class="sub">計畫是活動的收納夾，一個活動可以同時屬於多個計畫。</p>
+      <div class="card" style="margin-bottom:20px">
+        <div class="row">
+          <input id="planName" placeholder="計畫名稱，例如：2026 社區共好計畫" style="flex:1;min-width:220px">
+          <button class="btn" id="addPlan">新增計畫</button>
+        </div>
+      </div>
+      <div id="planList"></div>
+    </section>
+
+    <!-- EXPORT -->
+    <section id="view-export" class="hide">
+      <h1>匯出成果</h1>
+      <p class="sub">挑計畫或期間，產出成果清單與成果報告草稿。</p>
+      <div class="card">
+        <div class="grid3">
+          <div><label>計畫</label><select id="xPlan"></select></div>
+          <div><label>起</label><input type="date" id="xFrom"></div>
+          <div><label>訖</label><input type="date" id="xTo"></div>
+        </div>
+        <div class="row" style="margin-top:16px">
+          <button class="btn" id="doPreview">產生預覽</button>
+          <button class="btn ghost" id="doCsv">下載成果清單 CSV</button>
+          <button class="btn ghost" id="doDoc">下載成果報告草稿</button>
+        </div>
+      </div>
+      <div id="xPreview"></div>
+    </section>
+  </main>
+</div>
+
+<div id="modal" class="modal hide"></div>
+
+<script>
+/* ---------- storage ---------- */
+const KEY='activity-records-v1';
+let DB={plans:[],activities:[]};
+const mem={};
+async function load(){
+  try{const r=await window.storage.get(KEY); if(r&&r.value) DB=JSON.parse(r.value);}
+  catch(e){ if(mem[KEY]) DB=JSON.parse(mem[KEY]); }
+  if(!DB.plans.length&&!DB.activities.length) seed();
+}
+async function save(){
+  const s=JSON.stringify(DB); mem[KEY]=s;
+  try{await window.storage.set(KEY,s);}catch(e){/* 本機暫存 */}
+}
+const uid=()=>Math.random().toString(36).slice(2,9);
+function seed(){
+  const p1={id:uid(),name:'2026 社區共好計畫'},p2={id:uid(),name:'年度志工服務'};
+  DB.plans=[p1,p2];
+  DB.activities=[{
+    id:uid(),name:'溪畔淨溪與生態導覽',date:'2026-04-18',place:'新店溪左岸',owner:'林小姐',
+    plans:[p1.id,p2.id],headcount:46,summary:'',kpis:[],
+    files:{photo:[{n:'IMG_0421.jpg',s:2411000},{n:'IMG_0433.jpg',s:1980000}],audio:[],video:[],doc:[{n:'簽到表_掃描.pdf',s:640000}]}
+  },{
+    id:uid(),name:'國小科學動手做工作坊',date:'2026-05-09',place:'桃園復興區',owner:'陳先生',
+    plans:[p1.id],headcount:32,summary:'兩梯次共 32 名學童完成基礎電路實作，回饋問卷滿意度 4.6/5。',
+    kpis:[{k:'受益學童',v:32,u:'人'},{k:'志工時數',u:'小時',v:84}],
+    files:{photo:[{n:'workshop_01.jpg',s:1750000}],audio:[{n:'訪談_教師.m4a',s:9800000}],video:[],doc:[{n:'活動紀錄表.docx',s:52000}]}
+  }];
+}
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const FOLDERS=[['photo','照片'],['audio','錄音'],['video','影片'],['doc','文件']];
+const kb=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB';
+const planName=id=>(DB.plans.find(p=>p.id===id)||{}).name||'—';
+const nFiles=a=>FOLDERS.reduce((s,[k])=>s+(a.files[k]||[]).length,0);
+
+/* 缺漏規則：五個必備項目 */
+function gaps(a){
+  const g=[];
+  if(!a.plans.length) g.push('尚未對應計畫');
+  if(!(a.files.photo||[]).length) g.push('沒有照片');
+  if(!(a.files.doc||[]).length) g.push('沒有簽到表或紀錄文件');
+  if(!a.summary.trim()) g.push('成果摘要空白');
+  if(!a.kpis.length) g.push('未填 KPI');
+  return g;
+}
+const score=a=>Math.round((5-gaps(a).length)/5*100);
+function dial(a){
+  const done=5-gaps(a).length;
+  return `<div class="dial"><div class="bars">${
+    [0,1,2,3,4].map(i=>`<i class="${i<done?'on':'gap'}"></i>`).join('')
+  }</div><span class="pct mono">${score(a)}%</span></div>`;
+}
+
+/* ---------- views ---------- */
+let view='list';
+function show(v){
+  view=v;
+  ['list','detail','plans','export'].forEach(x=>$('#view-'+x).classList.toggle('hide',x!==v));
+  document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.view===v));
+  if(v==='list')renderList(); if(v==='plans')renderPlans(); if(v==='export')fillPlanSelects();
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.view));
+
+function fillPlanSelects(){
+  const opts='<option value="">全部計畫</option>'+DB.plans.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  const a=$('#fPlan'),b=$('#xPlan'); const av=a.value,bv=b.value;
+  a.innerHTML=opts; b.innerHTML=opts; a.value=av; b.value=bv;
+}
+
+function renderList(){
+  fillPlanSelects();
+  const pf=$('#fPlan').value, mf=$('#fMonth').value, gf=$('#fGap').checked;
+  const rows=DB.activities
+    .filter(a=>!pf||a.plans.includes(pf))
+    .filter(a=>!mf||(a.date||'').startsWith(mf))
+    .filter(a=>!gf||gaps(a).length)
+    .sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+  $('#ledger').innerHTML=rows.map(a=>`
+    <button class="entry" data-id="${a.id}">
+      <span class="date mono">${esc(a.date||'未定日期')}</span>
+      <span>
+        <span class="name">${esc(a.name)}</span>
+        <span class="meta">${esc(a.place||'—')}　·　${esc(a.owner||'未指定負責人')}　·　檔案 ${nFiles(a)} 件</span>
+      </span>
+      <span class="plans">${a.plans.length?a.plans.map(p=>`<span class="tag">${esc(planName(p))}</span>`).join(''):'<span class="tag">未歸計畫</span>'}</span>
+      ${dial(a)}
+    </button>`).join('');
+  $('#listEmpty').textContent=rows.length?'':'這個條件下沒有活動。';
+  document.querySelectorAll('.entry').forEach(e=>e.onclick=()=>openDetail(e.dataset.id));
+}
+['#fPlan','#fMonth','#fGap'].forEach(s=>$(s).addEventListener('change',renderList));
+$('#clearF').onclick=()=>{$('#fPlan').value='';$('#fMonth').value='';$('#fGap').checked=false;renderList();};
+
+/* ---------- detail ---------- */
+let cur=null;
+function openDetail(id){
+  cur=DB.activities.find(a=>a.id===id); if(!cur)return;
+  const a=cur,g=gaps(a);
+  $('#view-detail').innerHTML=`
+    <button class="back">← 回活動列表</button>
+    <h1>${esc(a.name)}</h1>
+    <p class="sub mono">${esc(a.date||'未定日期')}　${esc(a.place||'')}　負責人 ${esc(a.owner||'—')}　參與 ${a.headcount||0} 人</p>
+    <div class="row" style="margin-bottom:6px">
+      <button class="btn ghost sm" id="editAct">編輯基本資料</button>
+      <button class="btn ghost sm" id="genSign">產生簽到表</button>
+      <button class="btn ghost sm" id="genReceipt">產生領據</button>
+      <button class="btn ghost sm" id="genRecord">產生活動紀錄表</button>
+    </div>
+    ${g.length?`<div class="flagbox"><b>缺漏提醒</b>　${g.map(esc).join('、')}</div>`
+              :`<div class="flagbox" style="border-color:var(--ok);background:#EDF4F1"><b style="color:var(--ok)">資料齊全</b>　可直接納入成果報告。</div>`}
+
+    <h2>對應計畫</h2>
+    <div class="card"><div id="planChecks"></div></div>
+
+    <h2>活動資料</h2>
+    <div id="folders"></div>
+
+    <h2>成果補充</h2>
+    <div class="card">
+      <label>成果摘要</label>
+      <textarea id="dSummary" placeholder="這場活動做了什麼、達成什麼，三到五句。">${esc(a.summary)}</textarea>
+      <label style="margin-top:16px">KPI</label>
+      <div id="kpis"></div>
+      <button class="btn ghost sm" id="addKpi">新增一列 KPI</button>
+      <div style="margin-top:16px"><button class="btn" id="saveRes">儲存成果</button></div>
+    </div>`;
+  show('detail');
+  $('.back').onclick=()=>show('list');
+  $('#editAct').onclick=()=>actForm(a);
+  $('#genSign').onclick=()=>makeForm('簽到表');
+  $('#genReceipt').onclick=()=>makeForm('領據');
+  $('#genRecord').onclick=()=>makeForm('活動紀錄表');
+  $('#planChecks').innerHTML=DB.plans.length?DB.plans.map(p=>
+    `<label class="chk" style="margin-bottom:6px"><input type="checkbox" value="${p.id}" ${a.plans.includes(p.id)?'checked':''}>${esc(p.name)}</label>`).join('')
+    :'<span class="empty" style="padding:0">還沒有計畫，先到「計畫」頁新增。</span>';
+  $('#planChecks').querySelectorAll('input').forEach(c=>c.onchange=async()=>{
+    a.plans=[...$('#planChecks').querySelectorAll('input:checked')].map(i=>i.value);
+    await save(); openDetail(a.id);
+  });
+  renderFolders(); renderKpis();
+  $('#addKpi').onclick=()=>{a.kpis.push({k:'',v:'',u:''});renderKpis();};
+  $('#saveRes').onclick=async()=>{
+    a.summary=$('#dSummary').value;
+    a.kpis=[...$('#kpis').querySelectorAll('.kpi')].map(r=>({
+      k:r.children[0].value.trim(),v:r.children[1].value,u:r.children[2].value.trim()
+    })).filter(x=>x.k);
+    await save(); openDetail(a.id);
+  };
+}
+function renderKpis(){
+  $('#kpis').innerHTML=cur.kpis.map((x,i)=>`
+    <div class="kpi">
+      <input value="${esc(x.k)}" placeholder="指標名稱，例如 受益人數">
+      <input value="${esc(x.v)}" placeholder="數值" type="number">
+      <input value="${esc(x.u)}" placeholder="單位">
+      <button class="x" data-i="${i}" title="刪除">×</button>
+    </div>`).join('')||'<p class="empty" style="padding:0 0 8px">還沒有 KPI。</p>';
+  $('#kpis').querySelectorAll('.x').forEach(b=>b.onclick=()=>{cur.kpis.splice(+b.dataset.i,1);renderKpis();});
+}
+function renderFolders(){
+  $('#folders').innerHTML=FOLDERS.map(([k,label])=>{
+    const list=cur.files[k]||[];
+    return `<div class="folder">
+      <header>
+        <h3>${label} <span class="count">${list.length} 件</span></h3>
+        <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">上傳
+          <input type="file" multiple data-folder="${k}" style="display:none"></label>
+      </header>
+      ${list.length?`<ul class="files">${list.map((f,i)=>
+        `<li><span class="fname">${esc(f.n)}</span>
+          <span style="display:flex;align-items:center"><span class="fsize mono">${kb(f.s)}</span>
+          <button class="x" data-f="${k}" data-i="${i}">×</button></span></li>`).join('')}</ul>`
+      :`<p class="empty">還沒有${label}。拖進來或按上傳。</p>`}
+    </div>`;
+  }).join('');
+  $('#folders').querySelectorAll('input[type=file]').forEach(inp=>inp.onchange=async e=>{
+    const k=inp.dataset.folder; cur.files[k]=cur.files[k]||[];
+    [...e.target.files].forEach(f=>cur.files[k].push({n:f.name,s:f.size}));
+    await save(); openDetail(cur.id);
+  });
+  $('#folders').querySelectorAll('.x').forEach(b=>b.onclick=async()=>{
+    cur.files[b.dataset.f].splice(+b.dataset.i,1); await save(); openDetail(cur.id);
+  });
+}
+
+/* ---------- 表單自動產生 ---------- */
+function makeForm(kind){
+  const a=cur;
+  const head=`<h2 style="text-align:center;letter-spacing:.3em;border:0">${kind}</h2>
+    <p class="mono" style="font-size:12px">活動名稱：${esc(a.name)}　　日期：${esc(a.date)}<br>
+    地點：${esc(a.place)}　　負責人：${esc(a.owner)}<br>
+    對應計畫：${a.plans.map(p=>esc(planName(p))).join('、')||'—'}</p><hr>`;
+  const body={
+    '簽到表':`<table class="out"><tr><th>編號</th><th>姓名</th><th>單位／身分</th><th>聯絡方式</th><th>簽名</th></tr>${
+      Array.from({length:Math.max(10,a.headcount||10)},(_,i)=>`<tr><td class="mono">${i+1}</td><td></td><td></td><td></td><td></td></tr>`).join('')}</table>`,
+    '領據':`<p>茲收到　　　　　　　　　　撥付之「${esc(a.name)}」活動經費，金額新臺幣　　　　　　　　元整，特立此據。</p>
+      <p style="margin-top:40px">立據人（簽章）：　　　　　　　　　　　身分證字號：</p>
+      <p>地址：</p><p>日期：中華民國　　年　　月　　日</p>`,
+    '活動紀錄表':`<table class="out">
+      <tr><th style="width:110px">參與人數</th><td>${a.headcount||''}</td></tr>
+      <tr><th>活動流程</th><td style="height:90px"></td></tr>
+      <tr><th>執行情形</th><td style="height:90px">${esc(a.summary)}</td></tr>
+      <tr><th>檢討與建議</th><td style="height:90px"></td></tr>
+      <tr><th>附件</th><td>${FOLDERS.map(([k,l])=>`${l} ${(a.files[k]||[]).length} 件`).join('　')}</td></tr></table>`
+  }[kind];
+  openModal(`${head}${body}
+    <div class="row" style="margin-top:20px">
+      <button class="btn" id="dl">下載</button>
+      <button class="btn ghost" id="close">關閉</button>
+    </div>`);
+  $('#dl').onclick=()=>download(`${a.name}_${kind}.html`,wrap(kind,head+body));
+}
+function wrap(title,inner){
+  return `<!DOCTYPE html><html lang="zh-Hant"><meta charset="utf-8"><title>${esc(title)}</title>
+  <style>body{font-family:"Noto Sans TC",sans-serif;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.8;color:#14202B}
+  table{width:100%;border-collapse:collapse;font-size:14px}th,td{border:1px solid #999;padding:8px 10px;text-align:left}
+  th{background:#F2F0EA;font-weight:500}h1,h2{letter-spacing:.2em}hr{border:0;border-top:1px solid #999;margin:16px 0}</style>
+  ${inner}</html>`;
+}
+function download(name,text,type='text/html'){
+  const b=new Blob([type==='text/csv'?'\ufeff'+text:text],{type:type+';charset=utf-8'});
+  const u=URL.createObjectURL(b),l=document.createElement('a');
+  l.href=u;l.download=name;l.click();URL.revokeObjectURL(u);
+}
+
+/* ---------- modal / 活動表單 ---------- */
+function openModal(html){
+  $('#modal').innerHTML=`<div class="card">${html}</div>`;
+  $('#modal').classList.remove('hide');
+  const c=$('#close'); if(c)c.onclick=closeModal;
+  $('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal();};
+}
+const closeModal=()=>{$('#modal').classList.add('hide');$('#modal').innerHTML='';};
+
+function actForm(a){
+  const isNew=!a;
+  a=a||{id:uid(),name:'',date:'',place:'',owner:'',plans:[],headcount:'',summary:'',kpis:[],files:{photo:[],audio:[],video:[],doc:[]}};
+  openModal(`
+    <h2 style="margin-top:0">${isNew?'建立活動':'編輯基本資料'}</h2>
+    <div><label>活動名稱</label><input id="fName" value="${esc(a.name)}" placeholder="例如：溪畔淨溪與生態導覽"></div>
+    <div class="grid2" style="margin-top:12px">
+      <div><label>日期</label><input type="date" id="fDate" value="${esc(a.date)}"></div>
+      <div><label>地點</label><input id="fPlace" value="${esc(a.place)}"></div>
+      <div><label>負責人</label><input id="fOwner" value="${esc(a.owner)}"></div>
+      <div><label>預估參與人數</label><input type="number" id="fHead" value="${esc(a.headcount)}"></div>
+    </div>
+    <label style="margin-top:14px">對應計畫（可複選）</label>
+    <div id="mPlans">${DB.plans.map(p=>`<label class="chk" style="margin-bottom:5px">
+      <input type="checkbox" value="${p.id}" ${a.plans.includes(p.id)?'checked':''}>${esc(p.name)}</label>`).join('')
+      ||'<span class="empty" style="padding:0">還沒有計畫，可先建活動之後再掛。</span>'}</div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" id="ok">${isNew?'建立':'儲存'}</button>
+      <button class="btn ghost" id="close">取消</button>
+    </div>`);
+  $('#ok').onclick=async()=>{
+    const n=$('#fName').value.trim(); if(!n){$('#fName').focus();return;}
+    Object.assign(a,{name:n,date:$('#fDate').value,place:$('#fPlace').value.trim(),
+      owner:$('#fOwner').value.trim(),headcount:$('#fHead').value,
+      plans:[...$('#mPlans').querySelectorAll('input:checked')].map(i=>i.value)});
+    if(isNew)DB.activities.push(a);
+    await save(); closeModal(); openDetail(a.id);
+  };
+}
+$('#newAct').onclick=()=>actForm(null);
+
+/* ---------- 計畫 ---------- */
+function renderPlans(){
+  $('#planList').innerHTML=DB.plans.map(p=>{
+    const acts=DB.activities.filter(a=>a.plans.includes(p.id));
+    const g=acts.filter(a=>gaps(a).length).length;
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="row" style="justify-content:space-between">
+        <div><strong>${esc(p.name)}</strong>
+          <div class="meta" style="font-size:12px;color:var(--ink-soft)">${acts.length} 場活動　·　${g} 場有缺漏</div></div>
+        <button class="x" data-p="${p.id}" title="刪除計畫">×</button>
+      </div></div>`;
+  }).join('')||'<p class="empty" style="padding:0">還沒有計畫。</p>';
+  $('#planList').querySelectorAll('.x').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.p;
+    DB.plans=DB.plans.filter(p=>p.id!==id);
+    DB.activities.forEach(a=>a.plans=a.plans.filter(x=>x!==id));
+    await save(); renderPlans();
+  });
+}
+$('#addPlan').onclick=async()=>{
+  const n=$('#planName').value.trim(); if(!n)return;
+  DB.plans.push({id:uid(),name:n}); $('#planName').value='';
+  await save(); renderPlans();
+};
+
+/* ---------- 匯出 ---------- */
+function picked(){
+  const p=$('#xPlan').value,f=$('#xFrom').value,t=$('#xTo').value;
+  return DB.activities.filter(a=>(!p||a.plans.includes(p))&&(!f||a.date>=f)&&(!t||a.date<=t))
+    .sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+}
+$('#doPreview').onclick=()=>{
+  const rows=picked();
+  $('#xPreview').innerHTML=`<h2>成果清單預覽（${rows.length} 場）</h2>
+  <div class="card" style="overflow:auto"><table class="out">
+    <tr><th>日期</th><th>活動</th><th>地點</th><th>人數</th><th>KPI</th><th>檔案</th><th>完整度</th></tr>
+    ${rows.map(a=>`<tr><td class="mono">${esc(a.date)}</td><td>${esc(a.name)}</td><td>${esc(a.place)}</td>
+      <td class="mono">${esc(a.headcount)}</td>
+      <td>${a.kpis.map(k=>esc(k.k)+' '+esc(k.v)+esc(k.u)).join('；')||'—'}</td>
+      <td class="mono">${nFiles(a)}</td>
+      <td class="mono">${score(a)}%${gaps(a).length?' <span class="stamp">待補</span>':''}</td></tr>`).join('')}
+  </table></div>`;
+};
+$('#doCsv').onclick=()=>{
+  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const csv=[['日期','活動名稱','地點','負責人','參與人數','對應計畫','成果摘要','KPI','檔案數','缺漏'].map(q).join(',')]
+    .concat(picked().map(a=>[a.date,a.name,a.place,a.owner,a.headcount,
+      a.plans.map(planName).join('；'),a.summary,
+      a.kpis.map(k=>`${k.k} ${k.v}${k.u}`).join('；'),nFiles(a),gaps(a).join('；')].map(q).join(',')));
+  download('成果清單.csv',csv.join('\n'),'text/csv');
+};
+$('#doDoc').onclick=()=>{
+  const rows=picked(),pn=$('#xPlan').value?planName($('#xPlan').value):'全部計畫';
+  const inner=`<h1>成果報告草稿</h1>
+    <p>計畫範圍：${esc(pn)}　　期間：${esc($('#xFrom').value||'不限')} 至 ${esc($('#xTo').value||'不限')}<br>
+    活動場次：${rows.length} 場　　累計參與：${rows.reduce((s,a)=>s+(+a.headcount||0),0)} 人次</p>
+    ${rows.map((a,i)=>`<h2>${i+1}. ${esc(a.name)}</h2>
+      <p>${esc(a.date)}｜${esc(a.place)}｜負責人 ${esc(a.owner)}｜參與 ${esc(a.headcount)} 人</p>
+      <p>${esc(a.summary)||'（成果摘要待補）'}</p>
+      ${a.kpis.length?`<table><tr><th>指標</th><th>數值</th></tr>${a.kpis.map(k=>
+        `<tr><td>${esc(k.k)}</td><td>${esc(k.v)} ${esc(k.u)}</td></tr>`).join('')}</table>`:''}
+      <p>附件：${FOLDERS.map(([k,l])=>`${l} ${(a.files[k]||[]).length}`).join('　')}</p>`).join('')}`;
+  download('成果報告草稿.html',wrap('成果報告草稿',inner));
+};
+
+/* ---------- go ---------- */
+(async()=>{await load();show('list');})();
+</script>
+</body>
+</html>
