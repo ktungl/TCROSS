@@ -24,3 +24,31 @@ export function gaps(a: ActivityRecord): string[] {
 export function score(a: ActivityRecord): number {
   return Math.round(((5 - gaps(a).length) / 5) * 100)
 }
+
+export function averageScore(activities: ActivityRecord[]): number {
+  if (!activities.length) return 0
+  return Math.round(activities.reduce((sum, a) => sum + score(a), 0) / activities.length)
+}
+
+export interface MonthCount {
+  month: string
+  label: string
+  count: number
+}
+
+/** 近 months 個月（含當月）的活動數量，缺的月份補 0 */
+export function monthlyCounts(activities: ActivityRecord[], months = 6): MonthCount[] {
+  const now = new Date()
+  const buckets: MonthCount[] = []
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    buckets.push({ month, label: `${d.getMonth() + 1}月`, count: 0 })
+  }
+  const byMonth = new Map(buckets.map((b) => [b.month, b]))
+  for (const a of activities) {
+    const bucket = byMonth.get((a.date || '').slice(0, 7))
+    if (bucket) bucket.count++
+  }
+  return buckets
+}

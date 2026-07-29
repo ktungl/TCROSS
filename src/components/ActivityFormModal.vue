@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
+import { errorMessage, pushToast } from '../composables/useToast'
 import type { ActivityRecord } from '../types'
 
 const props = defineProps<{ activity?: ActivityRecord }>()
@@ -39,13 +40,19 @@ async function submit() {
     headcount: Number(headcount.value) || 0,
     plans: selectedPlans.value,
   }
-  if (isNew) {
-    const created = await db.createActivity(input)
-    emit('close')
-    router.push({ name: 'detail', params: { id: created.id } })
-  } else if (props.activity) {
-    await db.updateActivity(props.activity.id, input)
-    emit('close')
+  try {
+    if (isNew) {
+      const created = await db.createActivity(input)
+      pushToast('已建立活動')
+      emit('close')
+      router.push({ name: 'detail', params: { id: created.id } })
+    } else if (props.activity) {
+      await db.updateActivity(props.activity.id, input)
+      pushToast('已儲存')
+      emit('close')
+    }
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
   }
 }
 </script>

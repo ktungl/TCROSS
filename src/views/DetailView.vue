@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { gaps, kb } from '../utils/activity'
 import { FOLDERS } from '../types'
-import type { Kpi } from '../types'
+import type { FolderKey, Kpi } from '../types'
 import type { GeneratedFormKind } from '../utils/download'
+import { confirm } from '../composables/useConfirm'
+import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 
@@ -32,13 +34,19 @@ watch(
 
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
+const dragOverKey = ref<FolderKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
   const next = checked
     ? [...activity.value.plans, planId]
     : activity.value.plans.filter((p) => p !== planId)
-  await db.setActivityPlans(activity.value.id, next)
+  try {
+    await db.setActivityPlans(activity.value.id, next)
+    pushToast('已更新對應計畫')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
 }
 
 function addKpi() {
@@ -50,19 +58,62 @@ function removeKpi(i: number) {
 async function saveResults() {
   if (!activity.value) return
   const cleaned = kpisDraft.value.filter((k) => k.k.trim())
-  await db.saveActivityResults(activity.value.id, summaryDraft.value, cleaned)
+  try {
+    await db.saveActivityResults(activity.value.id, summaryDraft.value, cleaned)
+    pushToast('已儲存成果')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
 }
 
-async function onUpload(folder: (typeof FOLDERS)[number][0], e: Event) {
-  if (!activity.value) return
+async function upload(folder: FolderKey, files: File[]) {
+  if (!activity.value || !files.length) return
+  try {
+    await db.uploadFiles(activity.value.id, folder, files)
+    pushToast(`已上傳 ${files.length} 個檔案`)
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
+}
+async function onUpload(folder: FolderKey, e: Event) {
   const input = e.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
-  if (files.length) await db.uploadFiles(activity.value.id, folder, files)
+  await upload(folder, files)
 }
-async function onRemoveFile(folder: (typeof FOLDERS)[number][0], i: number) {
+async function onDrop(folder: FolderKey, e: DragEvent) {
+  dragOverKey.value = null
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  await upload(folder, files)
+}
+async function onRemoveFile(folder: FolderKey, i: number) {
   if (!activity.value) return
-  await db.removeFile(activity.value.id, folder, i)
+  const name = activity.value.files[folder][i]?.name ?? '此檔案'
+  if (!(await confirm(`確定要刪除「${name}」嗎？`))) return
+  try {
+    await db.removeFile(activity.value.id, folder, i)
+    pushToast('已刪除檔案')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
+}
+
+async function duplicateActivity() {
+  if (!activity.value) return
+  try {
+    const created = await db.createActivity({
+      name: `${activity.value.name}（複製）`,
+      date: '',
+      place: activity.value.place,
+      owner: activity.value.owner,
+      headcount: activity.value.headcount,
+      plans: [...activity.value.plans],
+    })
+    pushToast('已複製活動，請填寫新日期')
+    router.push({ name: 'detail', params: { id: created.id } })
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
 }
 </script>
 
@@ -74,6 +125,7 @@ async function onRemoveFile(folder: (typeof FOLDERS)[number][0], i: number) {
 
     <div class="row" style="margin-bottom:6px">
       <button class="btn ghost sm" @click="showEdit = true">編輯基本資料</button>
+      <button class="btn ghost sm" @click="duplicateActivity">複製此活動</button>
       <button class="btn ghost sm" @click="genKind = '簽到表'">產生簽到表</button>
       <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
       <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
@@ -101,7 +153,16 @@ async function onRemoveFile(folder: (typeof FOLDERS)[number][0], i: number) {
 
     <h2>活動資料</h2>
     <div>
-      <div v-for="[key, label] in FOLDERS" :key="key" class="folder">
+      <div
+        v-for="[key, label] in FOLDERS"
+        :key="key"
+        class="folder"
+        :class="{ 'drag-over': dragOverKey === key }"
+        @dragenter.prevent="dragOverKey = key"
+        @dragover.prevent="dragOverKey = key"
+        @dragleave.prevent="dragOverKey = dragOverKey === key ? null : dragOverKey"
+        @drop.prevent="onDrop(key, $event)"
+      >
         <header>
           <h3>{{ label }} <span class="count">{{ activity.files[key].length }} 件</span></h3>
           <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">上傳
@@ -110,14 +171,18 @@ async function onRemoveFile(folder: (typeof FOLDERS)[number][0], i: number) {
         </header>
         <ul v-if="activity.files[key].length" class="files">
           <li v-for="(f, i) in activity.files[key]" :key="i">
-            <span class="fname">{{ f.name }}</span>
+            <span v-if="key === 'photo' && f.url" style="display:flex;align-items:center;gap:8px;overflow:hidden">
+              <img :src="f.url" class="thumb" :alt="f.name">
+              <span class="fname">{{ f.name }}</span>
+            </span>
+            <span v-else class="fname">{{ f.name }}</span>
             <span style="display:flex;align-items:center">
               <span class="fsize mono">{{ kb(f.size) }}</span>
               <button class="x" @click="onRemoveFile(key, i)">×</button>
             </span>
           </li>
         </ul>
-        <p v-else class="empty">還沒有{{ label }}。</p>
+        <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按上傳。</p>
       </div>
     </div>
 
