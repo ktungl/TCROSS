@@ -1,0 +1,146 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import Parse from '../lib/parse'
+import { PlanObject, planToRecord } from '../models/Plan'
+import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
+import type { ActivityRecord, FileMeta, FolderKey, Kpi, PlanRecord } from '../types'
+
+export interface ActivityFormInput {
+  name: string
+  date: string
+  place: string
+  owner: string
+  headcount: number
+  plans: string[]
+}
+
+export const useDbStore = defineStore('db', () => {
+  const plans = ref<PlanRecord[]>([])
+  const activities = ref<ActivityRecord[]>([])
+  const loading = ref(false)
+  const error = ref('')
+
+  async function fetchAll(): Promise<void> {
+    loading.value = true
+    error.value = ''
+    try {
+      const [planObjs, activityObjs] = await Promise.all([
+        new Parse.Query(PlanObject).find(),
+        new Parse.Query(ActivityObject).find(),
+      ])
+      plans.value = planObjs.map(planToRecord)
+      activities.value = activityObjs.map(activityToRecord)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '無法連線到 Parse 伺服器'
+      plans.value = []
+      activities.value = []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function createPlan(name: string): Promise<void> {
+    const obj = new PlanObject()
+    obj.set('name', name)
+    await obj.save()
+    plans.value.push(planToRecord(obj))
+  }
+
+  async function deletePlan(id: string): Promise<void> {
+    await PlanObject.createWithoutData(id).destroy()
+    const affected = activities.value.filter((a) => a.plans.includes(id))
+    await Promise.all(
+      affected.map((a) => setActivityPlans(a.id, a.plans.filter((p) => p !== id))),
+    )
+    plans.value = plans.value.filter((p) => p.id !== id)
+  }
+
+  async function createActivity(input: ActivityFormInput): Promise<ActivityRecord> {
+    const obj = new ActivityObject()
+    applyActivityRecord(obj, { ...input, summary: '', kpis: [] })
+    await obj.save()
+    const record = activityToRecord(obj)
+    activities.value.push(record)
+    return record
+  }
+
+  async function updateActivity(id: string, input: ActivityFormInput): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) return
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    applyActivityRecord(obj, { ...input, summary: existing.summary, kpis: existing.kpis })
+    await obj.save()
+    Object.assign(existing, input)
+  }
+
+  async function setActivityPlans(id: string, planIds: string[]): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) return
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    applyActivityRecord(obj, {
+      name: existing.name,
+      date: existing.date,
+      place: existing.place,
+      owner: existing.owner,
+      headcount: existing.headcount,
+      summary: existing.summary,
+      kpis: existing.kpis,
+      plans: planIds,
+    })
+    await obj.save()
+    existing.plans = planIds
+  }
+
+  async function saveActivityResults(id: string, summary: string, kpis: Kpi[]): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) return
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    obj.set('summary', summary)
+    obj.set('kpis', kpis)
+    await obj.save()
+    existing.summary = summary
+    existing.kpis = kpis
+  }
+
+  async function uploadFiles(id: string, folder: FolderKey, files: File[]): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing || !files.length) return
+    const uploaded: FileMeta[] = []
+    for (const file of files) {
+      const parseFile = new Parse.File(file.name, file)
+      await parseFile.save()
+      uploaded.push({ name: file.name, size: file.size, url: parseFile.url() ?? '' })
+    }
+    const nextList = [...existing.files[folder], ...uploaded]
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    obj.set(`${folder}Files`, nextList)
+    await obj.save()
+    existing.files[folder] = nextList
+  }
+
+  async function removeFile(id: string, folder: FolderKey, index: number): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) return
+    const nextList = existing.files[folder].filter((_, i) => i !== index)
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    obj.set(`${folder}Files`, nextList)
+    await obj.save()
+    existing.files[folder] = nextList
+  }
+
+  return {
+    plans,
+    activities,
+    loading,
+    error,
+    fetchAll,
+    createPlan,
+    deletePlan,
+    createActivity,
+    updateActivity,
+    setActivityPlans,
+    saveActivityResults,
+    uploadFiles,
+    removeFile,
+  }
+})
