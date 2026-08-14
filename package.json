@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "docx": "^9.7.1",
     "events": "^3.3.0",
+    "exceljs": "^4.4.0",
     "parse": "^8.6.0",
     "pinia": "^4.0.2",
     "vue": "^3.5.39",

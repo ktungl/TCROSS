@@ -2,12 +2,14 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDbStore } from './stores/db'
+import { useAuthStore } from './stores/auth'
 import ToastStack from './components/ToastStack.vue'
 import ConfirmDialogHost from './components/ConfirmDialogHost.vue'
 
 const route = useRoute()
 const router = useRouter()
 const db = useDbStore()
+const auth = useAuthStore()
 
 const navItems: { name: string; label: string }[] = [
   { name: 'dashboard', label: '總覽' },
@@ -25,13 +27,30 @@ function selectNav(name: string) {
   router.push({ name })
 }
 
+async function logOut() {
+  await auth.logOut()
+  router.push({ name: 'login' })
+}
+
 onMounted(() => {
-  db.fetchAll()
+  if (auth.user) db.fetchAll()
 })
+
+watch(
+  () => auth.user,
+  (user) => {
+    if (user) db.fetchAll()
+  },
+)
 </script>
 
 <template>
-  <div class="shell">
+  <div v-if="route.meta.public" class="shell-public">
+    <router-view />
+    <ToastStack />
+    <ConfirmDialogHost />
+  </div>
+  <div v-else class="shell">
     <aside :class="{ open: mobileNavOpen }">
       <div class="aside-head">
         <div class="brand">活動紀錄平台<small>ACTIVITY RECORDS</small></div>
@@ -52,6 +71,7 @@ onMounted(() => {
           :aria-current="route.name === item.name"
           @click="selectNav(item.name)"
         >{{ item.label }}</button>
+        <button @click="logOut">登出</button>
       </nav>
     </aside>
     <main>

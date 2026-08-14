@@ -2,6 +2,14 @@
 
 這份文件記錄「導入 GCP」後，現況與目標架構之間的落差，以及規劃的實作階段。細節會隨著實作進度更新；GCP 的目標架構說明本身在 [README.md](README.md#架構擴充導入-gcpgoogle-cloud-platform)。
 
+## 進度更新（2026-08-14）
+
+- ✅ **Phase 0（Parse 使用者驗證/ACL）**：登入頁、路由守衛、`Plan`/`Activity`/`GenerationJob` 的 Class-Level Permissions 都已設定為 requiresAuthentication 並驗證生效，匿名 REST 請求會被擋。
+- ✅ **附帶項目（模板真格式）**：簽到表/活動紀錄表改 `.xlsx`（exceljs），領據/成果報告草稿改 `.docx`（docx），CSV 匯出維持不動。
+- 🟡 **Phase 1（Cloud Run 中介層）**：`server/` 目錄已寫好 signed URL 中介層程式碼（見 `server/README.md`），**尚未部署**——需要一個實際的 GCP 專案才能繼續。
+- ✅ **Phase 2（`GenerationJob` 資料模型）**：Parse class 已建立（`activity`/`kind`/`status`/`sourceFiles`/`resultFile`/`errorMessage`），前端對應型別與 model 在 `src/types.ts`/`src/models/GenerationJob.ts`。**只有資料模型，沒有任何 store/UI 在用它**——建立/輪詢/顯示 job 的邏輯要等 Phase 3。
+- ⬜ **Phase 3（前端串接）+ Gemini 串接**：都還沒開始，卡在需要先有 GCP 專案把 Phase 1 部署起來。
+
 ## 現況盤點（2026-08-12）
 
 README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Run 組裝 PDF/Word/Excel」目前**完全還沒實作**。現有系統是純前端 SPA，直接用瀏覽器端的 Parse SDK 讀寫 Back4App，沒有任何後端、沒有 GCS、沒有 Gemini：

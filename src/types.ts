@@ -43,3 +43,17 @@ export interface ActivityRecord {
   kpis: Kpi[]
   files: ActivityFiles
 }
+
+export type GenerationJobKind = '成果報告' | '其他'
+export type GenerationJobStatus = 'pending' | 'processing' | 'done' | 'error'
+
+export interface GenerationJobRecord {
+  id: string
+  activityId: string
+  kind: GenerationJobKind
+  status: GenerationJobStatus
+  sourceFiles: string[]
+  resultFile: string
+  errorMessage: string
+  createdAt: string
+}

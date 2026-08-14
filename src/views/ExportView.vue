@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import { useDbStore } from '../stores/db'
 import { gaps, nFiles, score } from '../utils/activity'
-import { buildCsv, downloadFile, escapeHtml, wrapDoc } from '../utils/download'
-import { FOLDERS } from '../types'
+import { buildCsv, buildResultsReportDocx, downloadBlob, downloadFile } from '../utils/download'
+import { errorMessage, pushToast } from '../composables/useToast'
 
 const db = useDbStore()
 
@@ -49,27 +49,14 @@ function doCsv() {
   downloadFile('成果清單.csv', buildCsv(rows), 'text/csv')
 }
 
-function doDoc() {
+async function doDoc() {
   const pn = xPlan.value ? planName(xPlan.value) : '全部計畫'
-  const inner = `<h1>成果報告草稿</h1>
-    <p>計畫範圍：${escapeHtml(pn)}　　期間：${escapeHtml(xFrom.value || '不限')} 至 ${escapeHtml(xTo.value || '不限')}<br>
-    活動場次：${picked.value.length} 場　　累計參與：${picked.value.reduce((s, a) => s + (Number(a.headcount) || 0), 0)} 人次</p>
-    ${picked.value
-      .map(
-        (a, i) => `<h2>${i + 1}. ${escapeHtml(a.name)}</h2>
-      <p>${escapeHtml(a.date)}｜${escapeHtml(a.place)}｜負責人 ${escapeHtml(a.owner)}｜參與 ${escapeHtml(a.headcount)} 人</p>
-      <p>${escapeHtml(a.summary) || '（成果摘要待補）'}</p>
-      ${
-        a.kpis.length
-          ? `<table><tr><th>指標</th><th>數值</th></tr>${a.kpis
-              .map((k) => `<tr><td>${escapeHtml(k.k)}</td><td>${escapeHtml(k.v)} ${escapeHtml(k.u)}</td></tr>`)
-              .join('')}</table>`
-          : ''
-      }
-      <p>附件：${FOLDERS.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0}`).join('　')}</p>`,
-      )
-      .join('')}`
-  downloadFile('成果報告草稿.html', wrapDoc('成果報告草稿', inner))
+  try {
+    const blob = await buildResultsReportDocx(picked.value, pn, xFrom.value || '不限', xTo.value || '不限')
+    downloadBlob('成果報告草稿.docx', blob)
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
 }
 </script>
 
