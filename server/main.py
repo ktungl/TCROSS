@@ -28,8 +28,9 @@ class SignedUrlRequest(BaseModel):
     contentType: str
 
 
-@app.get("/healthz")
-def healthz():
+# 這裡已經把原本會被 GCP 攔截的 /healthz 替換成了 /status
+@app.get("/status")
+def status():
     return {"ok": True}
 
 

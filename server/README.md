@@ -4,6 +4,8 @@
 
 目前只有 `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL 給前端直傳檔案。`parse_auth.write_with_master_key()` 是預留給 Phase 2/3（`GenerationJob` 完成後把結果寫回 Parse）用的，目前沒有任何端點呼叫它。
 
+另有 `/status` 做健康檢查（回傳 `{"ok": true}`）。**不要叫它 `/healthz`**——實測發現 Cloud Run 預設網域（`*.run.app`）對完全小寫的 `/healthz` 這個路徑字串會在 Google Frontend 層攔截、直接回一個跟這個服務無關的通用 404 頁面，請求根本不會進到容器（用 Cloud Run 的請求記錄可以驗證：`/healthz` 完全沒有記錄，`/health`、`/Healthz` 這種相近但不完全相同的路徑則正常）。
+
 ## 本機開發
 
 ```bash
@@ -60,7 +62,7 @@ gcloud run deploy $SERVICE_NAME \
 ## 驗證部署是否正確
 
 ```bash
-curl https://<cloud-run-url>/healthz
+curl https://<cloud-run-url>/status
 # 應回傳 {"ok": true}
 
 curl -X POST https://<cloud-run-url>/signed-url \

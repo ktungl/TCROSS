@@ -67,3 +67,6 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 4. `GenerationJob` 資料模型 + Gemini 串接（核心新功能）
 
 第 1、2 項風險最低、能立刻推進，且不依賴還沒申請的 GCP 資源，建議優先處理。
+
+
+

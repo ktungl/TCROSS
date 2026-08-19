@@ -10,6 +10,7 @@ import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
+import AiGenerationModal from '../components/AiGenerationModal.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -34,6 +35,7 @@ watch(
 
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
+const showAiGenModal = ref(false)
 const dragOverKey = ref<FolderKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
@@ -129,6 +131,7 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="genKind = '簽到表'">產生簽到表</button>
       <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
       <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
+      <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
     </div>
 
     <div v-if="gaps(activity).length" class="flagbox">
@@ -206,6 +209,7 @@ async function duplicateActivity() {
 
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="planName" @close="genKind = null" />
+    <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
   </div>
   <p v-else class="empty">{{ db.loading ? '載入中…' : '找不到這個活動。' }}</p>
 </template>
