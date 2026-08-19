@@ -203,6 +203,13 @@ table.out tbody tr:hover{background:var(--gold-100)}
 .chk{display:flex;align-items:center;gap:8px;font-size:13px}
 .chk input{width:auto}
 
+/* 表格在窄螢幕改為水平捲動，避免欄位被壓成直書 */
+.shell>main{min-width:0}
+@media(max-width:1024px){
+  table.out{min-width:620px}
+  .card{max-width:100%;overflow-x:auto}
+}
+
 /* ---------- 儀表板圖表 ---------- */
 .chart-bars{display:flex;align-items:flex-end;gap:14px;height:160px;
   border-bottom:1px solid var(--line)}
@@ -239,6 +246,17 @@ table.out tbody tr:hover{background:var(--gold-100)}
   border-radius:var(--r);font-size:13px;
   box-shadow:0 4px 14px rgba(62,44,23,.28)}
 .toast.error{background:var(--stamp)}
+
+/* ---------- 平板橫向（側欄仍在，但寬度吃緊） ---------- */
+@media(min-width:861px) and (max-width:1180px){
+  main{padding:28px 26px 60px}
+  /* 計畫標籤移到第二行，避免中間欄被擠到換行 */
+  .entry{grid-template-columns:76px 1fr 96px;row-gap:5px}
+  .entry>span:nth-child(2){grid-column:2;grid-row:1}
+  .entry .plans{grid-column:2;grid-row:2}
+  .entry .dial{grid-column:3;grid-row:1;align-self:start}
+  .grid3{grid-template-columns:1fr 1fr}
+}
 
 /* ---------- 行動版 ---------- */
 .aside-head{display:flex;align-items:center;justify-content:space-between}
