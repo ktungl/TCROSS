@@ -100,3 +100,4 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - Parse 使用者驗證（登入頁 + 路由守衛）與 Class-Level Permissions（`Plan`/`Activity`/`GenerationJob` 都已限定需登入才能讀寫）
 - 簽到表/活動紀錄表/領據/成果報告草稿改成真正的 `.xlsx`/`.docx` 格式，不再是改副檔名的 HTML
 - 新增 `GenerationJob` 資料模型與 `server/`（Cloud Run signed URL 中介層程式碼），對應 [ROADMAP.md](ROADMAP.md) Phase 1/2；尚未部署、前端也還沒串接
+- 新增 `cloud/main.js`（Back4App Cloud Code）：`Plan`/`Activity`/`GenerationJob` 補上伺服器端 `beforeSave` 資料驗證，擋掉繞過前端直接打 API 寫入的畸形資料；程式碼寫好，部署步驟見 `cloud/README.md`，尚未部署
