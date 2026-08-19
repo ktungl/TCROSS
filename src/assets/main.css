@@ -267,7 +267,7 @@ table.out tbody tr:hover{background:var(--gold-100)}
 
 @media(max-width:860px){
   .shell{grid-template-columns:1fr;align-content:start}
-  aside{position:static;height:auto;padding:16px}
+  aside{position:relative;height:auto;padding:16px}
   aside::after{top:auto;bottom:0;left:0;right:0;width:auto;height:3px;
     background:linear-gradient(90deg,var(--gold-200),var(--gold-400),var(--gold-600))}
   .brand::before{width:28px;height:24px;margin-bottom:6px}
