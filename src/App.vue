@@ -53,7 +53,7 @@ watch(
   <div v-else class="shell">
     <aside :class="{ open: mobileNavOpen }">
       <div class="aside-head">
-        <div class="brand">活動紀錄平台<small>ACTIVITY RECORDS</small></div>
+        <div class="brand">合照盟<small>計畫資料整合平台</small></div>
         <button
           class="nav-toggle"
           type="button"

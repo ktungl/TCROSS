@@ -28,7 +28,8 @@ async function submit() {
 <template>
   <div class="login-page">
     <div class="card login-card">
-      <h1 style="margin-top:0">活動紀錄平台</h1>
+      <h1 style="margin-top:0">合照盟</h1>
+      <p class="sub" style="margin-bottom:0">計畫資料整合平台</p>
       <p class="sub">請登入以繼續。</p>
       <form @submit.prevent="submit">
         <label>帳號</label>
