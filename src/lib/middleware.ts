@@ -51,6 +51,18 @@ export async function requestDownloadUrl(objectPath: string): Promise<string> {
   return body.downloadUrl
 }
 
+export async function deleteObjects(objectPaths: string[]): Promise<void> {
+  if (!objectPaths.length) return
+  const token = Parse.User.current()?.getSessionToken()
+  if (!token) throw new Error('請重新登入')
+  const res = await fetch(`${baseUrl()}/delete-objects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ objectPaths }),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, '無法刪除素材檔案'))
+}
+
 export async function uploadToSignedUrl(
   uploadUrl: string,
   file: File,

@@ -110,3 +110,11 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 0820（Gemini/AI 串接暫緩，先補其他缺口）
 - `server/` 新增 `/download-url` 端點（`storage.py`/`utils.py`/`main.py`），讓已完成的 `GenerationJob` 可以簽發限時 GCS 下載網址；`AiGenerationModal.vue` 補上對應的下載按鈕（目前工作 + 過去工作清單皆可下載）。**已用 `gcloud run deploy` 部署到 `tcross-middleware`（revision `tcross-middleware-00004-zdh`）並在線上實測 `/status`、`/download-url` 通過**
 - `cloud/main.js` 的 `GenerationJob` 驗證補上 `activity` 必填、`resultFile`/`errorMessage` 型別檢查，**已由使用者部署到 Back4App**（伺服器日誌確認 `main.js` 已載入），還沒有對應的 mock 測試案例
+
+0820（架構健檢後的補洞，**程式碼已寫好、通過 `vue-tsc`/`vite build`，尚未部署**）
+- 刪檔不會清底層儲存的問題：`cloud/main.js` 新增 `afterSave('Activity', ...)`，存檔後比對四個檔案欄位的前後差異，把消失的項目用 Master Key 刪掉對應的 Parse.File；`server/` 新增 `/delete-objects` 端點（`storage.py` 的 `delete_object()`），`GenerationJob` 刪除時（`db.ts` 的 `deleteGenerationJob()`，`AiGenerationModal.vue` 新增刪除按鈕）會先清掉對應的 GCS 來源/產出檔案再刪 Parse 紀錄
+- `server/main.py` 的登入驗證改成 FastAPI `Depends(require_user)`，三個端點共用同一份檢查，之後加端點不會漏寫
+- `DetailView.vue`／`AiGenerationModal.vue` 幾乎重複的「四個資料夾拖曳上傳卡」抽成共用元件 `src/components/FolderDropzone.vue`
+- `db.ts` 的 `updateActivity`/`setActivityPlans`/`saveActivityResults`/`uploadFiles`/`removeFile` 重複的「建指標→set 欄位→save→同步本地」抽成共用的 `patchActivity()`
+
+**部署狀態**：`server/` 已用 `gcloud run deploy` 部署（revision `tcross-middleware-00005-nmb`），`GET /status` 與 `/delete-objects` 路由都已在線上實測確認存在。`cloud/main.js`（含 `afterSave('Activity', ...)` 清檔案邏輯）**已由使用者貼到 Back4App Cloud Code Dashboard 並部署**——System Logs 確認 2026-08-20T00:34 之後的重啟不再出現「main.js not found」警告，代表新檔案已載入且沒有語法錯誤（跟 0819 那次的驗證方式一致）。**尚未實際觸發過一次刪檔測試**：建議找一個測試活動上傳張照片、再刪除，確認 System Logs 沒跳出「刪除檔案失敗」，並且 Back4App Database 的檔案儲存（`Overview` 或 `Database` 分頁下的 file class）裡那個檔案真的消失了。

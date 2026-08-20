@@ -3,7 +3,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useDbStore } from '../stores/db'
 import { useGenerationJobPolling } from '../composables/useGenerationJobPolling'
 import { requestDownloadUrl, requestSignedUploadUrl, uploadToSignedUrl } from '../lib/middleware'
+import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
+import FolderDropzone from './FolderDropzone.vue'
 import { FOLDERS } from '../types'
 import type { ActivityRecord, FolderKey, GenerationJobRecord, GenerationJobStatus } from '../types'
 
@@ -21,7 +23,6 @@ const selected = reactive(emptySelection())
 const fileStates = reactive(new Map<File, 'queued' | 'uploading' | 'uploaded' | 'error'>())
 const submitting = ref(false)
 const activeJob = ref<GenerationJobRecord | null>(null)
-const dragOverKey = ref<FolderKey | null>(null)
 
 const totalSelected = computed(() =>
   FOLDERS.reduce((n, [key]) => n + selected[key].length, 0),
@@ -62,17 +63,6 @@ onMounted(async () => {
 
 function addFiles(folder: FolderKey, files: File[]) {
   selected[folder] = [...selected[folder], ...files]
-}
-function onPick(folder: FolderKey, e: Event) {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
-  addFiles(folder, files)
-}
-function onDrop(folder: FolderKey, e: DragEvent) {
-  dragOverKey.value = null
-  const files = Array.from(e.dataTransfer?.files ?? [])
-  addFiles(folder, files)
 }
 function removeSelected(folder: FolderKey, i: number) {
   selected[folder] = selected[folder].filter((_, idx) => idx !== i)
@@ -132,6 +122,25 @@ async function download(job: GenerationJobRecord) {
   }
 }
 
+const deletingJobId = ref<string | null>(null)
+
+async function removeJob(job: GenerationJobRecord) {
+  if (!(await confirm(`確定要刪除這筆「${job.kind}」生成工作嗎？已上傳的素材與產出檔案會一併刪除。`))) return
+  deletingJobId.value = job.id
+  try {
+    await db.deleteGenerationJob(job.id)
+    if (activeJob.value?.id === job.id) {
+      stopPolling()
+      activeJob.value = null
+    }
+    pushToast('已刪除生成工作')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  } finally {
+    deletingJobId.value = null
+  }
+}
+
 function close() {
   stopPolling()
   emit('close')
@@ -147,22 +156,14 @@ function close() {
         目前尚未接上自動生成後端，此工作會停在「待處理」狀態，之後才會由後端接手產生真正的檔案。
       </p>
 
-      <div
+      <FolderDropzone
         v-for="[key, label] in FOLDERS"
         :key="key"
-        class="folder"
-        :class="{ 'drag-over': dragOverKey === key }"
-        @dragenter.prevent="dragOverKey = key"
-        @dragover.prevent="dragOverKey = key"
-        @dragleave.prevent="dragOverKey = dragOverKey === key ? null : dragOverKey"
-        @drop.prevent="onDrop(key, $event)"
+        :label="label"
+        :count-label="`已選 ${selected[key].length} 件`"
+        @pick="(files) => addFiles(key, files)"
+        @drop="(files) => addFiles(key, files)"
       >
-        <header>
-          <h3>{{ label }} <span class="count">已選 {{ selected[key].length }} 件</span></h3>
-          <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">選擇檔案
-            <input type="file" multiple style="display:none" @change="onPick(key, $event)">
-          </label>
-        </header>
         <ul v-if="selected[key].length" class="files">
           <li v-for="(f, i) in selected[key]" :key="i">
             <span class="fname">{{ f.name }}</span>
@@ -173,7 +174,7 @@ function close() {
           </li>
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按選擇檔案。</p>
-      </div>
+      </FolderDropzone>
 
       <div v-if="activeJob" class="card" style="margin-top:14px">
         <b>目前工作</b>：{{ activeJob.kind }}　狀態：{{ statusLabel(activeJob.status) }}
@@ -210,6 +211,7 @@ function close() {
                 {{ downloading === j.id ? '取得中…' : '下載' }}
               </button>
               <span class="mono fsize">{{ new Date(j.createdAt).toLocaleString() }}</span>
+              <button class="x" title="刪除這筆生成工作" :disabled="deletingJobId === j.id" @click="removeJob(j)">×</button>
             </span>
           </li>
         </ul>

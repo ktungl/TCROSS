@@ -91,6 +91,31 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   }
 });
 
+// 前端刪檔（removeFile()）只把項目從陣列拿掉再存回去，實際的 Parse.File blob
+// 從來沒被刪過，會在 Back4App 檔案儲存裡一直堆孤兒檔案。這裡改成不管陣列是怎麼變小的
+// （手動刪除、或任何其他寫入路徑），存檔後統一比對前後差異，把消失的檔案一併刪掉。
+// Parse.File.destroy() 需要 Master Key，前端沒有也不該有，所以放在這裡而不是 db.ts。
+Parse.Cloud.afterSave('Activity', async (request) => {
+  if (!request.original) return; // 新建的活動沒有舊檔案可比對
+
+  for (const field of FOLDER_FIELDS) {
+    const before = request.original.get(field) || [];
+    const after = request.object.get(field) || [];
+    const afterUrls = new Set(after.map((f) => f && f.url));
+    const removed = before.filter((f) => f && f.url && !afterUrls.has(f.url));
+
+    for (const f of removed) {
+      const filename = decodeURIComponent(f.url.split('/').pop() || '');
+      if (!filename) continue;
+      try {
+        await new Parse.File(filename).destroy({ useMasterKey: true });
+      } catch (err) {
+        console.error(`刪除檔案失敗：${filename}`, err);
+      }
+    }
+  }
+});
+
 Parse.Cloud.beforeSave('GenerationJob', (request) => {
   const object = request.object;
 

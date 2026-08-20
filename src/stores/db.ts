@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import Parse from '../lib/parse'
+import { deleteObjects } from '../lib/middleware'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
 import {
@@ -78,42 +79,61 @@ export const useDbStore = defineStore('db', () => {
     return record
   }
 
-  async function updateActivity(id: string, input: ActivityFormInput): Promise<void> {
+  /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。 */
+  async function patchActivity(
+    id: string,
+    apply: (obj: ActivityObject, existing: ActivityRecord) => void,
+    mutateLocal: (existing: ActivityRecord) => void,
+  ): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) return
     const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    applyActivityRecord(obj, { ...input, summary: existing.summary, kpis: existing.kpis })
+    apply(obj, existing)
     await obj.save()
-    Object.assign(existing, input)
+    mutateLocal(existing)
+  }
+
+  async function updateActivity(id: string, input: ActivityFormInput): Promise<void> {
+    await patchActivity(
+      id,
+      (obj, existing) =>
+        applyActivityRecord(obj, { ...input, summary: existing.summary, kpis: existing.kpis }),
+      (existing) => Object.assign(existing, input),
+    )
   }
 
   async function setActivityPlans(id: string, planIds: string[]): Promise<void> {
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing) return
-    const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    applyActivityRecord(obj, {
-      name: existing.name,
-      date: existing.date,
-      place: existing.place,
-      owner: existing.owner,
-      headcount: existing.headcount,
-      summary: existing.summary,
-      kpis: existing.kpis,
-      plans: planIds,
-    })
-    await obj.save()
-    existing.plans = planIds
+    await patchActivity(
+      id,
+      (obj, existing) =>
+        applyActivityRecord(obj, {
+          name: existing.name,
+          date: existing.date,
+          place: existing.place,
+          owner: existing.owner,
+          headcount: existing.headcount,
+          summary: existing.summary,
+          kpis: existing.kpis,
+          plans: planIds,
+        }),
+      (existing) => {
+        existing.plans = planIds
+      },
+    )
   }
 
   async function saveActivityResults(id: string, summary: string, kpis: Kpi[]): Promise<void> {
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing) return
-    const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    obj.set('summary', summary)
-    obj.set('kpis', kpis)
-    await obj.save()
-    existing.summary = summary
-    existing.kpis = kpis
+    await patchActivity(
+      id,
+      (obj) => {
+        obj.set('summary', summary)
+        obj.set('kpis', kpis)
+      },
+      (existing) => {
+        existing.summary = summary
+        existing.kpis = kpis
+      },
+    )
   }
 
   async function uploadFiles(id: string, folder: FolderKey, files: File[]): Promise<void> {
@@ -126,20 +146,26 @@ export const useDbStore = defineStore('db', () => {
       uploaded.push({ name: file.name, size: file.size, url: parseFile.url() ?? '' })
     }
     const nextList = [...existing.files[folder], ...uploaded]
-    const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    obj.set(`${folder}Files`, nextList)
-    await obj.save()
-    existing.files[folder] = nextList
+    await patchActivity(
+      id,
+      (obj) => obj.set(`${folder}Files`, nextList),
+      (existing) => {
+        existing.files[folder] = nextList
+      },
+    )
   }
 
   async function removeFile(id: string, folder: FolderKey, index: number): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) return
     const nextList = existing.files[folder].filter((_, i) => i !== index)
-    const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    obj.set(`${folder}Files`, nextList)
-    await obj.save()
-    existing.files[folder] = nextList
+    await patchActivity(
+      id,
+      (obj) => obj.set(`${folder}Files`, nextList),
+      (existing) => {
+        existing.files[folder] = nextList
+      },
+    )
   }
 
   async function fetchGenerationJobs(activityId: string): Promise<void> {
@@ -183,6 +209,15 @@ export const useDbStore = defineStore('db', () => {
     return record
   }
 
+  async function deleteGenerationJob(id: string): Promise<void> {
+    const existing = generationJobs.value.find((j) => j.id === id)
+    if (!existing) return
+    const objectPaths = [...existing.sourceFiles, ...(existing.resultFile ? [existing.resultFile] : [])]
+    await deleteObjects(objectPaths)
+    await GenerationJobObject.createWithoutData(id).destroy()
+    generationJobs.value = generationJobs.value.filter((j) => j.id !== id)
+  }
+
   return {
     plans,
     activities,
@@ -201,5 +236,6 @@ export const useDbStore = defineStore('db', () => {
     fetchGenerationJobs,
     createGenerationJob,
     refreshGenerationJob,
+    deleteGenerationJob,
   }
 })

@@ -2,6 +2,7 @@ import datetime
 import os
 
 import google.auth
+from google.api_core.exceptions import NotFound
 from google.auth import impersonated_credentials
 from google.cloud import storage
 
@@ -62,3 +63,12 @@ def generate_signed_download_url(object_path: str) -> str:
         method="GET",
         credentials=signing_credentials,
     )
+
+
+def delete_object(object_path: str) -> None:
+    """Delete a GCS object. No-op if it's already gone, so callers can retry a
+    partially-failed batch delete without erroring on the objects already removed."""
+    try:
+        _client().bucket(GCS_BUCKET).blob(object_path).delete()
+    except NotFound:
+        pass

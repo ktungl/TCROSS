@@ -11,6 +11,7 @@ import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
+import FolderDropzone from '../components/FolderDropzone.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -36,7 +37,6 @@ watch(
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
 const showAiGenModal = ref(false)
-const dragOverKey = ref<FolderKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
@@ -76,17 +76,6 @@ async function upload(folder: FolderKey, files: File[]) {
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   }
-}
-async function onUpload(folder: FolderKey, e: Event) {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
-  await upload(folder, files)
-}
-async function onDrop(folder: FolderKey, e: DragEvent) {
-  dragOverKey.value = null
-  const files = Array.from(e.dataTransfer?.files ?? [])
-  await upload(folder, files)
 }
 async function onRemoveFile(folder: FolderKey, i: number) {
   if (!activity.value) return
@@ -156,22 +145,15 @@ async function duplicateActivity() {
 
     <h2>活動資料</h2>
     <div>
-      <div
+      <FolderDropzone
         v-for="[key, label] in FOLDERS"
         :key="key"
-        class="folder"
-        :class="{ 'drag-over': dragOverKey === key }"
-        @dragenter.prevent="dragOverKey = key"
-        @dragover.prevent="dragOverKey = key"
-        @dragleave.prevent="dragOverKey = dragOverKey === key ? null : dragOverKey"
-        @drop.prevent="onDrop(key, $event)"
+        :label="label"
+        :count-label="`${activity.files[key].length} 件`"
+        pick-label="上傳"
+        @pick="(files) => upload(key, files)"
+        @drop="(files) => upload(key, files)"
       >
-        <header>
-          <h3>{{ label }} <span class="count">{{ activity.files[key].length }} 件</span></h3>
-          <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">上傳
-            <input type="file" multiple style="display:none" @change="onUpload(key, $event)">
-          </label>
-        </header>
         <ul v-if="activity.files[key].length" class="files">
           <li v-for="(f, i) in activity.files[key]" :key="i">
             <span v-if="key === 'photo' && f.url" style="display:flex;align-items:center;gap:8px;overflow:hidden">
@@ -186,7 +168,7 @@ async function duplicateActivity() {
           </li>
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按上傳。</p>
-      </div>
+      </FolderDropzone>
     </div>
 
     <h2>成果補充</h2>
