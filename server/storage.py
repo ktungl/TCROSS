@@ -43,3 +43,22 @@ def generate_signed_upload_url(object_path: str, content_type: str) -> str:
         content_type=content_type,
         credentials=signing_credentials,
     )
+
+
+def generate_signed_download_url(object_path: str) -> str:
+    """Mint a v4 signed URL for a direct browser GET download from GCS. See
+    generate_signed_upload_url() for why signing is delegated via self-impersonation."""
+    source_credentials, _ = google.auth.default()
+    signing_credentials = impersonated_credentials.Credentials(
+        source_credentials=source_credentials,
+        target_principal=SIGNING_SERVICE_ACCOUNT,
+        target_scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
+        lifetime=SIGNED_URL_TTL_MINUTES * 60,
+    )
+    blob = _client().bucket(GCS_BUCKET).blob(object_path)
+    return blob.generate_signed_url(
+        version="v4",
+        expiration=datetime.timedelta(minutes=SIGNED_URL_TTL_MINUTES),
+        method="GET",
+        credentials=signing_credentials,
+    )

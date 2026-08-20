@@ -94,6 +94,11 @@ Parse.Cloud.beforeSave('Activity', (request) => {
 Parse.Cloud.beforeSave('GenerationJob', (request) => {
   const object = request.object;
 
+  const activity = object.get('activity');
+  if (!activity || typeof activity.id !== 'string') {
+    fail('activity 不能為空');
+  }
+
   const kind = object.get('kind');
   if (kind !== undefined && !GENERATION_JOB_KINDS.includes(kind)) {
     fail(`kind 必須是 ${GENERATION_JOB_KINDS.join('/')} 其中之一`);
@@ -105,7 +110,19 @@ Parse.Cloud.beforeSave('GenerationJob', (request) => {
   }
 
   const sourceFiles = object.get('sourceFiles');
-  if (sourceFiles !== undefined && !Array.isArray(sourceFiles)) {
-    fail('sourceFiles 必須是陣列');
+  if (sourceFiles !== undefined) {
+    if (!Array.isArray(sourceFiles) || sourceFiles.some((f) => typeof f !== 'string')) {
+      fail('sourceFiles 必須是字串陣列');
+    }
+  }
+
+  const resultFile = object.get('resultFile');
+  if (resultFile !== undefined && typeof resultFile !== 'string') {
+    fail('resultFile 必須是字串');
+  }
+
+  const errorMessage = object.get('errorMessage');
+  if (errorMessage !== undefined && typeof errorMessage !== 'string') {
+    fail('errorMessage 必須是字串');
   }
 });

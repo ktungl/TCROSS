@@ -35,6 +35,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 
 - **Plan**：`name`
 - **Activity**：`name` / `date` / `place` / `owner` / `headcount` / `plans`（對應多個 Plan）/ `summary` / `kpis` / `photoFiles` / `audioFiles` / `videoFiles` / `docFiles`
+- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，目前只有資料模型，前端還沒有 store/UI 在用它（見 [ROADMAP.md](ROADMAP.md)）
 
 在 `.env` 尚未填入有效憑證前，畫面可以正常開啟與切換頁面，但清單會是空的（連線 Parse 失敗時會在畫面上方顯示錯誤提示）。
 
@@ -100,4 +101,12 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - Parse 使用者驗證（登入頁 + 路由守衛）與 Class-Level Permissions（`Plan`/`Activity`/`GenerationJob` 都已限定需登入才能讀寫）
 - 簽到表/活動紀錄表/領據/成果報告草稿改成真正的 `.xlsx`/`.docx` 格式，不再是改副檔名的 HTML
 - 新增 `GenerationJob` 資料模型與 `server/`（Cloud Run signed URL 中介層程式碼），對應 [ROADMAP.md](ROADMAP.md) Phase 1/2；尚未部署、前端也還沒串接
-- 新增 `cloud/main.js`（Back4App Cloud Code）：`Plan`/`Activity`/`GenerationJob` 補上伺服器端 `beforeSave` 資料驗證，擋掉繞過前端直接打 API 寫入的畸形資料；程式碼寫好，部署步驟見 `cloud/README.md`，尚未部署
+
+0819
+- 新增 `cloud/main.js`（Back4App Cloud Code）：`Plan`/`Activity`/`GenerationJob` 補上伺服器端 `beforeSave` 資料驗證，擋掉繞過前端直接打 API 寫入的畸形資料；程式碼寫好、用 mock Parse Cloud 環境跑過 22 組正常/異常案例，部署步驟見 `cloud/README.md`，尚未部署到 Back4App
+- `server/`（Cloud Run 中介層）**已部署**到 GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`（`tcross-middleware`，`asia-east1`），`GET /status` 驗證回傳正常，對應 [ROADMAP.md](ROADMAP.md) Phase 1
+- 前端串接 `GenerationJob` 上傳/建立/輪詢流程（`AiGenerationModal.vue`、`useGenerationJobPolling.ts`、`lib/middleware.ts`），對應 ROADMAP Phase 3a；Cloud Run 端的 Gemini 生成邏輯（Phase 3b）還沒開始，UI 上會誠實顯示「尚未接上自動生成後端」
+
+0820（Gemini/AI 串接暫緩，先補其他缺口）
+- `server/` 新增 `/download-url` 端點（`storage.py`/`utils.py`/`main.py`），讓已完成的 `GenerationJob` 可以簽發限時 GCS 下載網址；`AiGenerationModal.vue` 補上對應的下載按鈕（目前工作 + 過去工作清單皆可下載）。**已用 `gcloud run deploy` 部署到 `tcross-middleware`（revision `tcross-middleware-00004-zdh`）並在線上實測 `/status`、`/download-url` 通過**
+- `cloud/main.js` 的 `GenerationJob` 驗證補上 `activity` 必填、`resultFile`/`errorMessage` 型別檢查，**已由使用者部署到 Back4App**（伺服器日誌確認 `main.js` 已載入），還沒有對應的 mock 測試案例

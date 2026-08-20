@@ -15,6 +15,11 @@ dist-ssr
 # Environment (holds Parse/Back4App credentials)
 .env
 
+# Python (server/)
+server/.venv
+__pycache__
+*.pyc
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

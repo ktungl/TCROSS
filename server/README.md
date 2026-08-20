@@ -2,7 +2,12 @@
 
 前端向這個服務要 GCS Signed URL，不直接握有 GCP 憑證。這個服務是唯一持有 GCP 服務帳戶身分的地方；`PARSE_MASTER_KEY` 也只存在這裡，絕不進前端 bundle。
 
-目前只有 `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL 給前端直傳檔案。`parse_auth.write_with_master_key()` 是預留給 Phase 2/3（`GenerationJob` 完成後把結果寫回 Parse）用的，目前沒有任何端點呼叫它。
+- `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL（PUT）給前端直傳檔案。
+- `/download-url`：同樣驗證 session token 後，對 `objectPath` 發一個限時的 GCS v4 signed URL（GET）給前端下載/預覽檔案；`objectPath` 必須以 `activities/` 開頭且不含 `..`（`utils.is_valid_object_path()`），避免任何登入使用者拿去簽發桶內任意路徑的下載網址。前端 `AiGenerationModal.vue` 在 `GenerationJob.status === 'done'` 時會呼叫這個端點。
+
+`parse_auth.write_with_master_key()` 是預留給 Phase 3b（Cloud Run 端 Gemini 生成完成後把 `status`/`resultFile` 寫回 Parse）用的，目前沒有任何端點呼叫它——這是唯一還沒接上的部分，細節見 [../ROADMAP.md](../ROADMAP.md)。
+
+另有 `/status` 做健康檢查（回傳 `{"ok": true}`）。**不要叫它 `/healthz`**——實測發現 Cloud Run 預設網域（`*.run.app`）對完全小寫的 `/healthz` 這個路徑字串會在 Google Frontend 層攔截、直接回一個跟這個服務無關的通用 404 頁面，請求根本不會進到容器（用 Cloud Run 的請求記錄可以驗證：`/healthz` 完全沒有記錄，`/health`、`/Healthz` 這種相近但不完全相同的路徑則正常）。
 
 ## 本機開發
 
@@ -60,7 +65,7 @@ gcloud run deploy $SERVICE_NAME \
 ## 驗證部署是否正確
 
 ```bash
-curl https://<cloud-run-url>/healthz
+curl https://<cloud-run-url>/status
 # 應回傳 {"ok": true}
 
 curl -X POST https://<cloud-run-url>/signed-url \
@@ -68,12 +73,18 @@ curl -X POST https://<cloud-run-url>/signed-url \
   -H "Content-Type: application/json" \
   -d '{"activityId":"test","folder":"photo","filename":"test.jpg","contentType":"image/jpeg"}'
 # 應回傳 {"uploadUrl": "...", "objectPath": "activities/test/photo/xxxxxxxx_test.jpg"}
+
+curl -X POST https://<cloud-run-url>/download-url \
+  -H "Authorization: Bearer <某個已登入使用者的 Parse session token>" \
+  -H "Content-Type: application/json" \
+  -d '{"objectPath":"activities/test/photo/xxxxxxxx_test.jpg"}'
+# 應回傳 {"downloadUrl": "..."}
 ```
 
 若拿 session token 卡住，可以在瀏覽器 devtools 對已登入頁面執行 `Parse.User.current().getSessionToken()` 拿到。
 
 ## 尚未做的事（不在這次範圍）
 
-- 前端還沒有任何程式碼呼叫這個服務（那是 ROADMAP Phase 3）。
-- `write_with_master_key()` 還沒有端點在用（那是 ROADMAP Phase 2 的 `GenerationJob` 完成後）。
-- 沒有自動化測試；本機沒有真的 GCP 專案可以跑，只做了 `python -m py_compile` 等級的靜態檢查，實際簽發 signed URL 的行為需要你部署後用上面的 curl 指令驗證。
+- 沒有任何程式碼會把 `GenerationJob.status` 更新成 `processing`/`done`/`error`——也就是還沒有 Gemini 呼叫、還沒有 PDF/Word/Excel 組裝邏輯。這是 ROADMAP Phase 3b，目前唯一還沒接上的部分。
+- `write_with_master_key()` 還沒有端點在用，要等上面那個處理邏輯完成才會用到。
+- 沒有自動化測試；`/download-url` 的 `is_valid_object_path()` 檢查、`/signed-url` 的簽發行為都只做了 `python -m py_compile` 等級的靜態檢查，沒有部署到 GCP 上實測（`/status`、`/signed-url` 已在既有部署上驗證過，`/download-url` 是新加的端點，部署後請用上面的 curl 指令另外驗證一次）。

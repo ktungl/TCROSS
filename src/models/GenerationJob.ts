@@ -1,4 +1,5 @@
 import Parse from '../lib/parse'
+import { ActivityObject } from './Activity'
 import type { GenerationJobKind, GenerationJobRecord, GenerationJobStatus } from '../types'
 
 export class GenerationJobObject extends Parse.Object {
@@ -21,4 +22,16 @@ export function generationJobToRecord(obj: Parse.Object): GenerationJobRecord {
     errorMessage: obj.get('errorMessage') ?? '',
     createdAt: obj.createdAt?.toISOString() ?? '',
   }
+}
+
+export function applyGenerationJobRecord(
+  obj: Parse.Object,
+  record: Omit<GenerationJobRecord, 'id' | 'createdAt'>,
+): void {
+  obj.set('activity', ActivityObject.createWithoutData(record.activityId))
+  obj.set('kind', record.kind)
+  obj.set('status', record.status)
+  obj.set('sourceFiles', record.sourceFiles)
+  obj.set('resultFile', record.resultFile)
+  obj.set('errorMessage', record.errorMessage)
 }

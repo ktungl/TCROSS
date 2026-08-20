@@ -3,7 +3,20 @@ import { ref } from 'vue'
 import Parse from '../lib/parse'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
-import type { ActivityRecord, FileMeta, FolderKey, Kpi, PlanRecord } from '../types'
+import {
+  GenerationJobObject,
+  applyGenerationJobRecord,
+  generationJobToRecord,
+} from '../models/GenerationJob'
+import type {
+  ActivityRecord,
+  FileMeta,
+  FolderKey,
+  GenerationJobKind,
+  GenerationJobRecord,
+  Kpi,
+  PlanRecord,
+} from '../types'
 
 export interface ActivityFormInput {
   name: string
@@ -17,6 +30,7 @@ export interface ActivityFormInput {
 export const useDbStore = defineStore('db', () => {
   const plans = ref<PlanRecord[]>([])
   const activities = ref<ActivityRecord[]>([])
+  const generationJobs = ref<GenerationJobRecord[]>([])
   const loading = ref(false)
   const error = ref('')
 
@@ -128,9 +142,51 @@ export const useDbStore = defineStore('db', () => {
     existing.files[folder] = nextList
   }
 
+  async function fetchGenerationJobs(activityId: string): Promise<void> {
+    const objs = await new Parse.Query(GenerationJobObject)
+      .equalTo('activity', ActivityObject.createWithoutData(activityId))
+      .descending('createdAt')
+      .find()
+    const records = objs.map(generationJobToRecord)
+    generationJobs.value = [
+      ...generationJobs.value.filter((j) => j.activityId !== activityId),
+      ...records,
+    ]
+  }
+
+  async function createGenerationJob(
+    activityId: string,
+    kind: GenerationJobKind,
+    sourceFiles: string[],
+  ): Promise<GenerationJobRecord> {
+    const obj = new GenerationJobObject()
+    applyGenerationJobRecord(obj, {
+      activityId,
+      kind,
+      status: 'pending',
+      sourceFiles,
+      resultFile: '',
+      errorMessage: '',
+    })
+    await obj.save()
+    const record = generationJobToRecord(obj)
+    generationJobs.value.push(record)
+    return record
+  }
+
+  async function refreshGenerationJob(id: string): Promise<GenerationJobRecord> {
+    const obj = await new Parse.Query(GenerationJobObject).get(id)
+    const record = generationJobToRecord(obj)
+    const i = generationJobs.value.findIndex((j) => j.id === id)
+    if (i !== -1) generationJobs.value[i] = record
+    else generationJobs.value.push(record)
+    return record
+  }
+
   return {
     plans,
     activities,
+    generationJobs,
     loading,
     error,
     fetchAll,
@@ -142,5 +198,8 @@ export const useDbStore = defineStore('db', () => {
     saveActivityResults,
     uploadFiles,
     removeFile,
+    fetchGenerationJobs,
+    createGenerationJob,
+    refreshGenerationJob,
   }
 })
