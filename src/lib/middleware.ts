@@ -38,6 +38,19 @@ export async function requestSignedUploadUrl(params: {
   return res.json() as Promise<SignedUrlResponse>
 }
 
+export async function requestDownloadUrl(objectPath: string): Promise<string> {
+  const token = Parse.User.current()?.getSessionToken()
+  if (!token) throw new Error('請重新登入')
+  const res = await fetch(`${baseUrl()}/download-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ objectPath }),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, '無法取得下載網址'))
+  const body = (await res.json()) as { downloadUrl: string }
+  return body.downloadUrl
+}
+
 export async function uploadToSignedUrl(
   uploadUrl: string,
   file: File,

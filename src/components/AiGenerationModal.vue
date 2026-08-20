@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useDbStore } from '../stores/db'
 import { useGenerationJobPolling } from '../composables/useGenerationJobPolling'
-import { requestSignedUploadUrl, uploadToSignedUrl } from '../lib/middleware'
+import { requestDownloadUrl, requestSignedUploadUrl, uploadToSignedUrl } from '../lib/middleware'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { FOLDERS } from '../types'
 import type { ActivityRecord, FolderKey, GenerationJobRecord, GenerationJobStatus } from '../types'
@@ -117,6 +117,21 @@ async function startGeneration() {
   }
 }
 
+const downloading = ref<string | null>(null)
+
+async function download(job: GenerationJobRecord) {
+  if (!job.resultFile) return
+  downloading.value = job.id
+  try {
+    const url = await requestDownloadUrl(job.resultFile)
+    window.open(url, '_blank')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  } finally {
+    downloading.value = null
+  }
+}
+
 function close() {
   stopPolling()
   emit('close')
@@ -162,7 +177,21 @@ function close() {
 
       <div v-if="activeJob" class="card" style="margin-top:14px">
         <b>目前工作</b>：{{ activeJob.kind }}　狀態：{{ statusLabel(activeJob.status) }}
-        <p class="sub" style="margin:6px 0 0">已送出，等待後端處理（此頁面每 5 秒自動查詢一次最新狀態）。</p>
+        <p v-if="activeJob.status !== 'done' && activeJob.status !== 'error'" class="sub" style="margin:6px 0 0">
+          已送出，等待後端處理（此頁面每 5 秒自動查詢一次最新狀態）。
+        </p>
+        <p v-else-if="activeJob.status === 'error'" class="sub" style="margin:6px 0 0">
+          {{ activeJob.errorMessage || '生成失敗' }}
+        </p>
+        <button
+          v-else-if="activeJob.resultFile"
+          class="btn ghost sm"
+          style="margin-top:8px;width:auto;letter-spacing:0"
+          :disabled="downloading === activeJob.id"
+          @click="download(activeJob)"
+        >
+          {{ downloading === activeJob.id ? '取得下載網址中…' : '下載檔案' }}
+        </button>
       </div>
 
       <div v-if="pastJobs.length" style="margin-top:14px">
@@ -170,7 +199,18 @@ function close() {
         <ul class="files">
           <li v-for="j in pastJobs" :key="j.id">
             <span>{{ j.kind }}　{{ statusLabel(j.status) }}</span>
-            <span class="mono fsize">{{ new Date(j.createdAt).toLocaleString() }}</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <button
+                v-if="j.status === 'done' && j.resultFile"
+                class="btn ghost sm"
+                style="margin:0;width:auto;letter-spacing:0"
+                :disabled="downloading === j.id"
+                @click="download(j)"
+              >
+                {{ downloading === j.id ? '取得中…' : '下載' }}
+              </button>
+              <span class="mono fsize">{{ new Date(j.createdAt).toLocaleString() }}</span>
+            </span>
           </li>
         </ul>
       </div>
