@@ -68,28 +68,33 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 | --- | --- | --- | --- |
 | **Cloud Storage (GCS)** | 統一檔案儲存庫（輸入的語音/影片/圖片 + 輸出的 PDF/Word/Excel） | 支援 Signed URL，前端 Vue 可直傳檔案不經過 Parse，省頻寬又快 | IAM 權限設定要嚴格，避免上傳桶變成公開讀取的漏洞 |
 | **Vertex AI (Gemini)** | 核心多模態分析引擎 | 原生直接讀取語音/影片/圖片/文字，具備百萬級 Tokens 的超大上下文窗口，一次輸入即可輸出結構化 JSON，不需個別轉檔 | 語音/影片檔案大小與時長有限制；需留意 API 的 Quota（配額）與非同步回應時間 |
-| **Cloud Run / Cloud Functions** | 異步運算大腦（Python） | 上傳觸發後：呼叫 Gemini 取得結構化結果 → 用 `reportlab`/`python-docx`/`openpyxl` 組裝出 PDF/Word/Excel；Cloud Run 支援 Docker，套件安裝無限制 | Cloud Functions 有執行時間限制，大檔案生成建議用 Cloud Run（最長可跑 60 分鐘） |
+| **Cloud Run / Cloud Functions** | 異步運算大腦（Python） | 前端呼叫觸發後：呼叫 Gemini 取得結構化結果 → 用 `reportlab`/`python-docx`/`openpyxl` 組裝出 PDF/Word/Excel；Cloud Run 支援 Docker，套件安裝無限制 | Cloud Functions 有執行時間限制，大檔案生成建議用 Cloud Run（最長可跑 60 分鐘） |
 | **Document AI**（選配） | 印刷掃描件的 OCR 與結構化 | 若輸入圖片是掃描表單、收據、合約等版面固定的印刷文件，用它加強欄位擷取的精準度 | 按頁數計費；一般口語錄音、生活照片、影片不需要，避免不必要成本 |
 
 ### 資料流向
 
+觸發方式**不用** GCS EventArc（檔案一上傳到 GCS 就觸發）——一個 `GenerationJob` 通常對應多個輸入檔，EventArc 沒有「這個 job 的檔案都上傳完了」這種語意，還要另外做計數/等待邏輯，而且跟現有前端「上傳完才建立 GenerationJob」的流程對不上。改成**前端在建立好 `GenerationJob` 後，直接呼叫 Cloud Run 新端點觸發生成**，觸發時機精準，也不需要讓 Parse／Back4App Cloud Code 另外持有一份 GCP 憑證去發 Cloud Tasks——沿用 Phase 1 定案的「只有 Cloud Run 持有 GCP 服務帳戶」這條信任邊界。
+
 ```
-[Vue + TS 前端] ──(1) 請求 Signed URL ──> [Parse Server]
+[Vue + TS 前端] ──(1) 請求 Signed URL ──> [Cloud Run 中介層]
        │
        ├──(2) 直傳輸入檔 (語音/影片/圖片/文字) ──> [Cloud Storage (GCS)]
-                                                     │
-                                       (3) EventArc 檔案上傳觸發
-                                                     ▼
-                                          [Cloud Run (Python)]
-                                     (4) 呼叫 Vertex AI Gemini 解析多模態輸入
-                                     (5) 依結構化結果組裝 PDF/Word/Excel
-                                                     │
-                                       (6) 產出檔案寫回 GCS
-                                                     ▼
-[Parse Database] <──(7) 寫回生成結果 / 檔案連結 ─────┘
        │
-       └──(8) LiveQuery 即時推播結果 ──> [Vue + TS 前端渲染]
+       ├──(3) 建立 GenerationJob（記錄 sourceFiles）──> [Parse Database]
+       │
+       └──(4) 呼叫 Cloud Run 新端點觸發生成（帶 session token）──> [Cloud Run (Python)]
+                                     (5) 用 Master Key 把 status 改成 processing
+                                     (6) 呼叫 Vertex AI Gemini 解析多模態輸入
+                                     (7) 依結構化結果組裝 PDF/Word/Excel
+                                     (8) 產出檔案寫回 GCS
+                                     (9) 用 Master Key 把結果／status=done 寫回 Parse
+                                                     │
+                                                     ▼
+[Vue + TS 前端] <──(10) 輪詢 GenerationJob.status（現有 useGenerationJobPolling.ts，5 秒一次）
+       └──(11) status === 'done' 後呼叫 /download-url 下載產出檔案
 ```
+
+（Back4App 方案目前沒有用 LiveQuery，第 10 步是既有的輪詢機制，不是即時推播。）
 
 ### 關鍵優勢：Gemini 的原生多模態
 
