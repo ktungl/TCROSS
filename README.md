@@ -31,6 +31,18 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - `npm run build` — 型別檢查（`vue-tsc`）+ 產生正式版建置
 - `npm run preview` — 本地預覽建置結果
 
+## 前端架構
+
+`src/` 底下依職責分層：
+
+- **`router/`**：`vue-router` 設定所有頁面路由（`DashboardView`/`ListView`/`DetailView`/`PlansView`/`PlanDetailView`/`ExportView`/`LoginView`）；`beforeEach` 守衛檢查 `Parse.User.current()`，未登入且非 `meta.public` 的路由一律導回 `/login`，已登入的人存取 `/login` 則導回列表頁。
+- **`stores/`**（Pinia）：`db.ts` 是核心資料 store，包著 `Plan`/`Activity`/`GenerationJob` 的讀取、建立、更新、刪除，共用的「建指標 → set 欄位 → save → 同步本地」邏輯抽成 `patchActivity()`；`auth.ts` 管登入/登出狀態，包一層 `Parse.User`。
+- **`lib/`**：`parse.ts` 用 `.env` 的 App ID/JS Key/Server URL 初始化 Parse SDK，全專案共用同一個實例；`middleware.ts` 封裝呼叫 Cloud Run 中介層（`server/`）的三支 API——`requestSignedUploadUrl()`、`requestDownloadUrl()`、`deleteObjects()`，都會帶上 `Parse.User.current()?.getSessionToken()` 做驗證。
+- **`composables/`**：`useToast.ts`/`useConfirm.ts` 是全域的提示訊息與刪除確認彈窗狀態（`reactive` 陣列/物件，搭配 `components/ToastStack.vue`、`components/ConfirmDialogHost.vue` 掛在 `App.vue` 顯示）；`useGenerationJobPolling.ts` 每 5 秒輪詢 `GenerationJob.status`。
+- **`components/`**：頁面共用的 UI 元件，例如活動卡片（`ActivityEntry.vue`）、活動新增/編輯表單（`ActivityFormModal.vue`）、AI 生成任務彈窗（`AiGenerationModal.vue`）、四個資料夾共用的拖曳上傳卡（`FolderDropzone.vue`）、產出文件預覽（`GeneratedDocModal.vue`）。
+- **`utils/`**：`download.ts` 用 `docx`/`exceljs` 產生真正格式的簽到表/活動紀錄表/領據/成果報告草稿；`activity.ts` 是活動相關的純函式（篩選、格式化等）。
+- **`models/`**：`Activity.ts`/`Plan.ts`/`GenerationJob.ts` 定義對應 Parse Class 的型別/轉換邏輯，供 `stores/db.ts` 使用。
+
 ## 資料結構（Parse Classes）
 
 - **Plan**：`name`

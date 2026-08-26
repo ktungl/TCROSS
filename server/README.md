@@ -4,6 +4,7 @@
 
 - `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL（PUT）給前端直傳檔案。
 - `/download-url`：同樣驗證 session token 後，對 `objectPath` 發一個限時的 GCS v4 signed URL（GET）給前端下載/預覽檔案；`objectPath` 必須以 `activities/` 開頭且不含 `..`（`utils.is_valid_object_path()`），避免任何登入使用者拿去簽發桶內任意路徑的下載網址。前端 `AiGenerationModal.vue` 在 `GenerationJob.status === 'done'` 時會呼叫這個端點。
+- `/delete-objects`：驗證 session token 後，批次刪除傳入的 `objectPaths`（同樣用 `is_valid_object_path()` 檢查每個路徑），供前端在刪除 `GenerationJob` 記錄前先清掉對應的 GCS 來源/產出檔案（`src/stores/db.ts` 的 `deleteGenerationJob()`）。
 
 `parse_auth.write_with_master_key()` 是預留給 Phase 3b（Cloud Run 端 Gemini 生成完成後把 `status`/`resultFile` 寫回 Parse）用的，目前沒有任何端點呼叫它——這是唯一還沒接上的部分，細節見 [../ROADMAP.md](../ROADMAP.md)。
 
@@ -79,6 +80,12 @@ curl -X POST https://<cloud-run-url>/download-url \
   -H "Content-Type: application/json" \
   -d '{"objectPath":"activities/test/photo/xxxxxxxx_test.jpg"}'
 # 應回傳 {"downloadUrl": "..."}
+
+curl -X POST https://<cloud-run-url>/delete-objects \
+  -H "Authorization: Bearer <某個已登入使用者的 Parse session token>" \
+  -H "Content-Type: application/json" \
+  -d '{"objectPaths":["activities/test/photo/xxxxxxxx_test.jpg"]}'
+# 應回傳 {"deleted": 1}
 ```
 
 若拿 session token 卡住，可以在瀏覽器 devtools 對已登入頁面執行 `Parse.User.current().getSessionToken()` 拿到。
@@ -87,4 +94,4 @@ curl -X POST https://<cloud-run-url>/download-url \
 
 - 沒有任何程式碼會把 `GenerationJob.status` 更新成 `processing`/`done`/`error`——也就是還沒有 Gemini 呼叫、還沒有 PDF/Word/Excel 組裝邏輯。這是 ROADMAP Phase 3b，目前唯一還沒接上的部分。
 - `write_with_master_key()` 還沒有端點在用，要等上面那個處理邏輯完成才會用到。
-- 沒有自動化測試；`/download-url` 的 `is_valid_object_path()` 檢查、`/signed-url` 的簽發行為都只做了 `python -m py_compile` 等級的靜態檢查，沒有部署到 GCP 上實測（`/status`、`/signed-url` 已在既有部署上驗證過，`/download-url` 是新加的端點，部署後請用上面的 curl 指令另外驗證一次）。
+- 沒有自動化測試，但 `/status`、`/signed-url`、`/download-url`、`/delete-objects` 都已部署到 Cloud Run（`tcross-middleware`，revision `tcross-middleware-00005-nmb`）並用上面的 curl 指令在線上實測過。`/delete-objects` 目前只驗證過端點本身會刪除 GCS 物件，還沒串完整流程（從前端刪 `GenerationJob` 觸發）跑過一次實測。
