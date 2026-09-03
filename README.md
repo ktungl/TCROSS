@@ -39,15 +39,27 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - **`stores/`**（Pinia）：`db.ts` 是核心資料 store，包著 `Plan`/`Activity`/`GenerationJob` 的讀取、建立、更新、刪除，共用的「建指標 → set 欄位 → save → 同步本地」邏輯抽成 `patchActivity()`；`auth.ts` 管登入/登出狀態，包一層 `Parse.User`。
 - **`lib/`**：`parse.ts` 用 `.env` 的 App ID/JS Key/Server URL 初始化 Parse SDK，全專案共用同一個實例；`middleware.ts` 封裝呼叫 Cloud Run 中介層（`server/`）的三支 API——`requestSignedUploadUrl()`、`requestDownloadUrl()`、`deleteObjects()`，都會帶上 `Parse.User.current()?.getSessionToken()` 做驗證。
 - **`composables/`**：`useToast.ts`/`useConfirm.ts` 是全域的提示訊息與刪除確認彈窗狀態（`reactive` 陣列/物件，搭配 `components/ToastStack.vue`、`components/ConfirmDialogHost.vue` 掛在 `App.vue` 顯示）；`useGenerationJobPolling.ts` 每 5 秒輪詢 `GenerationJob.status`。
-- **`components/`**：頁面共用的 UI 元件，例如活動卡片（`ActivityEntry.vue`）、活動新增/編輯表單（`ActivityFormModal.vue`）、AI 生成任務彈窗（`AiGenerationModal.vue`）、四個資料夾共用的拖曳上傳卡（`FolderDropzone.vue`）、產出文件預覽（`GeneratedDocModal.vue`）。
-- **`utils/`**：`download.ts` 用 `docx`/`exceljs` 產生真正格式的簽到表/活動紀錄表/領據/成果報告草稿；`activity.ts` 是活動相關的純函式（篩選、格式化等）。
+- **`components/`**：頁面共用的 UI 元件，例如活動卡片（`ActivityEntry.vue`）、活動新增/編輯表單（`ActivityFormModal.vue`）、AI 生成任務彈窗（`AiGenerationModal.vue`）、各附件分類共用的拖曳上傳卡（`FolderDropzone.vue`）、產出文件預覽（`GeneratedDocModal.vue`）。
+- **`utils/`**：`download.ts` 用 `docx`/`exceljs` 產生真正格式的大紀事 Excel、內政部結案 Word（依《需求訪談》欄位對照表）以及簽到表/活動紀錄表/領據；`activity.ts` 是活動相關的純函式（篩選、缺漏檢核、格式化等）。
 - **`models/`**：`Activity.ts`/`Plan.ts`/`GenerationJob.ts` 定義對應 Parse Class 的型別/轉換邏輯，供 `stores/db.ts` 使用。
 
 ## 資料結構（Parse Classes）
 
 - **Plan**：`name`
-- **Activity**：`name` / `date` / `place` / `owner` / `headcount` / `plans`（對應多個 Plan）/ `summary` / `kpis` / `photoFiles` / `audioFiles` / `videoFiles` / `docFiles`
-- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，目前只有資料模型，前端還沒有 store/UI 在用它（見 [ROADMAP.md](ROADMAP.md)）
+- **Activity**（欄位依《需求訪談》規格，2026-09-03）
+  - 基本資料：`name`（活動名稱／事由）/ `category`（活動分類）/ `date`＋`dateEnd`（起訖日期，同一天時 `dateEnd` 留空）/ `place` / `owner`（負責人，內部管理用）/ `plans`（對應多個 Plan）
+  - 與會資訊：`attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `maleCount`＋`femaleCount`＋`totalCount`（與會人數統計）
+  - 成果：`summary`（活動內容簡述與效益）/ `kpis` / `remark`（備註）
+  - 附件（8 分類，各存一個 `{name, size, url, caption?, featured?}` 陣列）：`photoFiles`（照片，`caption` 為圖說、`featured` 為大紀事精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
+  - 舊版殘留：`headcount`（單一人數數字，已由 `maleCount`/`femaleCount`/`totalCount` 取代）/ `audioFiles`／`videoFiles`／`docFiles`（舊 4 分類附件）——前端不再讀寫，但舊資料可能還在，Cloud Code 仍會驗證與清孤兒檔
+- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，前端 `AiGenerationModal.vue` 已串上傳/建立/輪詢/下載/刪除，但 Cloud Run 端的生成邏輯還沒實作（見 [ROADMAP.md](ROADMAP.md) Phase 3b）
+
+**新增欄位時要記得同步 Back4App schema**：Back4App 不允許前端（JS Key）自動建欄位，`Activity.ts` 加了新欄位卻沒在 Back4App 建對應欄位的話，存檔會收到 `Permission denied for action addField on class Activity`。改完 `src/models/Activity.ts` 後，更新 `scripts/sync-schema.mjs` 的 `WANTED` 再跑：
+
+```bash
+node scripts/sync-schema.mjs           # 唯讀，只列出缺哪些欄位
+node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的欄位
+```
 
 在 `.env` 尚未填入有效憑證前，畫面可以正常開啟與切換頁面，但清單會是空的（連線 Parse 失敗時會在畫面上方顯示錯誤提示）。
 
@@ -133,5 +145,18 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - `server/main.py` 的登入驗證改成 FastAPI `Depends(require_user)`，三個端點共用同一份檢查，之後加端點不會漏寫
 - `DetailView.vue`／`AiGenerationModal.vue` 幾乎重複的「四個資料夾拖曳上傳卡」抽成共用元件 `src/components/FolderDropzone.vue`
 - `db.ts` 的 `updateActivity`/`setActivityPlans`/`saveActivityResults`/`uploadFiles`/`removeFile` 重複的「建指標→set 欄位→save→同步本地」抽成共用的 `patchActivity()`
+
+0903（依《需求訪談》欄位對照表改版，**已部署**）
+
+依需求訪談確認的欄位對照表，把資料模型、建檔表單、附件上傳、匯出全部對齊規格：
+
+- **活動欄位**：新增 `category`（活動分類）/ `dateEnd`（迄止日期）/ `attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `remark`（備註）；人數統計從單一 `headcount` 數字改成 `maleCount`/`femaleCount`/`totalCount` 三欄（存進 Parse 時是三個獨立欄位，前端型別包成 `headcount: {male, female, total}`）。沿用新欄位名稱而不是改 `headcount` 的型別，是為了不讓已部署的 Cloud Code（驗證 `headcount` 必須是數字）擋掉存檔
+- **附件分類**：從舊的 4 分類（照片/錄音/影片/文件）改成規格的 8 分類（活動照片/簽到表/成果紀錄/活動流程/公文/領據/社群貼文/影音檔）；照片可填圖說（`caption`）與標記精選照片（`featured`）。`AiGenerationModal.vue`／`lib/middleware.ts`／`server/main.py` 那組 `photo/audio/video/doc` 分類**刻意不動**——那是 AI 生成素材上傳用的，跟正式歸檔附件是兩回事
+- **匯出**：新增 `buildLedgerXlsx()`（大紀事 Excel：分類/日期/地點/出席事由/與會單位或成員/備註/與會人數統計/精選照片縮圖，日期轉民國年 `1140103`、跨日 `1140124-0125`）與 `buildNeimuReportDocx()`（內政部經常門結案報告 Word：一~六項，日期轉「114年1月3日」，照片含圖說內嵌）；取代原本的 `buildResultsReportDocx()`。`ExportView.vue` 加上活動分類篩選與「匯出檔案類型」勾選
+- **缺漏檢核**：`gaps()` 依規格改成照片未達 3 張、有照片未填圖說、沒有簽到表或成果紀錄等檢查
+- **其他**：`DetailView.vue` 新增「刪除此活動」（含確認對話框，`db.ts` 的 `deleteActivity()`）
+- **Back4App 同步**：`cloud/main.js` 補上新欄位的 `beforeSave` 驗證，`FOLDER_FIELDS` 擴充成 11 個欄位（新 8 分類 + 舊 3 個），連帶讓 `afterSave` 的孤兒檔案清理也涵蓋新分類——**已由使用者部署**；新增 `scripts/sync-schema.mjs`，用 `.env` 的 Master Key 對照前端欄位補建 Back4App schema（16 個新欄位已建立完成，唯讀查詢確認無缺漏）
+
+> 過程中發現 `28cc4ca`（Merge branch 'main' into Donna）把未解決的衝突標記直接 commit 進版本庫，導致 `main`／`Donna`／`Kuan` 三個分支都編譯不過。已把 `db.ts`（`patchActivity` 重構 vs 新欄位）與 `DetailView.vue`（`FolderDropzone` 元件化 vs 8 分類附件 UI）的衝突解掉，兩邊的功能都保留。
 
 **部署狀態**：`server/` 已用 `gcloud run deploy` 部署（revision `tcross-middleware-00005-nmb`），`GET /status` 與 `/delete-objects` 路由都已在線上實測確認存在。`cloud/main.js`（含 `afterSave('Activity', ...)` 清檔案邏輯）**已由使用者貼到 Back4App Cloud Code Dashboard 並部署**——System Logs 確認 2026-08-20T00:34 之後的重啟不再出現「main.js not found」警告，代表新檔案已載入且沒有語法錯誤（跟 0819 那次的驗證方式一致）。**尚未實際觸發過一次刪檔測試**：建議找一個測試活動上傳張照片、再刪除，確認 System Logs 沒跳出「刪除檔案失敗」，並且 Back4App Database 的檔案儲存（`Overview` 或 `Database` 分頁下的 file class）裡那個檔案真的消失了。

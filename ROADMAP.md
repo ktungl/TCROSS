@@ -14,13 +14,13 @@
 
 ### 鍾雅婷的分月工作項目與目前狀態
 
-| 月份／里程碑 | 工作項目 | 目前狀態（依專案現況，2026-08-26） |
+| 月份／里程碑 | 工作項目 | 目前狀態（依專案現況，2026-09-03） |
 | --- | --- | --- |
 | **8 月｜需求確認** | 1. 完成系統架構圖與 input → output 流程圖 | ✅ 已完成——README.md「架構擴充：導入 GCP」的服務分工表與資料流向圖 |
 | | 2. GCP 完成與測試 | ✅ 已完成——Phase 1 Cloud Run 中介層已部署並實測（見下方進度表） |
 | | 3. 提出部署方案建議 | ✅ 已完成——`tcross-middleware` 已部署至 GCP `asia-east1` |
-| | 共同里程碑：8/31 需求與欄位凍結 | ⬜ 未到期（今天 8/26，還差 5 天）——須先取得大紀事 Excel 與內政部結案報告範本，這兩份還沒拿到的話會卡住凍結時程 |
-| **9 月｜Demo** | 1. 完成 Excel／Word 匯出模組原型並套用實際範本 | 🟡 部分完成——簽到表/活動紀錄表/領據/成果報告草稿已用 `exceljs`/`docx` 產生真格式（見附帶項目），但尚未確認是否已套用「實際範本」（大紀事/內政部範本） |
+| | 共同里程碑：8/31 需求與欄位凍結 | ✅ 已完成——《需求訪談》欄位對照表已確認，9/3 完成實作（活動欄位、8 分類附件、大紀事/內政部雙報告匯出），資料模型與 Back4App schema 皆已對齊 |
+| **9 月｜Demo** | 1. 完成 Excel／Word 匯出模組原型並套用實際範本 | 🟡 大致完成——已依欄位對照表實作大紀事 Excel（`buildLedgerXlsx`）與內政部結案 Word（`buildNeimuReportDocx`），用假資料實測產出有效檔案；**尚未用真實照片驗證圖片內嵌排版**，也還沒拿實際範本逐項核對抬頭/編號等格式細節（對應 10 月上半第 2 項） |
 | | 2. 系統內部 API 規格（前端 ↔ Parse 的介面約定） | 🟡 部分完成——`/signed-url`／`/download-url`／`/delete-objects` 規格已定並上線，但觸發生成用的新端點規格尚未定案細節（見下方 Phase 3b 下一步） |
 | | 3. Gemini API 的呼叫規格（提示詞、輸入格式、回傳的 JSON 結構） | ⬜ 未開始——對應 Phase 3b，依使用者指示暫緩 |
 | | 共同里程碑：9/30 Demo（用車計畫統計／參訪活動跑通完整流程） | ⬜ 未到期，但 Phase 3b 暫緩中，若 9 月中前不重啟會影響這個里程碑 |
@@ -33,7 +33,7 @@
 
 ### 跨組銜接重點（鍾雅婷的責任）
 
-1. 欄位對照表（陳怡靜主責）→ **匯出模組（鍾雅婷）** → 表單欄位（劉冠彤）：三方須於 8 月底前對齊，否則 9 月底 demo 將無可展示內容。
+1. ~~欄位對照表（陳怡靜主責）→ **匯出模組（鍾雅婷）** → 表單欄位（劉冠彤）：三方須於 8 月底前對齊，否則 9 月底 demo 將無可展示內容。~~ ✅ 2026-09-03 已對齊：《需求訪談》欄位對照表 → `src/types.ts`／`models/Activity.ts` 資料模型 → `ActivityFormModal.vue` 建檔表單 → `utils/download.ts` 雙報告匯出，一條鏈都已實作完成。
 2. API 規格由**鍾雅婷定稿**、陳怡靜實作、劉冠彤串接，建議 9 月第一週先凍結一版。
 3. 附件命名與儲存路徑規則由陳怡靜訂定，**鍾雅婷於部署時確認容量與備份方式**。
 4. 每兩週召開一次同步會議，檢視各項交付狀態並視情況調整分工。
@@ -50,12 +50,13 @@
 
 工程師 B 職掌原文建議把 Gemini 呼叫寫在 Parse Cloud Code 的 `afterSave` 觸發器裡，這點跟下方 Phase 3b 的技術決策不同——評估後已改採「前端呼叫 Cloud Run 新端點觸發」，理由見下方「下一步」第 2 項。
 
-## 目前進度（2026-08-20，Gemini 串接暫緩，先補齊其他缺口）
+## 目前進度（2026-09-03，Gemini 串接暫緩，先補齊其他缺口）
 
 | 階段 | 狀態 | 說明 |
 | --- | --- | --- |
 | Phase 0 — Parse 使用者驗證/ACL | ✅ 完成 | 登入頁、路由守衛、`Plan`/`Activity`/`GenerationJob` 的 Class-Level Permissions 都已設定為 requiresAuthentication 並驗證生效，匿名 REST 請求會被擋。 |
-| 附帶項目 — 模板真格式 | ✅ 完成 | 簽到表/活動紀錄表改 `.xlsx`（exceljs），領據/成果報告草稿改 `.docx`（docx），CSV 匯出維持不動。 |
+| 附帶項目 — 模板真格式 | ✅ 完成 | 簽到表/活動紀錄表改 `.xlsx`（exceljs），領據改 `.docx`（docx），CSV 匯出維持不動。 |
+| 附帶項目 — 需求訪談欄位對照 | ✅ **已完成並部署（2026-09-03）** | 活動欄位（分類/起訖日期/與會單位或成員/參加對象說明/男女合計人數/備註）、8 分類附件（含照片圖說與精選標記）、大紀事 Excel + 內政部結案 Word 雙報告匯出都已實作；`cloud/main.js` 的驗證已同步擴充並由使用者部署；Back4App schema 的 16 個新欄位已用 `scripts/sync-schema.mjs --apply` 建立完成。**尚未用真實照片跑過一次完整的上傳→匯出流程**（圖片內嵌路徑需要瀏覽器環境，只用假資料驗證過檔案組裝）。 |
 | 附帶項目 — Cloud Code 伺服器端驗證 | ✅ **已部署並驗證生效** | `cloud/main.js`（含 2026-08-20 補上的 `GenerationJob` `activity` 必填檢查與 `resultFile`/`errorMessage` 型別檢查）已由使用者貼回 Back4App Cloud Code Dashboard 並部署——Back4App 伺服器日誌確認 `main.js` 已載入。已用 REST API（Master Key）實測 4 筆畸形資料（空 `Activity.name`、錯誤日期格式、空白 `Plan.name`、缺 `GenerationJob.activity`）全部正確被 `beforeSave` 擋下。與 GCP 無關（Back4App 自己的功能）。 |
 | Phase 1 — Cloud Run 中介層 | ✅ **已部署（含今天新增的 `/delete-objects`）** | GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`（Tcross，billing 已啟用），服務 `tcross-middleware` 跑在 `asia-east1`。2026-08-20 上午用 `gcloud run deploy` 部署 `/download-url`（revision `tcross-middleware-00004-zdh`）。2026-08-20 下午（架構健檢後）新增 `POST /delete-objects`（`GenerationJob` 刪除時清 GCS 檔案用）並把三個端點的登入驗證改成共用 `Depends()`，已再次 `gcloud run deploy`（revision `tcross-middleware-00005-nmb`），`GET /status` 與新路由都已在線上確認。環境變數/secrets/服務帳戶皆沿用原設定未變動。 |
 | Phase 2 — `GenerationJob` 資料模型 | ✅ 完成 | Parse class 已建立，前端型別/model 在 `src/types.ts`/`src/models/GenerationJob.ts`。 |
