@@ -3,6 +3,7 @@ import {
   AlignmentType,
   Document,
   HeadingLevel,
+  ImageRun,
   Packer,
   Paragraph,
   Table,
@@ -10,8 +11,8 @@ import {
   TableRow,
   WidthType,
 } from 'docx'
-import { FOLDERS } from '../types'
-import type { ActivityRecord } from '../types'
+import { ATTACHMENT_TYPES } from '../types'
+import type { ActivityRecord, FileMeta } from '../types'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -47,7 +48,7 @@ export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx'
 
 function activityInfoLines(a: ActivityRecord, planNames: string): string[] {
   return [
-    `活動名稱：${a.name}　日期：${a.date}`,
+    `活動名稱：${a.name}　日期：${a.date}${a.dateEnd && a.dateEnd !== a.date ? `～${a.dateEnd}` : ''}`,
     `地點：${a.place}　負責人：${a.owner}`,
     `對應計畫：${planNames || '—'}`,
   ]
@@ -80,7 +81,7 @@ export async function buildSignInSheetXlsx(a: ActivityRecord, planNames: string)
     cell.border = THIN_BORDER
   })
 
-  const rowCount = Math.max(10, a.headcount || 10)
+  const rowCount = Math.max(10, a.headcount.total || 10)
   for (let i = 0; i < rowCount; i++) {
     const row = sheet.getRow(headerRowIdx + 1 + i)
     for (let c = 1; c <= 5; c++) {
@@ -114,11 +115,11 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
 
   const startRow = 2 + infoLines.length + 1
   const fields: [string, string, number][] = [
-    ['參與人數', String(a.headcount || ''), 1],
+    ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 1],
     ['活動流程', '', 5],
     ['執行情形', a.summary, 5],
     ['檢討與建議', '', 5],
-    ['附件', FOLDERS.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0} 件`).join('　'), 1],
+    ['附件', ATTACHMENT_TYPES.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0} 件`).join('　'), 1],
   ]
   fields.forEach(([label, value, heightLines], i) => {
     const rowIdx = startRow + i
@@ -159,23 +160,236 @@ export async function buildReceiptDocx(a: ActivityRecord, planNames: string): Pr
   return Packer.toBlob(doc)
 }
 
-export async function buildResultsReportDocx(
+// ---------- 大紀事 Excel／內政部結案 Word（需求訪談欄位對照表） ----------
+
+const ROC_EPOCH = 1911
+
+function toRocParts(dateStr: string): { y: number; m: number; d: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (!match) return null
+  return { y: Number(match[1]) - ROC_EPOCH, m: Number(match[2]), d: Number(match[3]) }
+}
+
+function formatRocCompact(dateStr: string): string {
+  const p = toRocParts(dateStr)
+  if (!p) return ''
+  return `${p.y}${String(p.m).padStart(2, '0')}${String(p.d).padStart(2, '0')}`
+}
+
+/** 大紀事日期欄格式：單日 1140103，跨日 1140124-0125 */
+export function formatLedgerDate(date: string, dateEnd: string): string {
+  const start = toRocParts(date)
+  if (!start) return ''
+  if (!dateEnd || dateEnd === date) return formatRocCompact(date)
+  const end = toRocParts(dateEnd)
+  if (!end) return formatRocCompact(date)
+  if (end.y === start.y && end.m === start.m) {
+    return `${formatRocCompact(date)}-${String(end.d).padStart(2, '0')}`
+  }
+  return `${formatRocCompact(date)}-${formatRocCompact(dateEnd)}`
+}
+
+/** 內政部報告日期格式：114年1月3日，跨日 114年1月24日至25日 */
+export function formatRocChinese(date: string, dateEnd: string): string {
+  const start = toRocParts(date)
+  if (!start) return ''
+  const startText = `${start.y}年${start.m}月${start.d}日`
+  if (!dateEnd || dateEnd === date) return startText
+  const end = toRocParts(dateEnd)
+  if (!end) return startText
+  if (end.y === start.y && end.m === start.m) return `${startText}至${end.d}日`
+  if (end.y === start.y) return `${startText}至${end.m}月${end.d}日`
+  return `${startText}至${end.y}年${end.m}月${end.d}日`
+}
+
+function pickPhotosForExport(files: FileMeta[], max: number): FileMeta[] {
+  const featured = files.filter((f) => f.featured)
+  return (featured.length ? featured : files).slice(0, max)
+}
+
+function fileKindFromName(
+  name: string,
+): { docxType: 'jpg' | 'png' | 'gif' | 'bmp'; xlsxExt: 'jpeg' | 'png' | 'gif' } | null {
+  const ext = name.toLowerCase().split('.').pop() ?? ''
+  if (ext === 'jpg' || ext === 'jpeg') return { docxType: 'jpg', xlsxExt: 'jpeg' }
+  if (ext === 'png') return { docxType: 'png', xlsxExt: 'png' }
+  if (ext === 'gif') return { docxType: 'gif', xlsxExt: 'gif' }
+  return null
+}
+
+function readImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob)
+    const img = new window.Image()
+    img.onload = () => {
+      resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 })
+      URL.revokeObjectURL(url)
+    }
+    img.onerror = () => {
+      resolve({ width: 1, height: 1 })
+      URL.revokeObjectURL(url)
+    }
+    img.src = url
+  })
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('讀取圖片失敗'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+interface ImageAsset {
+  dataUrl: string
+  data: ArrayBuffer
+  docxType: 'jpg' | 'png' | 'gif' | 'bmp'
+  xlsxExt: 'jpeg' | 'png' | 'gif'
+  width: number
+  height: number
+}
+
+async function loadImageAsset(file: FileMeta): Promise<ImageAsset | null> {
+  const kind = fileKindFromName(file.name)
+  if (!kind || !file.url) return null
+  try {
+    const res = await fetch(file.url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    const [dataUrl, data, dims] = await Promise.all([
+      blobToDataUrl(blob),
+      blob.arrayBuffer(),
+      readImageDimensions(blob),
+    ])
+    return { dataUrl, data, docxType: kind.docxType, xlsxExt: kind.xlsxExt, width: dims.width, height: dims.height }
+  } catch {
+    return null
+  }
+}
+
+function scaleToBox(w: number, h: number, maxW: number, maxH: number): { width: number; height: number } {
+  const ratio = Math.min(maxW / w, maxH / h, 1)
+  return { width: Math.max(1, Math.round(w * ratio)), height: Math.max(1, Math.round(h * ratio)) }
+}
+
+/** 大紀事 Excel：分類／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
+export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blob> {
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet('大紀事')
+  const headers = ['分類', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', '精選照片']
+  sheet.columns = [
+    { width: 10 },
+    { width: 14 },
+    { width: 16 },
+    { width: 26 },
+    { width: 20 },
+    { width: 20 },
+    { width: 12 },
+    { width: 14 },
+  ]
+  const PHOTO_COL = headers.length
+
+  const headerRow = sheet.getRow(1)
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1)
+    cell.value = h
+    cell.font = { bold: true }
+    cell.border = THIN_BORDER
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+  })
+
+  for (let i = 0; i < activities.length; i++) {
+    const a = activities[i]
+    const rowIdx = i + 2
+    const row = sheet.getRow(rowIdx)
+    const values = [
+      a.category,
+      formatLedgerDate(a.date, a.dateEnd),
+      a.place,
+      a.name,
+      a.attendees,
+      a.remark,
+      a.headcount.total ? `${a.headcount.total}人` : '',
+    ]
+    values.forEach((v, ci) => {
+      const cell = row.getCell(ci + 1)
+      cell.value = v
+      cell.border = THIN_BORDER
+      cell.alignment = { vertical: 'top', wrapText: true }
+    })
+    row.getCell(PHOTO_COL).border = THIN_BORDER
+    row.height = 60
+
+    const [photo] = pickPhotosForExport(a.files.photo ?? [], 1)
+    const asset = photo ? await loadImageAsset(photo) : null
+    if (asset) {
+      const { width, height } = scaleToBox(asset.width, asset.height, 70, 55)
+      const imageId = workbook.addImage({ base64: asset.dataUrl, extension: asset.xlsxExt })
+      sheet.addImage(imageId, {
+        tl: { col: PHOTO_COL - 1 + 0.05, row: rowIdx - 1 + 0.05 },
+        ext: { width, height },
+      })
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  return new Blob([buffer], { type: XLSX_MIME })
+}
+
+/** 內政部經常門結案報告 Word：計畫名稱／活動內容／活動日期／活動地點／參加對象及人數／活動效益 */
+export async function buildNeimuReportDocx(
   activities: ActivityRecord[],
   planScopeLabel: string,
-  fromLabel: string,
-  toLabel: string,
 ): Promise<Blob> {
-  const totalHeadcount = activities.reduce((s, a) => s + (Number(a.headcount) || 0), 0)
   const children: (Paragraph | Table)[] = [
-    new Paragraph({ text: '成果報告草稿', heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({ text: `計畫範圍：${planScopeLabel}　期間：${fromLabel} 至 ${toLabel}` }),
-    new Paragraph({ text: `活動場次：${activities.length} 場　累計參與：${totalHeadcount} 人次`, spacing: { after: 300 } }),
+    new Paragraph({ text: '內政部經常門結案報告', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
+    new Paragraph({ text: `一、計畫名稱：${planScopeLabel}`, spacing: { after: 100 } }),
+    new Paragraph({ text: `共 ${activities.length} 場活動`, spacing: { after: 300 } }),
   ]
 
-  activities.forEach((a, i) => {
+  for (let i = 0; i < activities.length; i++) {
+    const a = activities[i]
     children.push(new Paragraph({ text: `${i + 1}. ${a.name}`, heading: HeadingLevel.HEADING_2 }))
-    children.push(new Paragraph({ text: `${a.date}｜${a.place}｜負責人 ${a.owner}｜參與 ${a.headcount} 人` }))
-    children.push(new Paragraph({ text: a.summary || '（成果摘要待補）' }))
+
+    children.push(new Paragraph({ text: '二、活動內容', spacing: { before: 100 } }))
+    children.push(new Paragraph({ text: a.summary || '（活動內容待補）' }))
+
+    const photos = pickPhotosForExport(a.files.photo ?? [], 6)
+    for (const photo of photos) {
+      const asset = await loadImageAsset(photo)
+      if (!asset) continue
+      const { width, height } = scaleToBox(asset.width, asset.height, 320, 320)
+      children.push(
+        new Paragraph({
+          children: [new ImageRun({ type: asset.docxType, data: asset.data, transformation: { width, height } })],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 120 },
+        }),
+      )
+      children.push(new Paragraph({ text: photo.caption || '（未填圖說）', alignment: AlignmentType.CENTER }))
+    }
+
+    const signInFiles = a.files.signIn ?? []
+    children.push(
+      new Paragraph({
+        text: `簽到表：${signInFiles.length ? `${signInFiles.map((f) => f.name).join('、')}（詳附件）` : '未附'}`,
+        spacing: { before: 120 },
+      }),
+    )
+
+    children.push(
+      new Paragraph({ text: `三、活動日期：${formatRocChinese(a.date, a.dateEnd)}`, spacing: { before: 120 } }),
+    )
+    children.push(new Paragraph({ text: `四、活動地點：${a.place}` }))
+    children.push(
+      new Paragraph({
+        text: `五、參加對象及人數：${a.participantDesc || '—'}；男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`,
+      }),
+    )
+
+    children.push(new Paragraph({ text: '六、活動效益', spacing: { before: 100 } }))
     if (a.kpis.length) {
       const headerRow = new TableRow({
         children: ['指標', '數值'].map(
@@ -192,14 +406,12 @@ export async function buildResultsReportDocx(
           }),
       )
       children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...rows] }))
+    } else {
+      children.push(new Paragraph({ text: '（尚未填寫效益指標）' }))
     }
-    children.push(
-      new Paragraph({
-        text: `附件：${FOLDERS.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0}`).join('　')}`,
-        spacing: { after: 300 },
-      }),
-    )
-  })
+    if (a.remark) children.push(new Paragraph({ text: `備註：${a.remark}` }))
+    children.push(new Paragraph({ text: '', spacing: { after: 400 } }))
+  }
 
   const doc = new Document({ sections: [{ children }] })
   return Packer.toBlob(doc)

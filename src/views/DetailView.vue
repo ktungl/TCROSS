@@ -3,8 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { gaps, kb } from '../utils/activity'
-import { FOLDERS } from '../types'
-import type { FolderKey, Kpi } from '../types'
+import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
+import type { AttachmentKey, Kpi } from '../types'
 import type { GeneratedFormKind } from '../utils/download'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
@@ -37,6 +37,10 @@ watch(
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
 const showAiGenModal = ref(false)
+<<<<<<< HEAD
+=======
+const dragOverKey = ref<AttachmentKey | null>(null)
+>>>>>>> main
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
@@ -68,7 +72,7 @@ async function saveResults() {
   }
 }
 
-async function upload(folder: FolderKey, files: File[]) {
+async function upload(folder: AttachmentKey, files: File[]) {
   if (!activity.value || !files.length) return
   try {
     await db.uploadFiles(activity.value.id, folder, files)
@@ -77,7 +81,22 @@ async function upload(folder: FolderKey, files: File[]) {
     pushToast(errorMessage(e), 'error')
   }
 }
+<<<<<<< HEAD
 async function onRemoveFile(folder: FolderKey, i: number) {
+=======
+async function onUpload(folder: AttachmentKey, e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  await upload(folder, files)
+}
+async function onDrop(folder: AttachmentKey, e: DragEvent) {
+  dragOverKey.value = null
+  const files = Array.from(e.dataTransfer?.files ?? [])
+  await upload(folder, files)
+}
+async function onRemoveFile(folder: AttachmentKey, i: number) {
+>>>>>>> main
   if (!activity.value) return
   const name = activity.value.files[folder][i]?.name ?? '此檔案'
   if (!(await confirm(`確定要刪除「${name}」嗎？`))) return
@@ -88,17 +107,52 @@ async function onRemoveFile(folder: FolderKey, i: number) {
     pushToast(errorMessage(e), 'error')
   }
 }
+async function onCaptionChange(folder: AttachmentKey, i: number, e: Event) {
+  if (!activity.value) return
+  const caption = (e.target as HTMLInputElement).value
+  try {
+    await db.updateFileMeta(activity.value.id, folder, i, { caption })
+  } catch (e2) {
+    pushToast(errorMessage(e2), 'error')
+  }
+}
+async function onFeaturedToggle(folder: AttachmentKey, i: number, e: Event) {
+  if (!activity.value) return
+  const featured = (e.target as HTMLInputElement).checked
+  try {
+    await db.updateFileMeta(activity.value.id, folder, i, { featured })
+  } catch (e2) {
+    pushToast(errorMessage(e2), 'error')
+  }
+}
+
+async function deleteActivity() {
+  if (!activity.value) return
+  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，所有附件與資料都會一併刪除。`))) return
+  try {
+    await db.deleteActivity(activity.value.id)
+    pushToast('已刪除活動')
+    router.push({ name: 'list' })
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
+}
 
 async function duplicateActivity() {
   if (!activity.value) return
   try {
     const created = await db.createActivity({
       name: `${activity.value.name}（複製）`,
+      category: activity.value.category,
       date: '',
+      dateEnd: '',
       place: activity.value.place,
       owner: activity.value.owner,
-      headcount: activity.value.headcount,
+      attendees: activity.value.attendees,
+      participantDesc: activity.value.participantDesc,
+      headcount: { ...activity.value.headcount },
       plans: [...activity.value.plans],
+      remark: activity.value.remark,
     })
     pushToast('已複製活動，請填寫新日期')
     router.push({ name: 'detail', params: { id: created.id } })
@@ -112,7 +166,16 @@ async function duplicateActivity() {
   <div v-if="activity">
     <button class="back" @click="router.push({ name: 'list' })">← 回活動列表</button>
     <h1>{{ activity.name }}</h1>
-    <p class="sub mono">{{ activity.date || '未定日期' }}　{{ activity.place }}　負責人 {{ activity.owner || '—' }}　參與 {{ activity.headcount || 0 }} 人</p>
+    <p class="sub mono">
+      {{ activity.date || '未定日期' }}<template v-if="activity.dateEnd && activity.dateEnd !== activity.date">～{{ activity.dateEnd }}</template>
+      　{{ activity.place }}　{{ activity.category || '未分類' }}　負責人 {{ activity.owner || '—' }}
+      　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
+    </p>
+    <p v-if="activity.attendees || activity.participantDesc" class="sub" style="margin-top:-8px">
+      <template v-if="activity.attendees">與會單位或成員：{{ activity.attendees }}　</template>
+      <template v-if="activity.participantDesc">參加對象：{{ activity.participantDesc }}</template>
+    </p>
+    <p v-if="activity.remark" class="sub" style="margin-top:-8px">備註：{{ activity.remark }}</p>
 
     <div class="row" style="margin-bottom:6px">
       <button class="btn ghost sm" @click="showEdit = true">編輯基本資料</button>
@@ -121,6 +184,7 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
       <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
       <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
+      <button class="btn ghost sm" style="color:var(--stamp);margin-left:auto" @click="deleteActivity">刪除此活動</button>
     </div>
 
     <div v-if="gaps(activity).length" class="flagbox">
@@ -145,8 +209,13 @@ async function duplicateActivity() {
 
     <h2>活動資料</h2>
     <div>
+<<<<<<< HEAD
       <FolderDropzone
         v-for="[key, label] in FOLDERS"
+=======
+      <div
+        v-for="[key, label] in ATTACHMENT_TYPES"
+>>>>>>> main
         :key="key"
         :label="label"
         :count-label="`${activity.files[key].length} 件`"
@@ -154,8 +223,23 @@ async function duplicateActivity() {
         @pick="(files) => upload(key, files)"
         @drop="(files) => upload(key, files)"
       >
+<<<<<<< HEAD
+=======
+        <header>
+          <h3>
+            {{ label }}
+            <span class="count">
+              {{ activity.files[key].length }} 件
+              <template v-if="key === 'photo'">（需 {{ PHOTO_MIN }}–{{ PHOTO_MAX }} 張）</template>
+            </span>
+          </h3>
+          <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">上傳
+            <input type="file" multiple style="display:none" @change="onUpload(key, $event)">
+          </label>
+        </header>
+>>>>>>> main
         <ul v-if="activity.files[key].length" class="files">
-          <li v-for="(f, i) in activity.files[key]" :key="i">
+          <li v-for="(f, i) in activity.files[key]" :key="i" :style="key === 'photo' ? 'flex-wrap:wrap' : ''">
             <span v-if="key === 'photo' && f.url" style="display:flex;align-items:center;gap:8px;overflow:hidden">
               <img :src="f.url" class="thumb" :alt="f.name">
               <span class="fname">{{ f.name }}</span>
@@ -165,6 +249,21 @@ async function duplicateActivity() {
               <span class="fsize mono">{{ kb(f.size) }}</span>
               <button class="x" @click="onRemoveFile(key, i)">×</button>
             </span>
+            <div v-if="key === 'photo'" style="display:flex;align-items:center;gap:10px;width:100%;margin-top:6px">
+              <input
+                :value="f.caption"
+                placeholder="圖說（必填）"
+                style="flex:1"
+                @change="onCaptionChange(key, i, $event)"
+              >
+              <label class="chk" style="margin:0;white-space:nowrap">
+                <input
+                  type="checkbox"
+                  :checked="f.featured"
+                  @change="onFeaturedToggle(key, i, $event)"
+                >精選照片
+              </label>
+            </div>
           </li>
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按上傳。</p>

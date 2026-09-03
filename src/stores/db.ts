@@ -10,22 +10,29 @@ import {
   generationJobToRecord,
 } from '../models/GenerationJob'
 import type {
+  ActivityCategory,
   ActivityRecord,
+  AttachmentKey,
   FileMeta,
-  FolderKey,
   GenerationJobKind,
   GenerationJobRecord,
+  HeadcountStat,
   Kpi,
   PlanRecord,
 } from '../types'
 
 export interface ActivityFormInput {
   name: string
+  category: ActivityCategory | ''
   date: string
+  dateEnd: string
   place: string
   owner: string
-  headcount: number
+  attendees: string
+  participantDesc: string
+  headcount: HeadcountStat
   plans: string[]
+  remark: string
 }
 
 export const useDbStore = defineStore('db', () => {
@@ -79,12 +86,21 @@ export const useDbStore = defineStore('db', () => {
     return record
   }
 
+<<<<<<< HEAD
   /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。 */
   async function patchActivity(
     id: string,
     apply: (obj: ActivityObject, existing: ActivityRecord) => void,
     mutateLocal: (existing: ActivityRecord) => void,
   ): Promise<void> {
+=======
+  async function deleteActivity(id: string): Promise<void> {
+    await ActivityObject.createWithoutData(id).destroy()
+    activities.value = activities.value.filter((a) => a.id !== id)
+  }
+
+  async function updateActivity(id: string, input: ActivityFormInput): Promise<void> {
+>>>>>>> main
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) return
     const obj = ActivityObject.createWithoutData(id) as ActivityObject
@@ -103,6 +119,7 @@ export const useDbStore = defineStore('db', () => {
   }
 
   async function setActivityPlans(id: string, planIds: string[]): Promise<void> {
+<<<<<<< HEAD
     await patchActivity(
       id,
       (obj, existing) =>
@@ -120,6 +137,28 @@ export const useDbStore = defineStore('db', () => {
         existing.plans = planIds
       },
     )
+=======
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) return
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    applyActivityRecord(obj, {
+      name: existing.name,
+      category: existing.category,
+      date: existing.date,
+      dateEnd: existing.dateEnd,
+      place: existing.place,
+      owner: existing.owner,
+      attendees: existing.attendees,
+      participantDesc: existing.participantDesc,
+      headcount: existing.headcount,
+      summary: existing.summary,
+      remark: existing.remark,
+      kpis: existing.kpis,
+      plans: planIds,
+    })
+    await obj.save()
+    existing.plans = planIds
+>>>>>>> main
   }
 
   async function saveActivityResults(id: string, summary: string, kpis: Kpi[]): Promise<void> {
@@ -136,7 +175,7 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
-  async function uploadFiles(id: string, folder: FolderKey, files: File[]): Promise<void> {
+  async function uploadFiles(id: string, folder: AttachmentKey, files: File[]): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !files.length) return
     const uploaded: FileMeta[] = []
@@ -155,7 +194,7 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
-  async function removeFile(id: string, folder: FolderKey, index: number): Promise<void> {
+  async function removeFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) return
     const nextList = existing.files[folder].filter((_, i) => i !== index)
@@ -166,6 +205,21 @@ export const useDbStore = defineStore('db', () => {
         existing.files[folder] = nextList
       },
     )
+  }
+
+  async function updateFileMeta(
+    id: string,
+    folder: AttachmentKey,
+    index: number,
+    patch: Partial<Pick<FileMeta, 'caption' | 'featured'>>,
+  ): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing || !existing.files[folder][index]) return
+    const nextList = existing.files[folder].map((f, i) => (i === index ? { ...f, ...patch } : f))
+    const obj = ActivityObject.createWithoutData(id) as ActivityObject
+    obj.set(`${folder}Files`, nextList)
+    await obj.save()
+    existing.files[folder] = nextList
   }
 
   async function fetchGenerationJobs(activityId: string): Promise<void> {
@@ -229,10 +283,12 @@ export const useDbStore = defineStore('db', () => {
     deletePlan,
     createActivity,
     updateActivity,
+    deleteActivity,
     setActivityPlans,
     saveActivityResults,
     uploadFiles,
     removeFile,
+    updateFileMeta,
     fetchGenerationJobs,
     createGenerationJob,
     refreshGenerationJob,

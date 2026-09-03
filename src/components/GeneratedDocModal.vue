@@ -9,7 +9,7 @@ import {
 } from '../utils/download'
 import type { GeneratedFormKind } from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
-import { FOLDERS } from '../types'
+import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord } from '../types'
 
 const props = defineProps<{
@@ -26,11 +26,11 @@ const planNames = computed(() => props.activity.plans.map(props.planName).join('
 const summary = computed(() => {
   switch (props.kind) {
     case '簽到表':
-      return `將產生 ${Math.max(10, props.activity.headcount || 10)} 列簽到欄位的 Excel 檔`
+      return `將產生 ${Math.max(10, props.activity.headcount.total || 10)} 列簽到欄位的 Excel 檔`
     case '領據':
       return '將產生一份可列印簽章的 Word 領據'
     case '活動紀錄表':
-      return `將產生活動紀錄表 Excel 檔（含執行情形、附件統計：${FOLDERS.map(([k, l]) => `${l} ${props.activity.files[k]?.length ?? 0}`).join('、')}）`
+      return `將產生活動紀錄表 Excel 檔（含執行情形、附件統計：${ATTACHMENT_TYPES.map(([k, l]) => `${l} ${props.activity.files[k]?.length ?? 0}`).join('、')}）`
   }
 })
 
