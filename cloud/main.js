@@ -4,9 +4,46 @@
 // 使用畫面的人」。CLP 開放給所有登入使用者讀寫後，任何拿到有效帳號的人都能繞過前端
 // 直接打 REST API 寫入任意內容，這裡補的是資料庫最後一道防線。
 
-const FOLDER_FIELDS = ['photoFiles', 'audioFiles', 'videoFiles', 'docFiles'];
+// audioFiles/videoFiles/docFiles 是舊版 4 分類附件，前端已改用下面 8 分類，但
+// 舊資料可能還留著，繼續驗證＋清孤兒檔，不主動刪除欄位。
+const FOLDER_FIELDS = [
+  'photoFiles',
+  'audioFiles',
+  'videoFiles',
+  'docFiles',
+  'signInFiles',
+  'recordFiles',
+  'agendaFiles',
+  'documentFiles',
+  'receiptFiles',
+  'socialFiles',
+  'mediaFiles',
+];
+const ACTIVITY_CATEGORIES = ['居場所', '會務', '合作教育', '社區關懷', '其他'];
 const GENERATION_JOB_KINDS = ['成果報告', '其他'];
 const GENERATION_JOB_STATUSES = ['pending', 'processing', 'done', 'error'];
+
+function isNonNegativeNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0;
+}
+
+function checkOptionalString(object, field, maxLength) {
+  const value = object.get(field);
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string') {
+    fail(`${field} 必須是字串`);
+  }
+  if (value.length > maxLength) {
+    fail(`${field} 過長（上限 ${maxLength} 字）`);
+  }
+}
+
+function checkOptionalDate(object, field) {
+  const value = object.get(field);
+  if (typeof value === 'string' && value.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    fail(`${field} 格式必須是 YYYY-MM-DD`);
+  }
+}
 
 function fail(message) {
   throw new Parse.Error(Parse.Error.VALIDATION_ERROR, message);
@@ -36,6 +73,8 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   }
   object.set('name', name.trim());
 
+  // headcount 是舊版單一數字欄位，前端已改用 maleCount/femaleCount/totalCount，
+  // 但舊資料可能還留著，繼續驗證，不主動刪除欄位。
   const headcount = object.get('headcount');
   if (headcount !== undefined && headcount !== null) {
     if (typeof headcount !== 'number' || !Number.isFinite(headcount) || headcount < 0) {
@@ -43,10 +82,27 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     }
   }
 
+  for (const field of ['maleCount', 'femaleCount', 'totalCount']) {
+    const value = object.get(field);
+    if (value !== undefined && value !== null && !isNonNegativeNumber(value)) {
+      fail(`${field} 必須是不小於 0 的數字`);
+    }
+  }
+
   const date = object.get('date');
   if (typeof date === 'string' && date.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
     fail('日期格式必須是 YYYY-MM-DD');
   }
+  checkOptionalDate(object, 'dateEnd');
+
+  const category = object.get('category');
+  if (typeof category === 'string' && category.trim() && !ACTIVITY_CATEGORIES.includes(category)) {
+    fail(`category 必須是 ${ACTIVITY_CATEGORIES.join('/')} 其中之一`);
+  }
+
+  checkOptionalString(object, 'attendees', 200);
+  checkOptionalString(object, 'participantDesc', 200);
+  checkOptionalString(object, 'remark', 500);
 
   const plans = object.get('plans');
   if (plans !== undefined && !Array.isArray(plans)) {
@@ -86,6 +142,12 @@ Parse.Cloud.beforeSave('Activity', (request) => {
         typeof file.url !== 'string'
       ) {
         fail(`${field} 陣列項目格式不正確（需要 { name, size, url }）`);
+      }
+      if (file.caption !== undefined && typeof file.caption !== 'string') {
+        fail(`${field} 的 caption 必須是字串`);
+      }
+      if (file.featured !== undefined && typeof file.featured !== 'boolean') {
+        fail(`${field} 的 featured 必須是布林值`);
       }
     }
   }

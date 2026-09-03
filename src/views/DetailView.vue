@@ -37,10 +37,6 @@ watch(
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
 const showAiGenModal = ref(false)
-<<<<<<< HEAD
-=======
-const dragOverKey = ref<AttachmentKey | null>(null)
->>>>>>> main
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
@@ -81,22 +77,7 @@ async function upload(folder: AttachmentKey, files: File[]) {
     pushToast(errorMessage(e), 'error')
   }
 }
-<<<<<<< HEAD
-async function onRemoveFile(folder: FolderKey, i: number) {
-=======
-async function onUpload(folder: AttachmentKey, e: Event) {
-  const input = e.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  input.value = ''
-  await upload(folder, files)
-}
-async function onDrop(folder: AttachmentKey, e: DragEvent) {
-  dragOverKey.value = null
-  const files = Array.from(e.dataTransfer?.files ?? [])
-  await upload(folder, files)
-}
 async function onRemoveFile(folder: AttachmentKey, i: number) {
->>>>>>> main
   if (!activity.value) return
   const name = activity.value.files[folder][i]?.name ?? '此檔案'
   if (!(await confirm(`確定要刪除「${name}」嗎？`))) return
@@ -209,35 +190,19 @@ async function duplicateActivity() {
 
     <h2>活動資料</h2>
     <div>
-<<<<<<< HEAD
       <FolderDropzone
-        v-for="[key, label] in FOLDERS"
-=======
-      <div
         v-for="[key, label] in ATTACHMENT_TYPES"
->>>>>>> main
         :key="key"
         :label="label"
-        :count-label="`${activity.files[key].length} 件`"
+        :count-label="
+          key === 'photo'
+            ? `${activity.files[key].length} 件（需 ${PHOTO_MIN}–${PHOTO_MAX} 張）`
+            : `${activity.files[key].length} 件`
+        "
         pick-label="上傳"
         @pick="(files) => upload(key, files)"
         @drop="(files) => upload(key, files)"
       >
-<<<<<<< HEAD
-=======
-        <header>
-          <h3>
-            {{ label }}
-            <span class="count">
-              {{ activity.files[key].length }} 件
-              <template v-if="key === 'photo'">（需 {{ PHOTO_MIN }}–{{ PHOTO_MAX }} 張）</template>
-            </span>
-          </h3>
-          <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">上傳
-            <input type="file" multiple style="display:none" @change="onUpload(key, $event)">
-          </label>
-        </header>
->>>>>>> main
         <ul v-if="activity.files[key].length" class="files">
           <li v-for="(f, i) in activity.files[key]" :key="i" :style="key === 'photo' ? 'flex-wrap:wrap' : ''">
             <span v-if="key === 'photo' && f.url" style="display:flex;align-items:center;gap:8px;overflow:hidden">

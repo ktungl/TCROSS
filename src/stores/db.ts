@@ -86,21 +86,17 @@ export const useDbStore = defineStore('db', () => {
     return record
   }
 
-<<<<<<< HEAD
+  async function deleteActivity(id: string): Promise<void> {
+    await ActivityObject.createWithoutData(id).destroy()
+    activities.value = activities.value.filter((a) => a.id !== id)
+  }
+
   /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。 */
   async function patchActivity(
     id: string,
     apply: (obj: ActivityObject, existing: ActivityRecord) => void,
     mutateLocal: (existing: ActivityRecord) => void,
   ): Promise<void> {
-=======
-  async function deleteActivity(id: string): Promise<void> {
-    await ActivityObject.createWithoutData(id).destroy()
-    activities.value = activities.value.filter((a) => a.id !== id)
-  }
-
-  async function updateActivity(id: string, input: ActivityFormInput): Promise<void> {
->>>>>>> main
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) return
     const obj = ActivityObject.createWithoutData(id) as ActivityObject
@@ -119,17 +115,21 @@ export const useDbStore = defineStore('db', () => {
   }
 
   async function setActivityPlans(id: string, planIds: string[]): Promise<void> {
-<<<<<<< HEAD
     await patchActivity(
       id,
       (obj, existing) =>
         applyActivityRecord(obj, {
           name: existing.name,
+          category: existing.category,
           date: existing.date,
+          dateEnd: existing.dateEnd,
           place: existing.place,
           owner: existing.owner,
+          attendees: existing.attendees,
+          participantDesc: existing.participantDesc,
           headcount: existing.headcount,
           summary: existing.summary,
+          remark: existing.remark,
           kpis: existing.kpis,
           plans: planIds,
         }),
@@ -137,28 +137,6 @@ export const useDbStore = defineStore('db', () => {
         existing.plans = planIds
       },
     )
-=======
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing) return
-    const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    applyActivityRecord(obj, {
-      name: existing.name,
-      category: existing.category,
-      date: existing.date,
-      dateEnd: existing.dateEnd,
-      place: existing.place,
-      owner: existing.owner,
-      attendees: existing.attendees,
-      participantDesc: existing.participantDesc,
-      headcount: existing.headcount,
-      summary: existing.summary,
-      remark: existing.remark,
-      kpis: existing.kpis,
-      plans: planIds,
-    })
-    await obj.save()
-    existing.plans = planIds
->>>>>>> main
   }
 
   async function saveActivityResults(id: string, summary: string, kpis: Kpi[]): Promise<void> {
@@ -216,10 +194,13 @@ export const useDbStore = defineStore('db', () => {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !existing.files[folder][index]) return
     const nextList = existing.files[folder].map((f, i) => (i === index ? { ...f, ...patch } : f))
-    const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    obj.set(`${folder}Files`, nextList)
-    await obj.save()
-    existing.files[folder] = nextList
+    await patchActivity(
+      id,
+      (obj) => obj.set(`${folder}Files`, nextList),
+      (existing) => {
+        existing.files[folder] = nextList
+      },
+    )
   }
 
   async function fetchGenerationJobs(activityId: string): Promise<void> {
