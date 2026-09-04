@@ -6,7 +6,7 @@ import { requestDownloadUrl, requestSignedUploadUrl, uploadToSignedUrl } from '.
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import FolderDropzone from './FolderDropzone.vue'
-import { FOLDERS } from '../types'
+import { FOLDERS, fileUploadRejectionReason } from '../types'
 import type { ActivityRecord, FolderKey, GenerationJobRecord, GenerationJobStatus } from '../types'
 
 const props = defineProps<{ activity: ActivityRecord }>()
@@ -62,7 +62,13 @@ onMounted(async () => {
 })
 
 function addFiles(folder: FolderKey, files: File[]) {
-  selected[folder] = [...selected[folder], ...files]
+  const accepted: File[] = []
+  for (const file of files) {
+    const reason = fileUploadRejectionReason(file)
+    if (reason) pushToast(reason, 'error')
+    else accepted.push(file)
+  }
+  selected[folder] = [...selected[folder], ...accepted]
 }
 function removeSelected(folder: FolderKey, i: number) {
   selected[folder] = selected[folder].filter((_, idx) => idx !== i)
