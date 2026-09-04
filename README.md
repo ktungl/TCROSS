@@ -104,34 +104,3 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 
 以上是目標架構；**目前尚未實作**，現有系統仍是純前端直接讀寫 Parse，沒有 GCS/Cloud Run/Gemini。落差盤點、資料模型異動與分階段實作計畫見 [ROADMAP.md](ROADMAP.md)。
 
-## 開發過程
-
-0729（已完成）
-1. ~~刪除確認 + 儲存回饋~~：`useConfirm`/`useToast` 已接上刪除計畫、刪除檔案、儲存活動/成果等操作
-2. ~~檔案上傳體驗優化~~：`DetailView.vue` 已支援拖曳上傳到資料夾區塊，照片資料夾有縮圖預覽
-3. ~~活動關鍵字搜尋~~：`ListView.vue` 已加上活動名稱/地點/負責人的關鍵字搜尋，與計畫/月份/缺漏篩選並存
-4. ~~計畫詳情頁~~：點計畫卡片會導到 `PlanDetailView.vue`，列出該計畫底下的完整活動清單
-5. ~~總覽儀表板~~：`DashboardView.vue` 已有活動總數、缺漏率、近 6 個月活動量小圖表
-6. ~~活動複製功能~~：`DetailView.vue` 的「複製此活動」已可一鍵建立同名活動草稿
-
-0814
-- Parse 使用者驗證（登入頁 + 路由守衛）與 Class-Level Permissions（`Plan`/`Activity`/`GenerationJob` 都已限定需登入才能讀寫）
-- 簽到表/活動紀錄表/領據/成果報告草稿改成真正的 `.xlsx`/`.docx` 格式，不再是改副檔名的 HTML
-- 新增 `GenerationJob` 資料模型與 `server/`（Cloud Run signed URL 中介層程式碼），對應 [ROADMAP.md](ROADMAP.md) Phase 1/2；尚未部署、前端也還沒串接
-
-0819
-- 新增 `cloud/main.js`（Back4App Cloud Code）：`Plan`/`Activity`/`GenerationJob` 補上伺服器端 `beforeSave` 資料驗證，擋掉繞過前端直接打 API 寫入的畸形資料；程式碼寫好、用 mock Parse Cloud 環境跑過 22 組正常/異常案例，部署步驟見 `cloud/README.md`，尚未部署到 Back4App
-- `server/`（Cloud Run 中介層）**已部署**到 GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`（`tcross-middleware`，`asia-east1`），`GET /status` 驗證回傳正常，對應 [ROADMAP.md](ROADMAP.md) Phase 1
-- 前端串接 `GenerationJob` 上傳/建立/輪詢流程（`AiGenerationModal.vue`、`useGenerationJobPolling.ts`、`lib/middleware.ts`），對應 ROADMAP Phase 3a；Cloud Run 端的 Gemini 生成邏輯（Phase 3b）還沒開始，UI 上會誠實顯示「尚未接上自動生成後端」
-
-0820（Gemini/AI 串接暫緩，先補其他缺口）
-- `server/` 新增 `/download-url` 端點（`storage.py`/`utils.py`/`main.py`），讓已完成的 `GenerationJob` 可以簽發限時 GCS 下載網址；`AiGenerationModal.vue` 補上對應的下載按鈕（目前工作 + 過去工作清單皆可下載）。**已用 `gcloud run deploy` 部署到 `tcross-middleware`（revision `tcross-middleware-00004-zdh`）並在線上實測 `/status`、`/download-url` 通過**
-- `cloud/main.js` 的 `GenerationJob` 驗證補上 `activity` 必填、`resultFile`/`errorMessage` 型別檢查，**已由使用者部署到 Back4App**（伺服器日誌確認 `main.js` 已載入），還沒有對應的 mock 測試案例
-
-0820（架構健檢後的補洞，**程式碼已寫好、通過 `vue-tsc`/`vite build`，尚未部署**）
-- 刪檔不會清底層儲存的問題：`cloud/main.js` 新增 `afterSave('Activity', ...)`，存檔後比對四個檔案欄位的前後差異，把消失的項目用 Master Key 刪掉對應的 Parse.File；`server/` 新增 `/delete-objects` 端點（`storage.py` 的 `delete_object()`），`GenerationJob` 刪除時（`db.ts` 的 `deleteGenerationJob()`，`AiGenerationModal.vue` 新增刪除按鈕）會先清掉對應的 GCS 來源/產出檔案再刪 Parse 紀錄
-- `server/main.py` 的登入驗證改成 FastAPI `Depends(require_user)`，三個端點共用同一份檢查，之後加端點不會漏寫
-- `DetailView.vue`／`AiGenerationModal.vue` 幾乎重複的「四個資料夾拖曳上傳卡」抽成共用元件 `src/components/FolderDropzone.vue`
-- `db.ts` 的 `updateActivity`/`setActivityPlans`/`saveActivityResults`/`uploadFiles`/`removeFile` 重複的「建指標→set 欄位→save→同步本地」抽成共用的 `patchActivity()`
-
-**部署狀態**：`server/` 已用 `gcloud run deploy` 部署（revision `tcross-middleware-00005-nmb`），`GET /status` 與 `/delete-objects` 路由都已在線上實測確認存在。`cloud/main.js`（含 `afterSave('Activity', ...)` 清檔案邏輯）**已由使用者貼到 Back4App Cloud Code Dashboard 並部署**——System Logs 確認 2026-08-20T00:34 之後的重啟不再出現「main.js not found」警告，代表新檔案已載入且沒有語法錯誤（跟 0819 那次的驗證方式一致）。**尚未實際觸發過一次刪檔測試**：建議找一個測試活動上傳張照片、再刪除，確認 System Logs 沒跳出「刪除檔案失敗」，並且 Back4App Database 的檔案儲存（`Overview` 或 `Database` 分頁下的 file class）裡那個檔案真的消失了。
