@@ -20,6 +20,16 @@ const FOLDER_FIELDS = [
   'mediaFiles',
 ];
 const ACTIVITY_CATEGORIES = ['居場所', '會務', '合作教育', '社區關懷', '其他'];
+
+// 上傳檔案安全限制（ISO 27001 A.8.7 惡意軟體防護／A.8.28 安全程式設計）。
+// 前端 src/types.ts 的 fileUploadRejectionReason() 有同樣規則做即時提示，但那邊能被繞過
+// （直打 REST API），這裡才是真正擋得住的最後防線。
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const BLOCKED_EXTENSIONS = [
+  'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
+  'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
+  'pif', 'wsf', 'wsh', 'hta', 'lnk', 'reg',
+];
 const GENERATION_JOB_KINDS = ['成果報告', '其他'];
 const GENERATION_JOB_STATUSES = ['pending', 'processing', 'done', 'error'];
 
@@ -148,6 +158,13 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       }
       if (file.featured !== undefined && typeof file.featured !== 'boolean') {
         fail(`${field} 的 featured 必須是布林值`);
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        fail(`${field} 的「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
+      }
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (BLOCKED_EXTENSIONS.includes(ext)) {
+        fail(`${field} 的「${file.name}」檔案類型不允許上傳`);
       }
     }
   }

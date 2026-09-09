@@ -52,6 +52,29 @@ export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
 export const PHOTO_MIN = 3
 export const PHOTO_MAX = 15
 
+/** 上傳檔案安全限制（ISO 27001 A.8.7 惡意軟體防護／A.8.28 安全程式設計）。
+ * 這裡是擋執行檔類型＋大小上限的最後防線，實際的伺服器端強制在
+ * cloud/main.js 的 beforeSave('Activity')；這裡只是讓使用者在前端就能
+ * 得到即時錯誤訊息，不用等存檔失敗。 */
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
+export const BLOCKED_EXTENSIONS = [
+  'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
+  'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
+  'pif', 'wsf', 'wsh', 'hta', 'lnk', 'reg',
+]
+
+/** 回傳不允許上傳的原因；允許則回傳 null。 */
+export function fileUploadRejectionReason(file: { name: string; size: number }): string | null {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return `「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`
+  }
+  const ext = file.name.toLowerCase().split('.').pop() ?? ''
+  if (BLOCKED_EXTENSIONS.includes(ext)) {
+    return `「${file.name}」的檔案類型不允許上傳`
+  }
+  return null
+}
+
 export type ActivityFiles = Record<AttachmentKey, FileMeta[]>
 
 export const ACTIVITY_CATEGORIES = ['居場所', '會務', '合作教育', '社區關懷', '其他'] as const

@@ -9,6 +9,7 @@ import {
   applyGenerationJobRecord,
   generationJobToRecord,
 } from '../models/GenerationJob'
+import { fileUploadRejectionReason } from '../types'
 import type {
   ActivityCategory,
   ActivityRecord,
@@ -156,6 +157,10 @@ export const useDbStore = defineStore('db', () => {
   async function uploadFiles(id: string, folder: AttachmentKey, files: File[]): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !files.length) return
+    for (const file of files) {
+      const reason = fileUploadRejectionReason(file)
+      if (reason) throw new Error(reason)
+    }
     const uploaded: FileMeta[] = []
     for (const file of files) {
       const parseFile = new Parse.File(file.name, file)

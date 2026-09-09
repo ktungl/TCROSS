@@ -114,49 +114,11 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 
 ### 現況與實作規劃
 
-以上是目標架構；**目前尚未實作**，現有系統仍是純前端直接讀寫 Parse，沒有 GCS/Cloud Run/Gemini。落差盤點、資料模型異動與分階段實作計畫見 [ROADMAP.md](ROADMAP.md)。
+以上是目標架構的完整規劃；**目前只剩 Gemini 分析＋文件組裝（Phase 3b）還沒做**，其餘部分都已實作並部署：
 
-## 開發過程
+- GCS＋Cloud Run 中介層（`server/`）已部署到正式環境，前端上傳/下載/刪除檔案都經過這層簽發 signed URL，不直接握 GCP 憑證
+- `GenerationJob` 資料模型與前端的上傳/建立任務/輪詢/下載/刪除流程（`AiGenerationModal.vue`）已完成並上線
+- Cloud Run 端呼叫 Vertex AI Gemini、組裝真正的 PDF/Word/Excel 這段（上圖流程第 6–9 步）**還沒開始**，依規劃暫緩中
 
-0729（已完成）
-1. ~~刪除確認 + 儲存回饋~~：`useConfirm`/`useToast` 已接上刪除計畫、刪除檔案、儲存活動/成果等操作
-2. ~~檔案上傳體驗優化~~：`DetailView.vue` 已支援拖曳上傳到資料夾區塊，照片資料夾有縮圖預覽
-3. ~~活動關鍵字搜尋~~：`ListView.vue` 已加上活動名稱/地點/負責人的關鍵字搜尋，與計畫/月份/缺漏篩選並存
-4. ~~計畫詳情頁~~：點計畫卡片會導到 `PlanDetailView.vue`，列出該計畫底下的完整活動清單
-5. ~~總覽儀表板~~：`DashboardView.vue` 已有活動總數、缺漏率、近 6 個月活動量小圖表
-6. ~~活動複製功能~~：`DetailView.vue` 的「複製此活動」已可一鍵建立同名活動草稿
+落差盤點、資料模型異動與分階段實作計畫見 [ROADMAP.md](ROADMAP.md)；部署、健康檢查、密鑰輪替、範本修改流程等維運操作見 [OPERATIONS.md](OPERATIONS.md)。
 
-0814
-- Parse 使用者驗證（登入頁 + 路由守衛）與 Class-Level Permissions（`Plan`/`Activity`/`GenerationJob` 都已限定需登入才能讀寫）
-- 簽到表/活動紀錄表/領據/成果報告草稿改成真正的 `.xlsx`/`.docx` 格式，不再是改副檔名的 HTML
-- 新增 `GenerationJob` 資料模型與 `server/`（Cloud Run signed URL 中介層程式碼），對應 [ROADMAP.md](ROADMAP.md) Phase 1/2；尚未部署、前端也還沒串接
-
-0819
-- 新增 `cloud/main.js`（Back4App Cloud Code）：`Plan`/`Activity`/`GenerationJob` 補上伺服器端 `beforeSave` 資料驗證，擋掉繞過前端直接打 API 寫入的畸形資料；程式碼寫好、用 mock Parse Cloud 環境跑過 22 組正常/異常案例，部署步驟見 `cloud/README.md`，尚未部署到 Back4App
-- `server/`（Cloud Run 中介層）**已部署**到 GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`（`tcross-middleware`，`asia-east1`），`GET /status` 驗證回傳正常，對應 [ROADMAP.md](ROADMAP.md) Phase 1
-- 前端串接 `GenerationJob` 上傳/建立/輪詢流程（`AiGenerationModal.vue`、`useGenerationJobPolling.ts`、`lib/middleware.ts`），對應 ROADMAP Phase 3a；Cloud Run 端的 Gemini 生成邏輯（Phase 3b）還沒開始，UI 上會誠實顯示「尚未接上自動生成後端」
-
-0820（Gemini/AI 串接暫緩，先補其他缺口）
-- `server/` 新增 `/download-url` 端點（`storage.py`/`utils.py`/`main.py`），讓已完成的 `GenerationJob` 可以簽發限時 GCS 下載網址；`AiGenerationModal.vue` 補上對應的下載按鈕（目前工作 + 過去工作清單皆可下載）。**已用 `gcloud run deploy` 部署到 `tcross-middleware`（revision `tcross-middleware-00004-zdh`）並在線上實測 `/status`、`/download-url` 通過**
-- `cloud/main.js` 的 `GenerationJob` 驗證補上 `activity` 必填、`resultFile`/`errorMessage` 型別檢查，**已由使用者部署到 Back4App**（伺服器日誌確認 `main.js` 已載入），還沒有對應的 mock 測試案例
-
-0820（架構健檢後的補洞，**程式碼已寫好、通過 `vue-tsc`/`vite build`，尚未部署**）
-- 刪檔不會清底層儲存的問題：`cloud/main.js` 新增 `afterSave('Activity', ...)`，存檔後比對四個檔案欄位的前後差異，把消失的項目用 Master Key 刪掉對應的 Parse.File；`server/` 新增 `/delete-objects` 端點（`storage.py` 的 `delete_object()`），`GenerationJob` 刪除時（`db.ts` 的 `deleteGenerationJob()`，`AiGenerationModal.vue` 新增刪除按鈕）會先清掉對應的 GCS 來源/產出檔案再刪 Parse 紀錄
-- `server/main.py` 的登入驗證改成 FastAPI `Depends(require_user)`，三個端點共用同一份檢查，之後加端點不會漏寫
-- `DetailView.vue`／`AiGenerationModal.vue` 幾乎重複的「四個資料夾拖曳上傳卡」抽成共用元件 `src/components/FolderDropzone.vue`
-- `db.ts` 的 `updateActivity`/`setActivityPlans`/`saveActivityResults`/`uploadFiles`/`removeFile` 重複的「建指標→set 欄位→save→同步本地」抽成共用的 `patchActivity()`
-
-0903（依《需求訪談》欄位對照表改版，**已部署**）
-
-依需求訪談確認的欄位對照表，把資料模型、建檔表單、附件上傳、匯出全部對齊規格：
-
-- **活動欄位**：新增 `category`（活動分類）/ `dateEnd`（迄止日期）/ `attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `remark`（備註）；人數統計從單一 `headcount` 數字改成 `maleCount`/`femaleCount`/`totalCount` 三欄（存進 Parse 時是三個獨立欄位，前端型別包成 `headcount: {male, female, total}`）。沿用新欄位名稱而不是改 `headcount` 的型別，是為了不讓已部署的 Cloud Code（驗證 `headcount` 必須是數字）擋掉存檔
-- **附件分類**：從舊的 4 分類（照片/錄音/影片/文件）改成規格的 8 分類（活動照片/簽到表/成果紀錄/活動流程/公文/領據/社群貼文/影音檔）；照片可填圖說（`caption`）與標記精選照片（`featured`）。`AiGenerationModal.vue`／`lib/middleware.ts`／`server/main.py` 那組 `photo/audio/video/doc` 分類**刻意不動**——那是 AI 生成素材上傳用的，跟正式歸檔附件是兩回事
-- **匯出**：新增 `buildLedgerXlsx()`（大紀事 Excel：分類/日期/地點/出席事由/與會單位或成員/備註/與會人數統計/精選照片縮圖，日期轉民國年 `1140103`、跨日 `1140124-0125`）與 `buildNeimuReportDocx()`（內政部經常門結案報告 Word：一~六項，日期轉「114年1月3日」，照片含圖說內嵌）；取代原本的 `buildResultsReportDocx()`。`ExportView.vue` 加上活動分類篩選與「匯出檔案類型」勾選
-- **缺漏檢核**：`gaps()` 依規格改成照片未達 3 張、有照片未填圖說、沒有簽到表或成果紀錄等檢查
-- **其他**：`DetailView.vue` 新增「刪除此活動」（含確認對話框，`db.ts` 的 `deleteActivity()`）
-- **Back4App 同步**：`cloud/main.js` 補上新欄位的 `beforeSave` 驗證，`FOLDER_FIELDS` 擴充成 11 個欄位（新 8 分類 + 舊 3 個），連帶讓 `afterSave` 的孤兒檔案清理也涵蓋新分類——**已由使用者部署**；新增 `scripts/sync-schema.mjs`，用 `.env` 的 Master Key 對照前端欄位補建 Back4App schema（16 個新欄位已建立完成，唯讀查詢確認無缺漏）
-
-> 過程中發現 `28cc4ca`（Merge branch 'main' into Donna）把未解決的衝突標記直接 commit 進版本庫，導致 `main`／`Donna`／`Kuan` 三個分支都編譯不過。已把 `db.ts`（`patchActivity` 重構 vs 新欄位）與 `DetailView.vue`（`FolderDropzone` 元件化 vs 8 分類附件 UI）的衝突解掉，兩邊的功能都保留。
-
-**部署狀態**：`server/` 已用 `gcloud run deploy` 部署（revision `tcross-middleware-00005-nmb`），`GET /status` 與 `/delete-objects` 路由都已在線上實測確認存在。`cloud/main.js`（含 `afterSave('Activity', ...)` 清檔案邏輯）**已由使用者貼到 Back4App Cloud Code Dashboard 並部署**——System Logs 確認 2026-08-20T00:34 之後的重啟不再出現「main.js not found」警告，代表新檔案已載入且沒有語法錯誤（跟 0819 那次的驗證方式一致）。**尚未實際觸發過一次刪檔測試**：建議找一個測試活動上傳張照片、再刪除，確認 System Logs 沒跳出「刪除檔案失敗」，並且 Back4App Database 的檔案儲存（`Overview` 或 `Database` 分頁下的 file class）裡那個檔案真的消失了。
