@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import Parse from '../lib/parse'
 import { deleteObjects } from '../lib/middleware'
+import { uploadParseFile } from '../lib/uploadFile'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
 import {
@@ -212,13 +213,10 @@ export const useDbStore = defineStore('db', () => {
       while (cursor < files.length) {
         const i = cursor++
         const file = files[i]
-        const parseFile = new Parse.File(safeUploadFilename(file.name), file)
-        await parseFile.save({
-          progress: (fraction?: number | null) => {
-            if (fraction !== null && fraction !== undefined) onProgress?.(file, fraction)
-          },
-        })
-        uploaded[i] = { name: file.name, size: file.size, url: parseFile.url() ?? '' }
+        const result = await uploadParseFile(safeUploadFilename(file.name), file, (fraction) =>
+          onProgress?.(file, fraction),
+        )
+        uploaded[i] = { name: file.name, size: file.size, url: result.url }
       }
     }
     await Promise.all(
