@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { gaps, nFiles, score } from '../utils/activity'
 import type { ActivityRecord } from '../types'
 
@@ -6,10 +7,13 @@ defineProps<{
   activity: ActivityRecord
   planName: (id: string) => string
 }>()
+defineEmits<{ duplicate: [] }>()
+
+const root = ref<HTMLElement | null>(null)
 </script>
 
 <template>
-  <button class="entry">
+  <div ref="root" class="entry" role="button" tabindex="0" @keydown.enter="root?.click()">
     <span class="date mono">{{ activity.date || '未定日期' }}</span>
     <span>
       <span class="name">{{ activity.name }}</span>
@@ -27,5 +31,6 @@ defineProps<{
       </div>
       <span class="pct mono">{{ score(activity) }}%</span>
     </div>
-  </button>
+    <button class="btn ghost sm dup" @click.stop="$emit('duplicate')">複製此活動</button>
+  </div>
 </template>

@@ -48,13 +48,6 @@ function checkOptionalString(object, field, maxLength) {
   }
 }
 
-function checkOptionalDate(object, field) {
-  const value = object.get(field);
-  if (typeof value === 'string' && value.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-    fail(`${field} 格式必須是 YYYY-MM-DD`);
-  }
-}
-
 function fail(message) {
   throw new Parse.Error(Parse.Error.VALIDATION_ERROR, message);
 }
@@ -103,11 +96,24 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   if (typeof date === 'string' && date.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
     fail('日期格式必須是 YYYY-MM-DD');
   }
-  checkOptionalDate(object, 'dateEnd');
 
+  const time = object.get('time');
+  if (typeof time === 'string' && time.trim() && !/^\d{2}:\d{2}$/.test(time.trim())) {
+    fail('時間格式必須是 HH:MM');
+  }
+
+  // category 是舊版單一字串欄位，前端已改用 categories 陣列，但為相容性仍會同步寫入
+  // 第一個分類，繼續驗證，不主動刪除欄位。
   const category = object.get('category');
   if (typeof category === 'string' && category.trim() && !ACTIVITY_CATEGORIES.includes(category)) {
     fail(`category 必須是 ${ACTIVITY_CATEGORIES.join('/')} 其中之一`);
+  }
+
+  const categories = object.get('categories');
+  if (categories !== undefined && categories !== null) {
+    if (!Array.isArray(categories) || categories.some((c) => !ACTIVITY_CATEGORIES.includes(c))) {
+      fail(`categories 必須是陣列，且每個項目都是 ${ACTIVITY_CATEGORIES.join('/')} 其中之一`);
+    }
   }
 
   checkOptionalString(object, 'attendees', 200);

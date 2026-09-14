@@ -48,7 +48,7 @@ export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx'
 
 function activityInfoLines(a: ActivityRecord, planNames: string): string[] {
   return [
-    `活動名稱：${a.name}　日期：${a.date}${a.dateEnd && a.dateEnd !== a.date ? `～${a.dateEnd}` : ''}`,
+    `活動名稱：${a.name}　日期：${a.date}${a.time ? ` ${a.time}` : ''}`,
     `地點：${a.place}　負責人：${a.owner}`,
     `對應計畫：${planNames || '—'}`,
   ]
@@ -176,30 +176,16 @@ function formatRocCompact(dateStr: string): string {
   return `${p.y}${String(p.m).padStart(2, '0')}${String(p.d).padStart(2, '0')}`
 }
 
-/** 大紀事日期欄格式：單日 1140103，跨日 1140124-0125 */
-export function formatLedgerDate(date: string, dateEnd: string): string {
-  const start = toRocParts(date)
-  if (!start) return ''
-  if (!dateEnd || dateEnd === date) return formatRocCompact(date)
-  const end = toRocParts(dateEnd)
-  if (!end) return formatRocCompact(date)
-  if (end.y === start.y && end.m === start.m) {
-    return `${formatRocCompact(date)}-${String(end.d).padStart(2, '0')}`
-  }
-  return `${formatRocCompact(date)}-${formatRocCompact(dateEnd)}`
+/** 大紀事日期欄格式：1140103 */
+export function formatLedgerDate(date: string): string {
+  return formatRocCompact(date)
 }
 
-/** 內政部報告日期格式：114年1月3日，跨日 114年1月24日至25日 */
-export function formatRocChinese(date: string, dateEnd: string): string {
+/** 內政部報告日期格式：114年1月3日 */
+export function formatRocChinese(date: string): string {
   const start = toRocParts(date)
   if (!start) return ''
-  const startText = `${start.y}年${start.m}月${start.d}日`
-  if (!dateEnd || dateEnd === date) return startText
-  const end = toRocParts(dateEnd)
-  if (!end) return startText
-  if (end.y === start.y && end.m === start.m) return `${startText}至${end.d}日`
-  if (end.y === start.y) return `${startText}至${end.m}月${end.d}日`
-  return `${startText}至${end.y}年${end.m}月${end.d}日`
+  return `${start.y}年${start.m}月${start.d}日`
 }
 
 function pickPhotosForExport(files: FileMeta[], max: number): FileMeta[] {
@@ -305,8 +291,8 @@ export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blo
     const rowIdx = i + 2
     const row = sheet.getRow(rowIdx)
     const values = [
-      a.category,
-      formatLedgerDate(a.date, a.dateEnd),
+      a.categories.join('、'),
+      formatLedgerDate(a.date),
       a.place,
       a.name,
       a.attendees,
@@ -380,7 +366,10 @@ export async function buildNeimuReportDocx(
     )
 
     children.push(
-      new Paragraph({ text: `三、活動日期：${formatRocChinese(a.date, a.dateEnd)}`, spacing: { before: 120 } }),
+      new Paragraph({
+        text: `三、活動日期：${formatRocChinese(a.date)}${a.time ? ` ${a.time}` : ''}`,
+        spacing: { before: 120 },
+      }),
     )
     children.push(new Paragraph({ text: `四、活動地點：${a.place}` }))
     children.push(

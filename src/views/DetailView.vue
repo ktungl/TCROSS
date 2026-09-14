@@ -133,19 +133,7 @@ async function deleteActivity() {
 async function duplicateActivity() {
   if (!activity.value) return
   try {
-    const created = await db.createActivity({
-      name: `${activity.value.name}（複製）`,
-      category: activity.value.category,
-      date: '',
-      dateEnd: '',
-      place: activity.value.place,
-      owner: activity.value.owner,
-      attendees: activity.value.attendees,
-      participantDesc: activity.value.participantDesc,
-      headcount: { ...activity.value.headcount },
-      plans: [...activity.value.plans],
-      remark: activity.value.remark,
-    })
+    const created = await db.duplicateActivity(activity.value.id)
     pushToast('已複製活動，請填寫新日期')
     router.push({ name: 'detail', params: { id: created.id } })
   } catch (e) {
@@ -159,8 +147,8 @@ async function duplicateActivity() {
     <button class="back" @click="router.push({ name: 'list' })">← 回活動列表</button>
     <h1>{{ activity.name }}</h1>
     <p class="sub mono">
-      {{ activity.date || '未定日期' }}<template v-if="activity.dateEnd && activity.dateEnd !== activity.date">～{{ activity.dateEnd }}</template>
-      　{{ activity.place }}　{{ activity.category || '未分類' }}　負責人 {{ activity.owner || '—' }}
+      {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}</template>
+      　{{ activity.place }}　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '—' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
     </p>
     <p v-if="activity.attendees || activity.participantDesc" class="sub" style="margin-top:-8px">

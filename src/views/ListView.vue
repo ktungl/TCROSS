@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
+import { errorMessage, pushToast } from '../composables/useToast'
 import { gaps } from '../utils/activity'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import ActivityEntry from '../components/ActivityEntry.vue'
@@ -38,6 +39,15 @@ function clearFilters() {
 function openDetail(id: string) {
   router.push({ name: 'detail', params: { id } })
 }
+
+async function onDuplicate(id: string) {
+  try {
+    await db.duplicateActivity(id)
+    pushToast('已複製活動，請填寫新日期')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
+}
 </script>
 
 <template>
@@ -62,6 +72,7 @@ function openDetail(id: string) {
       :activity="a"
       :plan-name="planName"
       @click="openDetail(a.id)"
+      @duplicate="onDuplicate(a.id)"
     />
   </div>
   <p v-if="!rows.length" class="empty">{{ db.loading ? '載入中…' : '這個條件下沒有活動。' }}</p>

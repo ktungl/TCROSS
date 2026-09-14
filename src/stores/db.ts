@@ -24,9 +24,9 @@ import type {
 
 export interface ActivityFormInput {
   name: string
-  category: ActivityCategory | ''
+  categories: ActivityCategory[]
   date: string
-  dateEnd: string
+  time: string
   place: string
   owner: string
   attendees: string
@@ -69,6 +69,14 @@ export const useDbStore = defineStore('db', () => {
     plans.value.push(planToRecord(obj))
   }
 
+  async function renamePlan(id: string, name: string): Promise<void> {
+    const obj = PlanObject.createWithoutData(id)
+    obj.set('name', name)
+    await obj.save()
+    const existing = plans.value.find((p) => p.id === id)
+    if (existing) existing.name = name
+  }
+
   async function deletePlan(id: string): Promise<void> {
     await PlanObject.createWithoutData(id).destroy()
     const affected = activities.value.filter((a) => a.plans.includes(id))
@@ -85,6 +93,24 @@ export const useDbStore = defineStore('db', () => {
     const record = activityToRecord(obj)
     activities.value.push(record)
     return record
+  }
+
+  async function duplicateActivity(id: string): Promise<ActivityRecord> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) throw new Error('找不到活動')
+    return createActivity({
+      name: `${existing.name}（複製）`,
+      categories: [...existing.categories],
+      date: '',
+      time: '',
+      place: existing.place,
+      owner: existing.owner,
+      attendees: existing.attendees,
+      participantDesc: existing.participantDesc,
+      headcount: { ...existing.headcount },
+      plans: [...existing.plans],
+      remark: existing.remark,
+    })
   }
 
   async function deleteActivity(id: string): Promise<void> {
@@ -121,9 +147,9 @@ export const useDbStore = defineStore('db', () => {
       (obj, existing) =>
         applyActivityRecord(obj, {
           name: existing.name,
-          category: existing.category,
+          categories: existing.categories,
           date: existing.date,
-          dateEnd: existing.dateEnd,
+          time: existing.time,
           place: existing.place,
           owner: existing.owner,
           attendees: existing.attendees,
@@ -293,9 +319,11 @@ export const useDbStore = defineStore('db', () => {
     error,
     fetchAll,
     createPlan,
+    renamePlan,
     deletePlan,
     createActivity,
     updateActivity,
+    duplicateActivity,
     deleteActivity,
     setActivityPlans,
     saveActivityResults,
