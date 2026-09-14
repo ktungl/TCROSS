@@ -216,32 +216,42 @@ async function duplicateActivity() {
         @drop="(files) => upload(key, files)"
       >
         <ul v-if="activity.files[key].length" class="files">
-          <li v-for="(f, i) in activity.files[key]" :key="i" :style="key === 'photo' ? 'flex-wrap:wrap' : ''">
-            <span v-if="key === 'photo' && f.url" style="display:flex;align-items:center;gap:8px;overflow:hidden">
-              <img :src="f.url" class="thumb" :alt="f.name">
+          <template v-for="(f, i) in activity.files[key]" :key="i">
+            <li v-if="key === 'photo' && f.url" class="photo-item">
+              <div class="thumb-wrap">
+                <img :src="f.url" class="thumb-lg" :alt="f.name">
+                <button class="x" title="刪除照片" @click="onRemoveFile(key, i)">×</button>
+              </div>
+              <div class="photo-body">
+                <div class="photo-head">
+                  <span class="fname">{{ f.name }}</span>
+                  <span class="fsize mono">{{ kb(f.size) }}</span>
+                </div>
+                <div class="photo-caption">
+                  <input
+                    :value="f.caption"
+                    placeholder="圖說（必填）"
+                    style="flex:1"
+                    @change="onCaptionChange(key, i, $event)"
+                  >
+                  <label class="chk" style="margin:0;white-space:nowrap">
+                    <input
+                      type="checkbox"
+                      :checked="f.featured"
+                      @change="onFeaturedToggle(key, i, $event)"
+                    >精選照片
+                  </label>
+                </div>
+              </div>
+            </li>
+            <li v-else>
               <span class="fname">{{ f.name }}</span>
-            </span>
-            <span v-else class="fname">{{ f.name }}</span>
-            <span style="display:flex;align-items:center">
-              <span class="fsize mono">{{ kb(f.size) }}</span>
-              <button class="x" @click="onRemoveFile(key, i)">×</button>
-            </span>
-            <div v-if="key === 'photo'" style="display:flex;align-items:center;gap:10px;width:100%;margin-top:6px">
-              <input
-                :value="f.caption"
-                placeholder="圖說（必填）"
-                style="flex:1"
-                @change="onCaptionChange(key, i, $event)"
-              >
-              <label class="chk" style="margin:0;white-space:nowrap">
-                <input
-                  type="checkbox"
-                  :checked="f.featured"
-                  @change="onFeaturedToggle(key, i, $event)"
-                >精選照片
-              </label>
-            </div>
-          </li>
+              <span style="display:flex;align-items:center">
+                <span class="fsize mono">{{ kb(f.size) }}</span>
+                <button class="x" @click="onRemoveFile(key, i)">×</button>
+              </span>
+            </li>
+          </template>
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按上傳。</p>
       </FolderDropzone>

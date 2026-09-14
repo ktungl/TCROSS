@@ -165,8 +165,17 @@ h2{font-size:11.5px;letter-spacing:.2em;color:var(--ink-soft);font-weight:500;
 .files li:last-child{border-bottom:0}
 .files .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .files .fsize{font-size:11px;color:var(--ink-faint);margin-left:10px;flex-shrink:0}
-.thumb{width:36px;height:36px;object-fit:cover;border-radius:var(--r);
-  border:1px solid var(--line);flex-shrink:0}
+.thumb-lg{width:180px;height:180px;object-fit:cover;border-radius:var(--r);
+  border:1px solid var(--line);display:block}
+.photo-item{align-items:flex-start}
+.thumb-wrap{position:relative;flex-shrink:0}
+.thumb-wrap .x{position:absolute;top:5px;right:5px;width:22px;height:22px;
+  display:flex;align-items:center;justify-content:center;padding:0;font-size:15px;
+  background:rgba(255,255,255,.9);border-radius:50%;box-shadow:0 1px 3px rgba(62,44,23,.35)}
+.thumb-wrap .x:hover{background:#fff;color:var(--stamp)}
+.photo-body{flex:1;min-width:0}
+.photo-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.photo-caption{display:flex;align-items:center;gap:10px;margin-top:8px}
 .empty{padding:13px 15px;font-size:12.5px;color:var(--ink-soft)}
 
 .upload-list{list-style:none;margin:0;padding:0}
@@ -293,6 +302,11 @@ table.out tbody tr:hover{background:var(--gold-100)}
   .grid2,.grid3{grid-template-columns:1fr}
   .entry{grid-template-columns:1fr;gap:6px}
   .dial{justify-content:flex-start}
+
+  /* 圖說改放照片下方，圖片可以放大看清楚再填寫 */
+  .photo-item{flex-direction:column;align-items:stretch}
+  .photo-item .thumb-wrap{width:100%}
+  .photo-item .thumb-lg{width:100%;height:auto;max-height:260px}
 }
 
 @media(prefers-reduced-motion:no-preference){
