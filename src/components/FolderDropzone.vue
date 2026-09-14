@@ -5,6 +5,7 @@ defineProps<{
   label: string
   countLabel: string
   pickLabel?: string
+  uploading?: { name: string; progress: number }[]
 }>()
 const emit = defineEmits<{ pick: [File[]]; drop: [File[]] }>()
 
@@ -38,6 +39,15 @@ function onDrop(e: DragEvent) {
         <input type="file" multiple style="display:none" @change="onPick">
       </label>
     </header>
+    <ul v-if="uploading?.length" class="upload-list">
+      <li v-for="u in uploading" :key="u.name">
+        <div class="upload-row">
+          <span class="fname">{{ u.name }}</span>
+          <span class="pct mono">{{ Math.round(u.progress * 100) }}%</span>
+        </div>
+        <div class="progress"><span :style="{ width: `${Math.round(u.progress * 100)}%` }" /></div>
+      </li>
+    </ul>
     <slot />
   </div>
 </template>

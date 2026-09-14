@@ -63,15 +63,25 @@ export async function deleteObjects(objectPaths: string[]): Promise<void> {
   if (!res.ok) throw new Error(await readErrorMessage(res, '無法刪除素材檔案'))
 }
 
-export async function uploadToSignedUrl(
+export function uploadToSignedUrl(
   uploadUrl: string,
   file: File,
   contentType: string,
+  onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  const res = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: file,
+  // 用 XHR 而非 fetch，才能取得上傳進度事件來驅動進度條。
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('Content-Type', contentType)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total)
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new Error(`檔案「${file.name}」上傳失敗`))
+    }
+    xhr.onerror = () => reject(new Error(`檔案「${file.name}」上傳失敗`))
+    xhr.send(file)
   })
-  if (!res.ok) throw new Error(`檔案「${file.name}」上傳失敗`)
 }

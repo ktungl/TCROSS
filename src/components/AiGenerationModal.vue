@@ -21,6 +21,9 @@ function emptySelection(): Record<FolderKey, File[]> {
 
 const selected = reactive(emptySelection())
 const fileStates = reactive(new Map<File, 'queued' | 'uploading' | 'uploaded' | 'error'>())
+const fileProgress = reactive(new Map<File, number>())
+/** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
+const UPLOAD_CONCURRENCY = 3
 const submitting = ref(false)
 const activeJob = ref<GenerationJobRecord | null>(null)
 
@@ -81,27 +84,45 @@ async function startGeneration() {
   }
   submitting.value = true
   fileStates.clear()
+  fileProgress.clear()
   const allFiles = FOLDERS.flatMap(([folder]) =>
     selected[folder].map((file) => ({ folder, file })),
   )
   allFiles.forEach(({ file }) => fileStates.set(file, 'queued'))
 
-  const objectPaths: string[] = []
-  try {
-    for (const { folder, file } of allFiles) {
+  const objectPaths: (string | null)[] = new Array(allFiles.length).fill(null)
+  let cursor = 0
+  let aborted = false
+  async function worker() {
+    while (!aborted && cursor < allFiles.length) {
+      const i = cursor++
+      const { folder, file } = allFiles[i]
       fileStates.set(file, 'uploading')
-      const contentType = file.type || 'application/octet-stream'
-      const { uploadUrl, objectPath } = await requestSignedUploadUrl({
-        activityId: props.activity.id,
-        folder,
-        filename: file.name,
-        contentType,
-      })
-      await uploadToSignedUrl(uploadUrl, file, contentType)
-      fileStates.set(file, 'uploaded')
-      objectPaths.push(objectPath)
+      try {
+        const contentType = file.type || 'application/octet-stream'
+        const { uploadUrl, objectPath } = await requestSignedUploadUrl({
+          activityId: props.activity.id,
+          folder,
+          filename: file.name,
+          contentType,
+        })
+        await uploadToSignedUrl(uploadUrl, file, contentType, (fraction) => {
+          fileProgress.set(file, fraction)
+        })
+        fileStates.set(file, 'uploaded')
+        objectPaths[i] = objectPath
+      } catch (e) {
+        aborted = true
+        fileStates.set(file, 'error')
+        throw e
+      }
     }
-    const job = await db.createGenerationJob(props.activity.id, '成果報告', objectPaths)
+  }
+  try {
+    await Promise.all(
+      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, allFiles.length) }, worker),
+    )
+    const job = await db.createGenerationJob(props.activity.id, '成果報告', objectPaths as string[])
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))
     pushToast('已送出，等待後端處理')
@@ -171,12 +192,23 @@ function close() {
         @drop="(files) => addFiles(key, files)"
       >
         <ul v-if="selected[key].length" class="files">
-          <li v-for="(f, i) in selected[key]" :key="i">
+          <li v-for="(f, i) in selected[key]" :key="i" style="flex-wrap:wrap">
             <span class="fname">{{ f.name }}</span>
             <span style="display:flex;align-items:center;gap:8px">
-              <span class="mono fsize">{{ fileStates.get(f) ?? '待上傳' }}</span>
+              <span class="mono fsize">
+                {{ fileStates.get(f) === 'uploading'
+                  ? `上傳中 ${Math.round((fileProgress.get(f) ?? 0) * 100)}%`
+                  : fileStates.get(f) ?? '待上傳' }}
+              </span>
               <button class="x" :disabled="submitting" @click="removeSelected(key, i)">×</button>
             </span>
+            <div
+              v-if="fileStates.get(f) === 'uploading'"
+              class="progress"
+              style="width:100%;margin-top:4px"
+            >
+              <span :style="{ width: `${Math.round((fileProgress.get(f) ?? 0) * 100)}%` }" />
+            </div>
           </li>
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按選擇檔案。</p>

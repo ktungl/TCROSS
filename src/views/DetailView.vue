@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { gaps, kb } from '../utils/activity'
@@ -68,13 +68,24 @@ async function saveResults() {
   }
 }
 
+const uploadingFiles = reactive<Record<AttachmentKey, { name: string; progress: number }[]>>({
+  photo: [], signIn: [], record: [], agenda: [], document: [], receipt: [], social: [], media: [],
+})
+
 async function upload(folder: AttachmentKey, files: File[]) {
   if (!activity.value || !files.length) return
+  const items = files.map((file) => ({ name: file.name, progress: 0 }))
+  uploadingFiles[folder] = items
   try {
-    await db.uploadFiles(activity.value.id, folder, files)
+    await db.uploadFiles(activity.value.id, folder, files, (file, fraction) => {
+      const item = items[files.indexOf(file)]
+      if (item) item.progress = fraction
+    })
     pushToast(`已上傳 ${files.length} 個檔案`)
   } catch (e) {
     pushToast(errorMessage(e), 'error')
+  } finally {
+    uploadingFiles[folder] = []
   }
 }
 async function onRemoveFile(folder: AttachmentKey, i: number) {
@@ -200,6 +211,7 @@ async function duplicateActivity() {
             : `${activity.files[key].length} 件`
         "
         pick-label="上傳"
+        :uploading="uploadingFiles[key]"
         @pick="(files) => upload(key, files)"
         @drop="(files) => upload(key, files)"
       >

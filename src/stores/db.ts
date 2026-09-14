@@ -154,19 +154,46 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
-  async function uploadFiles(id: string, folder: AttachmentKey, files: File[]): Promise<void> {
+  /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
+  const UPLOAD_CONCURRENCY = 4
+
+  /** Parse Server 的檔案名稱只接受 ASCII，中文/日文等非 ASCII 字元會被拒絕並回傳
+   * 400「Filename contains invalid characters」。Windows 螢幕截圖預設就是中文檔名，
+   * 所以上傳用的檔名要清成安全字元，展示用的原始檔名（FileMeta.name）維持不變。 */
+  function safeUploadFilename(name: string): string {
+    return name.replace(/[^A-Za-z0-9 _.-]+/g, '_') || 'file'
+  }
+
+  async function uploadFiles(
+    id: string,
+    folder: AttachmentKey,
+    files: File[],
+    onProgress?: (file: File, fraction: number) => void,
+  ): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !files.length) return
     for (const file of files) {
       const reason = fileUploadRejectionReason(file)
       if (reason) throw new Error(reason)
     }
-    const uploaded: FileMeta[] = []
-    for (const file of files) {
-      const parseFile = new Parse.File(file.name, file)
-      await parseFile.save()
-      uploaded.push({ name: file.name, size: file.size, url: parseFile.url() ?? '' })
+    const uploaded: FileMeta[] = new Array(files.length)
+    let cursor = 0
+    async function worker() {
+      while (cursor < files.length) {
+        const i = cursor++
+        const file = files[i]
+        const parseFile = new Parse.File(safeUploadFilename(file.name), file)
+        await parseFile.save({
+          progress: (fraction?: number | null) => {
+            if (fraction !== null && fraction !== undefined) onProgress?.(file, fraction)
+          },
+        })
+        uploaded[i] = { name: file.name, size: file.size, url: parseFile.url() ?? '' }
+      }
     }
+    await Promise.all(
+      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, worker),
+    )
     const nextList = [...existing.files[folder], ...uploaded]
     await patchActivity(
       id,
