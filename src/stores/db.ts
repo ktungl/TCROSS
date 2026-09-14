@@ -183,11 +183,15 @@ export const useDbStore = defineStore('db', () => {
   /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
   const UPLOAD_CONCURRENCY = 4
 
-  /** Parse Server 的檔案名稱只接受 ASCII，中文/日文等非 ASCII 字元會被拒絕並回傳
+  /** Parse Server 的檔案名稱只接受 ASCII 且必須以英數字開頭（正規表示式
+   * `^[a-zA-Z0-9][a-zA-Z0-9@. ~_-]*`），中文/日文等非 ASCII 字元會被拒絕並回傳
    * 400「Filename contains invalid characters」。Windows 螢幕截圖預設就是中文檔名，
-   * 所以上傳用的檔名要清成安全字元，展示用的原始檔名（FileMeta.name）維持不變。 */
+   * 清成安全字元後常常整段中文被換成單一底線，導致檔名變成「_xxx.png」這種不合法
+   * 的開頭，所以額外加上數字時間戳記當前綴，保證一定以數字開頭。展示用的原始檔名
+   * （FileMeta.name）維持不變。 */
   function safeUploadFilename(name: string): string {
-    return name.replace(/[^A-Za-z0-9 _.-]+/g, '_') || 'file'
+    const cleaned = name.replace(/[^A-Za-z0-9 @.~_-]+/g, '_') || 'file'
+    return `${Date.now()}_${cleaned}`
   }
 
   async function uploadFiles(
