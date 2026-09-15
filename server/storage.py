@@ -11,6 +11,7 @@ SIGNING_SERVICE_ACCOUNT = os.environ["GCS_SIGNING_SERVICE_ACCOUNT"]
 SIGNED_URL_TTL_MINUTES = int(os.environ.get("SIGNED_URL_TTL_MINUTES", "15"))
 
 _storage_client: storage.Client | None = None
+_source_credentials = None
 
 
 def _client() -> storage.Client:
@@ -18,6 +19,25 @@ def _client() -> storage.Client:
     if _storage_client is None:
         _storage_client = storage.Client()
     return _storage_client
+
+
+def _get_source_credentials():
+    """ADC lookup only needs to happen once per Cloud Run instance (it's the same
+    runtime service account for the instance's whole lifetime) — cached at module
+    level instead of re-deriving it on every single /signed-url or /download-url call."""
+    global _source_credentials
+    if _source_credentials is None:
+        _source_credentials, _ = google.auth.default()
+    return _source_credentials
+
+
+def _impersonated_credentials(scope: str) -> impersonated_credentials.Credentials:
+    return impersonated_credentials.Credentials(
+        source_credentials=_get_source_credentials(),
+        target_principal=SIGNING_SERVICE_ACCOUNT,
+        target_scopes=[scope],
+        lifetime=SIGNED_URL_TTL_MINUTES * 60,
+    )
 
 
 def generate_signed_upload_url(object_path: str, content_type: str) -> str:
@@ -29,13 +49,7 @@ def generate_signed_upload_url(object_path: str, content_type: str) -> str:
     This requires the runtime service account to hold roles/iam.serviceAccountTokenCreator
     on itself — see server/README.md.
     """
-    source_credentials, _ = google.auth.default()
-    signing_credentials = impersonated_credentials.Credentials(
-        source_credentials=source_credentials,
-        target_principal=SIGNING_SERVICE_ACCOUNT,
-        target_scopes=["https://www.googleapis.com/auth/devstorage.read_write"],
-        lifetime=SIGNED_URL_TTL_MINUTES * 60,
-    )
+    signing_credentials = _impersonated_credentials("https://www.googleapis.com/auth/devstorage.read_write")
     blob = _client().bucket(GCS_BUCKET).blob(object_path)
     return blob.generate_signed_url(
         version="v4",
@@ -49,13 +63,7 @@ def generate_signed_upload_url(object_path: str, content_type: str) -> str:
 def generate_signed_download_url(object_path: str) -> str:
     """Mint a v4 signed URL for a direct browser GET download from GCS. See
     generate_signed_upload_url() for why signing is delegated via self-impersonation."""
-    source_credentials, _ = google.auth.default()
-    signing_credentials = impersonated_credentials.Credentials(
-        source_credentials=source_credentials,
-        target_principal=SIGNING_SERVICE_ACCOUNT,
-        target_scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
-        lifetime=SIGNED_URL_TTL_MINUTES * 60,
-    )
+    signing_credentials = _impersonated_credentials("https://www.googleapis.com/auth/devstorage.read_only")
     blob = _client().bucket(GCS_BUCKET).blob(object_path)
     return blob.generate_signed_url(
         version="v4",

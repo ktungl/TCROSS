@@ -2,7 +2,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useDbStore } from '../stores/db'
 import { useGenerationJobPolling } from '../composables/useGenerationJobPolling'
-import { requestDownloadUrl, requestSignedUploadUrl, uploadToSignedUrl } from '../lib/middleware'
+import {
+  deleteObjects,
+  requestDownloadUrl,
+  requestSignedUploadUrls,
+  uploadToSignedUrl,
+  type SignedUrlResponse,
+} from '../lib/middleware'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import FolderDropzone from './FolderDropzone.vue'
@@ -90,22 +96,33 @@ async function startGeneration() {
   )
   allFiles.forEach(({ file }) => fileStates.set(file, 'queued'))
 
+  let signedUrls: SignedUrlResponse[]
+  try {
+    signedUrls = await requestSignedUploadUrls(
+      props.activity.id,
+      allFiles.map(({ folder, file }) => ({
+        folder,
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+      })),
+    )
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+    submitting.value = false
+    return
+  }
+
   const objectPaths: (string | null)[] = new Array(allFiles.length).fill(null)
   let cursor = 0
   let aborted = false
   async function worker() {
     while (!aborted && cursor < allFiles.length) {
       const i = cursor++
-      const { folder, file } = allFiles[i]
+      const { file } = allFiles[i]
+      const { uploadUrl, objectPath } = signedUrls[i]
       fileStates.set(file, 'uploading')
       try {
         const contentType = file.type || 'application/octet-stream'
-        const { uploadUrl, objectPath } = await requestSignedUploadUrl({
-          activityId: props.activity.id,
-          folder,
-          filename: file.name,
-          contentType,
-        })
         await uploadToSignedUrl(uploadUrl, file, contentType, (fraction) => {
           fileProgress.set(file, fraction)
         })
@@ -128,6 +145,10 @@ async function startGeneration() {
     pushToast('已送出，等待後端處理')
     startPolling(job.id, (r) => (activeJob.value = r))
   } catch (e) {
+    // 清掉已經上傳成功、但沒機會掛到 GenerationJob 上的孤兒檔案，避免留在 GCS 裡持續計費。
+    // best-effort：清不掉就算了，不要蓋掉原本要顯示給使用者的錯誤訊息。
+    const uploaded = objectPaths.filter((p): p is string => p !== null)
+    if (uploaded.length) deleteObjects(uploaded, props.activity.id).catch(() => {})
     pushToast(errorMessage(e), 'error')
   } finally {
     submitting.value = false

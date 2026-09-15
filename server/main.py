@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from parse_auth import activity_exists, find_generation_job_for_object_path, verify_session_token
+from parse_auth import activity_exists, find_generation_jobs_for_object_paths, verify_session_token
 from storage import delete_object, generate_signed_download_url, generate_signed_upload_url
 from utils import is_extension_blocked, is_valid_object_path, sanitize_filename
 
@@ -36,11 +36,18 @@ app.add_middleware(
 ALLOWED_FOLDERS = {"photo", "audio", "video", "doc"}
 
 
-class SignedUrlRequest(BaseModel):
-    activityId: str
+class SignedUrlFile(BaseModel):
     folder: str
     filename: str
     contentType: str
+
+
+class SignedUrlRequest(BaseModel):
+    """一個 activityId 對多個檔案：驗證 session／activity 只做一次，
+    再對每個檔案各簽一支 URL——取代先前「一個檔案一次請求」的作法。"""
+
+    activityId: str
+    files: list[SignedUrlFile]
 
 
 class DownloadUrlRequest(BaseModel):
@@ -49,6 +56,11 @@ class DownloadUrlRequest(BaseModel):
 
 class DeleteObjectsRequest(BaseModel):
     objectPaths: list[str]
+    # 選填：孤兒檔案清理用（例如上傳到一半失敗、或使用者中途放棄，還沒建立
+    # GenerationJob 就要把已上傳到 GCS 的檔案清掉）。有帶這個欄位時，授權條件
+    # 改成跟 /signed-url 一樣「能讀到這個 activity」，不要求 objectPath 已經
+    # 掛在某個 GenerationJob 上——反正這批路徑本來就是同一個 activityId 剛簽出來的。
+    activityId: str | None = None
 
 
 def require_user(authorization: str = Header(...)) -> dict:
@@ -92,27 +104,39 @@ def status():
 
 @app.post("/signed-url")
 def signed_url(body: SignedUrlRequest, user: dict = Depends(enforce_rate_limit)):
-    if body.folder not in ALLOWED_FOLDERS:
-        raise HTTPException(400, f"folder 必須是 {sorted(ALLOWED_FOLDERS)} 其中之一")
-    if is_extension_blocked(body.filename):
-        raise HTTPException(400, "此檔案類型不允許上傳")
+    if not body.files:
+        raise HTTPException(400, "files 不能為空")
+    for f in body.files:
+        if f.folder not in ALLOWED_FOLDERS:
+            raise HTTPException(400, f"folder 必須是 {sorted(ALLOWED_FOLDERS)} 其中之一")
+        if is_extension_blocked(f.filename):
+            raise HTTPException(400, "此檔案類型不允許上傳")
     if not activity_exists(user["sessionToken"], body.activityId):
         audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
         raise HTTPException(403, "activityId 不存在或無權存取")
 
-    unique_name = f"{uuid.uuid4().hex[:8]}_{sanitize_filename(body.filename)}"
-    object_path = f"activities/{body.activityId}/{body.folder}/{unique_name}"
+    results = []
+    object_paths = []
+    for f in body.files:
+        unique_name = f"{uuid.uuid4().hex[:8]}_{sanitize_filename(f.filename)}"
+        object_path = f"activities/{body.activityId}/{f.folder}/{unique_name}"
+        upload_url = generate_signed_upload_url(object_path, f.contentType)
+        results.append({"uploadUrl": upload_url, "objectPath": object_path})
+        object_paths.append(object_path)
 
-    upload_url = generate_signed_upload_url(object_path, body.contentType)
-    audit_log.info("signed-url issued user=%s activityId=%s objectPath=%s", user.get("username"), body.activityId, object_path)
-    return {"uploadUrl": upload_url, "objectPath": object_path}
+    audit_log.info(
+        "signed-url issued user=%s activityId=%s count=%d objectPaths=%s",
+        user.get("username"), body.activityId, len(object_paths), object_paths,
+    )
+    return {"files": results}
 
 
 @app.post("/download-url")
 def download_url(body: DownloadUrlRequest, user: dict = Depends(enforce_rate_limit)):
     if not is_valid_object_path(body.objectPath):
         raise HTTPException(400, "objectPath 不合法")
-    if not find_generation_job_for_object_path(user["sessionToken"], body.objectPath):
+    matched = find_generation_jobs_for_object_paths(user["sessionToken"], [body.objectPath])
+    if body.objectPath not in matched:
         audit_log.warning("rejected: unauthorized objectPath user=%s objectPath=%s", user.get("username"), body.objectPath)
         raise HTTPException(403, "objectPath 不存在或無權存取")
 
@@ -127,12 +151,21 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
     invalid = [p for p in body.objectPaths if not is_valid_object_path(p)]
     if invalid:
         raise HTTPException(400, "objectPath 不合法")
-    unauthorized = [
-        p for p in body.objectPaths if not find_generation_job_for_object_path(user["sessionToken"], p)
-    ]
-    if unauthorized:
-        audit_log.warning("rejected: unauthorized objectPaths user=%s objectPaths=%s", user.get("username"), unauthorized)
-        raise HTTPException(403, "部分 objectPath 不存在或無權存取")
+
+    if body.activityId is not None:
+        if not activity_exists(user["sessionToken"], body.activityId):
+            audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
+            raise HTTPException(403, "activityId 不存在或無權存取")
+        prefix = f"activities/{body.activityId}/"
+        mismatched = [p for p in body.objectPaths if not p.startswith(prefix)]
+        if mismatched:
+            raise HTTPException(400, "objectPath 與 activityId 不符")
+    else:
+        matched = find_generation_jobs_for_object_paths(user["sessionToken"], body.objectPaths)
+        unauthorized = [p for p in body.objectPaths if p not in matched]
+        if unauthorized:
+            audit_log.warning("rejected: unauthorized objectPaths user=%s objectPaths=%s", user.get("username"), unauthorized)
+            raise HTTPException(403, "部分 objectPath 不存在或無權存取")
 
     for path in body.objectPaths:
         delete_object(path)

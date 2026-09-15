@@ -2,8 +2,6 @@
 
 Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://parseplatform.org/)（後端建議用 [Back4App](https://www.back4app.com/)），檔案處理與 AI 生成擴充則導入 [Google Cloud Platform (GCP)](https://cloud.google.com/)。
 
-`TCROSS.html` 是最早的單檔原型（vanilla JS + localStorage），保留在 repo 內作為畫面與邏輯的對照，不再維護。
-
 ## 開發設定
 
 1. 安裝套件：

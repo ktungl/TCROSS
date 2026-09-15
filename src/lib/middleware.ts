@@ -1,7 +1,7 @@
 import Parse from './parse'
 import type { FolderKey } from '../types'
 
-interface SignedUrlResponse {
+export interface SignedUrlResponse {
   uploadUrl: string
   objectPath: string
 }
@@ -21,21 +21,22 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
   }
 }
 
-export async function requestSignedUploadUrl(params: {
-  activityId: string
-  folder: FolderKey
-  filename: string
-  contentType: string
-}): Promise<SignedUrlResponse> {
+/** 一個 activityId 對多個檔案，只驗證一次 session／activity 存在，
+ * 換取一批簽好的上傳網址——取代先前每個檔案各打一次 /signed-url 的作法。 */
+export async function requestSignedUploadUrls(
+  activityId: string,
+  files: { folder: FolderKey; filename: string; contentType: string }[],
+): Promise<SignedUrlResponse[]> {
   const token = Parse.User.current()?.getSessionToken()
   if (!token) throw new Error('請重新登入')
   const res = await fetch(`${baseUrl()}/signed-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(params),
+    body: JSON.stringify({ activityId, files }),
   })
   if (!res.ok) throw new Error(await readErrorMessage(res, '無法取得上傳網址'))
-  return res.json() as Promise<SignedUrlResponse>
+  const body = (await res.json()) as { files: SignedUrlResponse[] }
+  return body.files
 }
 
 export async function requestDownloadUrl(objectPath: string): Promise<string> {
@@ -51,14 +52,14 @@ export async function requestDownloadUrl(objectPath: string): Promise<string> {
   return body.downloadUrl
 }
 
-export async function deleteObjects(objectPaths: string[]): Promise<void> {
+export async function deleteObjects(objectPaths: string[], activityId?: string): Promise<void> {
   if (!objectPaths.length) return
   const token = Parse.User.current()?.getSessionToken()
   if (!token) throw new Error('請重新登入')
   const res = await fetch(`${baseUrl()}/delete-objects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ objectPaths }),
+    body: JSON.stringify({ objectPaths, activityId }),
   })
   if (!res.ok) throw new Error(await readErrorMessage(res, '無法刪除素材檔案'))
 }

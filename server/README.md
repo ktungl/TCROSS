@@ -72,8 +72,9 @@ curl https://<cloud-run-url>/status
 curl -X POST https://<cloud-run-url>/signed-url \
   -H "Authorization: Bearer <某個已登入使用者的 Parse session token>" \
   -H "Content-Type: application/json" \
-  -d '{"activityId":"test","folder":"photo","filename":"test.jpg","contentType":"image/jpeg"}'
-# 應回傳 {"uploadUrl": "...", "objectPath": "activities/test/photo/xxxxxxxx_test.jpg"}
+  -d '{"activityId":"test","files":[{"folder":"photo","filename":"test.jpg","contentType":"image/jpeg"}]}'
+# 應回傳 {"files": [{"uploadUrl": "...", "objectPath": "activities/test/photo/xxxxxxxx_test.jpg"}]}
+# 一次請求可以帶多個 files（同一個 activityId），只驗證一次 session/activity 就能拿到一批簽好的網址。
 
 curl -X POST https://<cloud-run-url>/download-url \
   -H "Authorization: Bearer <某個已登入使用者的 Parse session token>" \
@@ -86,6 +87,9 @@ curl -X POST https://<cloud-run-url>/delete-objects \
   -H "Content-Type: application/json" \
   -d '{"objectPaths":["activities/test/photo/xxxxxxxx_test.jpg"]}'
 # 應回傳 {"deleted": 1}
+# objectPaths 不掛在任何 GenerationJob 上時（例如清理上傳到一半失敗的孤兒檔案）要多帶 activityId，
+# 授權條件改成跟 /signed-url 一樣「能讀到這個 activity」：
+# -d '{"objectPaths":["activities/test/photo/xxxxxxxx_test.jpg"],"activityId":"test"}'
 ```
 
 若拿 session token 卡住，可以在瀏覽器 devtools 對已登入頁面執行 `Parse.User.current().getSessionToken()` 拿到。
