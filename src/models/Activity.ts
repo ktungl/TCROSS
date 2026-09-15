@@ -26,12 +26,15 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
   const male = Number(obj.get('maleCount')) || 0
   const female = Number(obj.get('femaleCount')) || 0
   const total = obj.get('totalCount')
+  // categories 是新版可複選欄位；舊資料只有單一字串的 category，讀取時往下相容。
+  const categories = obj.get('categories') as ActivityCategory[] | undefined
+  const legacyCategory = obj.get('category') as ActivityCategory | undefined
   return {
     id: obj.id!,
     name: obj.get('name') ?? '',
-    category: (obj.get('category') as ActivityCategory | undefined) ?? '',
+    categories: categories?.length ? categories : legacyCategory ? [legacyCategory] : [],
     date: obj.get('date') ?? '',
-    dateEnd: obj.get('dateEnd') ?? '',
+    time: obj.get('time') ?? '',
     place: obj.get('place') ?? '',
     owner: obj.get('owner') ?? '',
     attendees: obj.get('attendees') ?? '',
@@ -54,9 +57,11 @@ export function applyActivityRecord(
   record: Omit<ActivityRecord, 'id' | 'files'>,
 ): void {
   obj.set('name', record.name)
-  obj.set('category', record.category)
+  obj.set('categories', record.categories)
+  // 舊版 category 欄位繼續寫入（取第一個分類），維持與舊報表/查詢的相容性。
+  obj.set('category', record.categories[0] ?? '')
   obj.set('date', record.date)
-  obj.set('dateEnd', record.dateEnd)
+  obj.set('time', record.time)
   obj.set('place', record.place)
   obj.set('owner', record.owner)
   obj.set('attendees', record.attendees)

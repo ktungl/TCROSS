@@ -95,12 +95,12 @@ export interface ActivityRecord {
   id: string
   /** 活動名稱／事由 */
   name: string
-  /** 活動分類 */
-  category: ActivityCategory | ''
-  /** 活動起始日期 */
+  /** 活動分類（可複選） */
+  categories: ActivityCategory[]
+  /** 活動日期 */
   date: string
-  /** 活動迄止日期（同一天可留空） */
-  dateEnd: string
+  /** 活動時間（HH:MM，選填） */
+  time: string
   place: string
   /** 負責人（內部管理用） */
   owner: string

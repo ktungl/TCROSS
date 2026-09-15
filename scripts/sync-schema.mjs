@@ -34,7 +34,8 @@ const headers = {
 /** 對應 src/models/Activity.ts 的 applyActivityRecord()／activityToRecord() */
 const WANTED = {
   category: 'String',
-  dateEnd: 'String',
+  categories: 'Array',
+  time: 'String',
   attendees: 'String',
   participantDesc: 'String',
   remark: 'String',

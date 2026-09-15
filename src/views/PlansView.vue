@@ -10,6 +10,8 @@ const router = useRouter()
 const db = useDbStore()
 const planName = ref('')
 const planNameInput = ref<HTMLInputElement | null>(null)
+const editingId = ref('')
+const editingName = ref('')
 
 async function addPlan() {
   const n = planName.value.trim()
@@ -22,6 +24,31 @@ async function addPlan() {
     await db.createPlan(n)
     planName.value = ''
     pushToast('已新增計畫')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
+}
+
+function startRename(id: string, name: string) {
+  editingId.value = id
+  editingName.value = name
+}
+
+function cancelRename() {
+  editingId.value = ''
+  editingName.value = ''
+}
+
+async function saveRename() {
+  const n = editingName.value.trim()
+  if (!n) {
+    pushToast('計畫名稱不能為空', 'error')
+    return
+  }
+  try {
+    await db.renamePlan(editingId.value, n)
+    pushToast('已更新計畫名稱')
+    cancelRename()
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   }
@@ -49,7 +76,12 @@ async function removePlan(id: string, name: string) {
   </div>
 
   <div v-for="p in db.plans" :key="p.id" class="card" style="margin-bottom:10px">
-    <div class="row" style="justify-content:space-between">
+    <div v-if="editingId === p.id" class="row">
+      <input v-model="editingName" style="flex:1;min-width:220px" @keyup.enter="saveRename" @keyup.esc="cancelRename">
+      <button class="btn sm" @click="saveRename">儲存</button>
+      <button class="btn ghost sm" @click="cancelRename">取消</button>
+    </div>
+    <div v-else class="row" style="justify-content:space-between">
       <button
         style="background:none;border:0;padding:0;text-align:left;color:inherit;cursor:pointer"
         @click="router.push({ name: 'plan-detail', params: { id: p.id } })"
@@ -60,7 +92,10 @@ async function removePlan(id: string, name: string) {
           {{ db.activities.filter(a => a.plans.includes(p.id) && gaps(a).length).length }} 場有缺漏
         </div>
       </button>
-      <button class="x" title="刪除計畫" @click="removePlan(p.id, p.name)">×</button>
+      <div class="row" style="gap:6px">
+        <button class="btn ghost sm" title="重新命名" @click="startRename(p.id, p.name)">重新命名</button>
+        <button class="x" title="刪除計畫" @click="removePlan(p.id, p.name)">×</button>
+      </div>
     </div>
   </div>
   <p v-if="!db.plans.length" class="empty" style="padding:0">還沒有計畫。</p>

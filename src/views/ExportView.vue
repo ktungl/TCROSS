@@ -31,7 +31,7 @@ const picked = computed(() =>
         (!xPlan.value || a.plans.includes(xPlan.value)) &&
         (!xFrom.value || a.date >= xFrom.value) &&
         (!xTo.value || a.date <= xTo.value) &&
-        (!xCategories.value.length || (a.category && xCategories.value.includes(a.category))),
+        (!xCategories.value.length || a.categories.some((c) => xCategories.value.includes(c))),
     )
     .slice()
     .sort((x, y) => (x.date || '').localeCompare(y.date || '')),
@@ -47,7 +47,7 @@ function doCsv() {
     ...picked.value.map((a) => [
       a.date,
       a.name,
-      a.category,
+      a.categories.join('、'),
       a.place,
       a.owner,
       a.headcount.male,
@@ -142,7 +142,7 @@ async function doExport() {
           <tr v-for="a in picked" :key="a.id">
             <td class="mono">{{ a.date }}</td>
             <td>{{ a.name }}</td>
-            <td>{{ a.category || '—' }}</td>
+            <td>{{ a.categories.join('、') || '—' }}</td>
             <td>{{ a.place }}</td>
             <td class="mono">{{ a.headcount.total }}</td>
             <td>{{ a.kpis.map(k => `${k.k} ${k.v}${k.u}`).join('；') || '—' }}</td>

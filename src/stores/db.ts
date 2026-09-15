@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import Parse from '../lib/parse'
 import { deleteObjects } from '../lib/middleware'
+import { uploadParseFile } from '../lib/uploadFile'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
 import {
@@ -24,9 +25,9 @@ import type {
 
 export interface ActivityFormInput {
   name: string
-  category: ActivityCategory | ''
+  categories: ActivityCategory[]
   date: string
-  dateEnd: string
+  time: string
   place: string
   owner: string
   attendees: string
@@ -69,6 +70,14 @@ export const useDbStore = defineStore('db', () => {
     plans.value.push(planToRecord(obj))
   }
 
+  async function renamePlan(id: string, name: string): Promise<void> {
+    const obj = PlanObject.createWithoutData(id)
+    obj.set('name', name)
+    await obj.save()
+    const existing = plans.value.find((p) => p.id === id)
+    if (existing) existing.name = name
+  }
+
   async function deletePlan(id: string): Promise<void> {
     await PlanObject.createWithoutData(id).destroy()
     const affected = activities.value.filter((a) => a.plans.includes(id))
@@ -85,6 +94,24 @@ export const useDbStore = defineStore('db', () => {
     const record = activityToRecord(obj)
     activities.value.push(record)
     return record
+  }
+
+  async function duplicateActivity(id: string): Promise<ActivityRecord> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing) throw new Error('找不到活動')
+    return createActivity({
+      name: `${existing.name}（複製）`,
+      categories: [...existing.categories],
+      date: '',
+      time: '',
+      place: existing.place,
+      owner: existing.owner,
+      attendees: existing.attendees,
+      participantDesc: existing.participantDesc,
+      headcount: { ...existing.headcount },
+      plans: [...existing.plans],
+      remark: existing.remark,
+    })
   }
 
   async function deleteActivity(id: string): Promise<void> {
@@ -121,9 +148,9 @@ export const useDbStore = defineStore('db', () => {
       (obj, existing) =>
         applyActivityRecord(obj, {
           name: existing.name,
-          category: existing.category,
+          categories: existing.categories,
           date: existing.date,
-          dateEnd: existing.dateEnd,
+          time: existing.time,
           place: existing.place,
           owner: existing.owner,
           attendees: existing.attendees,
@@ -157,11 +184,15 @@ export const useDbStore = defineStore('db', () => {
   /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
   const UPLOAD_CONCURRENCY = 4
 
-  /** Parse Server 的檔案名稱只接受 ASCII，中文/日文等非 ASCII 字元會被拒絕並回傳
+  /** Parse Server 的檔案名稱只接受 ASCII 且必須以英數字開頭（正規表示式
+   * `^[a-zA-Z0-9][a-zA-Z0-9@. ~_-]*`），中文/日文等非 ASCII 字元會被拒絕並回傳
    * 400「Filename contains invalid characters」。Windows 螢幕截圖預設就是中文檔名，
-   * 所以上傳用的檔名要清成安全字元，展示用的原始檔名（FileMeta.name）維持不變。 */
+   * 清成安全字元後常常整段中文被換成單一底線，導致檔名變成「_xxx.png」這種不合法
+   * 的開頭，所以額外加上數字時間戳記當前綴，保證一定以數字開頭。展示用的原始檔名
+   * （FileMeta.name）維持不變。 */
   function safeUploadFilename(name: string): string {
-    return name.replace(/[^A-Za-z0-9 _.-]+/g, '_') || 'file'
+    const cleaned = name.replace(/[^A-Za-z0-9 @.~_-]+/g, '_') || 'file'
+    return `${Date.now()}_${cleaned}`
   }
 
   async function uploadFiles(
@@ -182,13 +213,10 @@ export const useDbStore = defineStore('db', () => {
       while (cursor < files.length) {
         const i = cursor++
         const file = files[i]
-        const parseFile = new Parse.File(safeUploadFilename(file.name), file)
-        await parseFile.save({
-          progress: (fraction?: number | null) => {
-            if (fraction !== null && fraction !== undefined) onProgress?.(file, fraction)
-          },
-        })
-        uploaded[i] = { name: file.name, size: file.size, url: parseFile.url() ?? '' }
+        const result = await uploadParseFile(safeUploadFilename(file.name), file, (fraction) =>
+          onProgress?.(file, fraction),
+        )
+        uploaded[i] = { name: file.name, size: file.size, url: result.url }
       }
     }
     await Promise.all(
@@ -293,9 +321,11 @@ export const useDbStore = defineStore('db', () => {
     error,
     fetchAll,
     createPlan,
+    renamePlan,
     deletePlan,
     createActivity,
     updateActivity,
+    duplicateActivity,
     deleteActivity,
     setActivityPlans,
     saveActivityResults,
