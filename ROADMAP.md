@@ -206,4 +206,4 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 
 ### 附帶項目：模板輸出格式修正（與 GCP 無關）
 
-既然確認輸出格式要是「真正的」PDF/Word/Excel，現有 `downloadFile()` 原本產生的其實是改副檔名的 HTML。已用前端函式庫（`docx`、`exceljs`）把簽到表/領據這幾個模板升級成真格式，不需要等後端。
+既然確認輸出格式要是「真正的」PDF/Word/Excel，現有 `downloadFile()` 原本產生的其實是改副檔名的 HTML。已用前端函式庫（`docx`、`exceljs`）把簽到表/領據這幾個模板升級成真格式，不需要等後端
