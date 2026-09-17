@@ -64,6 +64,19 @@ export async function deleteObjects(objectPaths: string[], activityId?: string):
   if (!res.ok) throw new Error(await readErrorMessage(res, '無法刪除素材檔案'))
 }
 
+/** 建立好 GenerationJob 後呼叫，觸發 Cloud Run 端的 Gemini 分析＋文件組裝（Phase 3b）。
+ * 這個請求本身很快就回應（202，實際生成在背景執行），結果透過既有的
+ * useGenerationJobPolling.ts 輪詢 GenerationJob.status 取得，不是等這個 fetch 回應。 */
+export async function triggerGeneration(jobId: string): Promise<void> {
+  const token = Parse.User.current()?.getSessionToken()
+  if (!token) throw new Error('請重新登入')
+  const res = await fetch(`${baseUrl()}/generate/${jobId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, '無法觸發自動生成'))
+}
+
 export function uploadToSignedUrl(
   uploadUrl: string,
   file: File,

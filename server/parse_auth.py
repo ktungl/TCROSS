@@ -73,13 +73,47 @@ def find_generation_jobs_for_object_paths(session_token: str, object_paths: list
     return matched
 
 
+def get_activity(session_token: str, activity_id: str) -> dict | None:
+    """Fetch the full Activity record the caller can currently read — used by
+    /generate to get the activity name for the generated report's title."""
+    resp = _client.get(
+        f"{PARSE_SERVER_URL}/classes/Activity/{activity_id}",
+        headers=_user_headers(session_token),
+    )
+    if resp.status_code != 200:
+        return None
+    return resp.json()
+
+
+def get_generation_job(session_token: str, job_id: str) -> dict | None:
+    """Fetch a GenerationJob the caller can currently read (Parse REST + the
+    caller's own session token, so it respects CLP/ACL like the other helpers
+    here) — used by /generate to confirm the caller may trigger this specific
+    job before doing any work."""
+    resp = _client.get(
+        f"{PARSE_SERVER_URL}/classes/GenerationJob/{job_id}",
+        headers=_user_headers(session_token),
+    )
+    if resp.status_code != 200:
+        return None
+    body = resp.json()
+    activity_ptr = body.get("activity") or {}
+    return {
+        "status": body.get("status", "pending"),
+        "kind": body.get("kind", "成果報告"),
+        "sourceFiles": body.get("sourceFiles") or [],
+        "activityId": activity_ptr.get("objectId", ""),
+    }
+
+
 def write_with_master_key(class_name: str, object_id: str, fields: dict) -> dict:
     """
     Update a Parse object using the Master Key. The Master Key only ever lives in
     this service's environment — it must never be shipped to the frontend bundle.
 
-    Not called by any endpoint yet: this is the write-back primitive Phase 2/3
-    (GenerationJob + Gemini result write-back) will use once that data model exists.
+    Used by /generate (Phase 3b) to move a GenerationJob through
+    processing/done/error and attach resultFile once Gemini + document assembly
+    finish, since that happens after the caller's own request/response cycle.
     """
     if not PARSE_MASTER_KEY:
         raise RuntimeError("PARSE_MASTER_KEY 未設定")

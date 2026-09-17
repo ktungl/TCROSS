@@ -10,6 +10,7 @@ import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
+import AiGenerationModal from '../components/AiGenerationModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
 
 const props = defineProps<{ id: string }>()
@@ -35,6 +36,7 @@ watch(
 
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
+const showAiGenModal = ref(false)
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
@@ -167,6 +169,7 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
       <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
       <button class="btn ghost sm" @click="genKind = '成果報告'">產生成果報告</button>
+      <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
       <button class="btn ghost sm" style="color:var(--stamp);margin-left:auto" @click="deleteActivity">刪除此活動</button>
     </div>
 
@@ -268,6 +271,7 @@ async function duplicateActivity() {
 
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="planName" @close="genKind = null" />
+    <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
   </div>
   <p v-else class="empty">{{ db.loading ? '載入中…' : '找不到這個活動。' }}</p>
 </template>

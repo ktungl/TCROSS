@@ -50,7 +50,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
   - 成果：`summary`（活動內容簡述與效益）/ `kpis` / `remark`（備註）
   - 附件（8 分類，各存一個 `{name, size, url, caption?, featured?}` 陣列）：`photoFiles`（照片，`caption` 為圖說、`featured` 為大紀事精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
   - 舊版殘留：`headcount`（單一人數數字，已由 `maleCount`/`femaleCount`/`totalCount` 取代）/ `audioFiles`／`videoFiles`／`docFiles`（舊 4 分類附件）——前端不再讀寫，但舊資料可能還在，Cloud Code 仍會驗證與清孤兒檔
-- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，前端 `AiGenerationModal.vue` 已串上傳/建立/輪詢/下載/刪除，但 Cloud Run 端的生成邏輯還沒實作（見 [ROADMAP.md](ROADMAP.md) Phase 3b）
+- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，前端 `AiGenerationModal.vue`（掛在 `DetailView.vue`「AI 自動生成成果報告」按鈕）已串上傳/建立/輪詢/下載/刪除；Cloud Run 端呼叫 Gemini＋組裝文件已完成、部署上線並通過端到端測試（見 [ROADMAP.md](ROADMAP.md) Phase 3b）
 
 **新增欄位時要記得同步 Back4App schema**：Back4App 不允許前端（JS Key）自動建欄位，`Activity.ts` 加了新欄位卻沒在 Back4App 建對應欄位的話，存檔會收到 `Permission denied for action addField on class Activity`。改完 `src/models/Activity.ts` 後，更新 `scripts/sync-schema.mjs` 的 `WANTED` 再跑：
 
@@ -112,11 +112,11 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 
 ### 現況與實作規劃
 
-以上是目標架構的完整規劃；**目前只剩 Gemini 分析＋文件組裝（Phase 3b）還沒做**，其餘部分都已實作並部署：
+以上是目標架構的完整規劃，目前狀態（2026-09-17）：
 
 - GCS＋Cloud Run 中介層（`server/`）已部署到正式環境，前端上傳/下載/刪除檔案都經過這層簽發 signed URL，不直接握 GCP 憑證
 - `GenerationJob` 資料模型與前端的上傳/建立任務/輪詢/下載/刪除流程（`AiGenerationModal.vue`）已完成並上線
-- Cloud Run 端呼叫 Vertex AI Gemini、組裝真正的 PDF/Word/Excel 這段（上圖流程第 6–9 步）**還沒開始**，依規劃暫緩中
+- **Cloud Run 端呼叫 Vertex AI Gemini、組裝文件這段（上圖流程第 6–9 步）已完成、部署上線並通過端到端測試**（`server/report.py`／`/generate/{job_id}` 端點，2026-09-17），目前只組裝 `.docx`（Word），還沒做 PDF/Excel；細節見 [ROADMAP.md](ROADMAP.md#gcp-整合進度)
 
 落差盤點、資料模型異動與分階段實作計畫見 [ROADMAP.md](ROADMAP.md)；部署、健康檢查、密鑰輪替、範本修改流程等維運操作見 [OPERATIONS.md](OPERATIONS.md)。
 

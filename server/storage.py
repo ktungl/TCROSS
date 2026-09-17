@@ -73,6 +73,13 @@ def generate_signed_download_url(object_path: str) -> str:
     )
 
 
+def upload_bytes(object_path: str, data: bytes, content_type: str) -> None:
+    """Server-side direct write to GCS (not a signed URL) — used to store the
+    Cloud Run-generated report file (Phase 3b); the browser never uploads this
+    one itself, so it doesn't need a signed PUT URL."""
+    _client().bucket(GCS_BUCKET).blob(object_path).upload_from_string(data, content_type=content_type)
+
+
 def delete_object(object_path: str) -> None:
     """Delete a GCS object. No-op if it's already gone, so callers can retry a
     partially-failed batch delete without erroring on the objects already removed."""

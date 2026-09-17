@@ -6,6 +6,7 @@ import {
   deleteObjects,
   requestDownloadUrl,
   requestSignedUploadUrls,
+  triggerGeneration,
   uploadToSignedUrl,
   type SignedUrlResponse,
 } from '../lib/middleware'
@@ -142,8 +143,15 @@ async function startGeneration() {
     const job = await db.createGenerationJob(props.activity.id, '成果報告', objectPaths as string[])
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))
-    pushToast('已送出，等待後端處理')
     startPolling(job.id, (r) => (activeJob.value = r))
+    try {
+      await triggerGeneration(job.id)
+      pushToast('已送出，AI 正在處理中')
+    } catch (e) {
+      // 素材已上傳、job 已建立，只是觸發生成這一步失敗——工作會停在「待處理」，
+      // 不要把已完成的上傳流程當成整體失敗來處理。
+      pushToast(errorMessage(e), 'error')
+    }
   } catch (e) {
     // 清掉已經上傳成功、但沒機會掛到 GenerationJob 上的孤兒檔案，避免留在 GCS 裡持續計費。
     // best-effort：清不掉就算了，不要蓋掉原本要顯示給使用者的錯誤訊息。
@@ -200,9 +208,6 @@ function close() {
     <div class="card">
       <h2 style="margin-top:0">AI 自動生成成果報告</h2>
       <p class="sub">選擇語音／影片／照片／文件素材，上傳後建立一筆生成工作。</p>
-      <p class="flagbox" style="margin:0 0 16px">
-        目前尚未接上自動生成後端，此工作會停在「待處理」狀態，之後才會由後端接手產生真正的檔案。
-      </p>
 
       <FolderDropzone
         v-for="[key, label] in FOLDERS"

@@ -4,12 +4,20 @@ import time
 import uuid
 from collections import defaultdict
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from parse_auth import activity_exists, find_generation_jobs_for_object_paths, verify_session_token
-from storage import delete_object, generate_signed_download_url, generate_signed_upload_url
+from parse_auth import (
+    activity_exists,
+    find_generation_jobs_for_object_paths,
+    get_activity,
+    get_generation_job,
+    verify_session_token,
+    write_with_master_key,
+)
+from report import analyze_sources, build_report_docx
+from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
 from utils import is_extension_blocked, is_valid_object_path, sanitize_filename
 
 # 應用層稽核紀錄（ISO 27001 A.8.15／A.8.16）：誰、對什麼物件、做了什麼敏感操作。
@@ -171,3 +179,46 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
         delete_object(path)
     audit_log.info("objects deleted user=%s count=%d objectPaths=%s", user.get("username"), len(body.objectPaths), body.objectPaths)
     return {"deleted": len(body.objectPaths)}
+
+
+@app.post("/generate/{job_id}", status_code=202)
+def trigger_generation(job_id: str, background_tasks: BackgroundTasks, user: dict = Depends(enforce_rate_limit)):
+    """Phase 3b trigger: frontend calls this right after creating a pending
+    GenerationJob. The heavy work (Gemini + docx assembly + GCS write + Parse
+    write-back) runs in a background task so this request returns immediately;
+    the frontend already polls GenerationJob.status every 5s to learn the
+    outcome, same as before this endpoint existed."""
+    job = get_generation_job(user["sessionToken"], job_id)
+    if not job or not job["activityId"]:
+        audit_log.warning("rejected: unauthorized generationJob user=%s jobId=%s", user.get("username"), job_id)
+        raise HTTPException(403, "generationJob 不存在或無權存取")
+    if job["status"] != "pending":
+        raise HTTPException(409, f"這筆工作目前狀態是「{job['status']}」，無法重複觸發")
+
+    activity = get_activity(user["sessionToken"], job["activityId"])
+    activity_name = (activity or {}).get("name", "")
+
+    write_with_master_key("GenerationJob", job_id, {"status": "processing"})
+    audit_log.info(
+        "generation triggered user=%s jobId=%s activityId=%s sourceCount=%d",
+        user.get("username"), job_id, job["activityId"], len(job["sourceFiles"]),
+    )
+    background_tasks.add_task(_run_generation, job_id, job["activityId"], activity_name, job["sourceFiles"])
+    return {"status": "processing"}
+
+
+def _run_generation(job_id: str, activity_id: str, activity_name: str, source_paths: list[str]) -> None:
+    try:
+        analysis = analyze_sources(source_paths)
+        docx_bytes = build_report_docx(activity_name, analysis)
+        result_path = f"activities/{activity_id}/generated/{job_id}.docx"
+        upload_bytes(
+            result_path,
+            docx_bytes,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        write_with_master_key("GenerationJob", job_id, {"status": "done", "resultFile": result_path})
+        audit_log.info("generation done jobId=%s resultFile=%s", job_id, result_path)
+    except Exception as exc:  # noqa: BLE001 — any failure here must still flip status away from "processing"
+        audit_log.exception("generation failed jobId=%s", job_id)
+        write_with_master_key("GenerationJob", job_id, {"status": "error", "errorMessage": str(exc)[:500]})
