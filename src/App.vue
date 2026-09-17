@@ -13,8 +13,7 @@ const auth = useAuthStore()
 
 const navItems: { name: string; label: string }[] = [
   { name: 'dashboard', label: '總覽' },
-  { name: 'plans', label: '計畫' },
-  { name: 'categories', label: '分類管理' },
+  { name: 'plans', label: '計畫與分類管理' },
   { name: 'list', label: '活動列表' },
   { name: 'export', label: '匯出成果' },
 ]
@@ -65,15 +64,19 @@ watch(
           <span></span><span></span><span></span>
         </button>
       </div>
-      <nav>
-        <button
-          v-for="item in navItems"
-          :key="item.name"
-          :aria-current="route.name === item.name"
-          @click="selectNav(item.name)"
-        >{{ item.label }}</button>
-        <button @click="logOut">登出</button>
-      </nav>
+      <div class="nav-wrap">
+        <nav>
+          <button
+            v-for="item in navItems"
+            :key="item.name"
+            :aria-current="route.name === item.name"
+            @click="selectNav(item.name)"
+          >{{ item.label }}</button>
+        </nav>
+        <div class="logout-zone">
+          <button class="logout-btn" @click="logOut">登出</button>
+        </div>
+      </div>
     </aside>
     <main>
       <p v-if="db.error" class="flagbox">

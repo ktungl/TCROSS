@@ -4,7 +4,6 @@ import ListView from '../views/ListView.vue'
 import DetailView from '../views/DetailView.vue'
 import PlansView from '../views/PlansView.vue'
 import PlanDetailView from '../views/PlanDetailView.vue'
-import CategoriesView from '../views/CategoriesView.vue'
 import ExportView from '../views/ExportView.vue'
 import LoginView from '../views/LoginView.vue'
 import Parse from '../lib/parse'
@@ -24,7 +23,6 @@ const router = createRouter({
     { path: '/activities/:id', name: 'detail', component: DetailView, props: true },
     { path: '/plans', name: 'plans', component: PlansView },
     { path: '/plans/:id', name: 'plan-detail', component: PlanDetailView, props: true },
-    { path: '/categories', name: 'categories', component: CategoriesView },
     { path: '/export', name: 'export', component: ExportView },
   ],
 })

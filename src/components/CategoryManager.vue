@@ -63,7 +63,6 @@ async function removeCategory(id: string, name: string) {
 </script>
 
 <template>
-  <h1>分類管理</h1>
   <p class="sub">活動分類（原「活動分類」下拉選單的選項）可以在這裡自訂新增、改名或刪除，調整不會影響已建立活動上已記錄的分類文字。</p>
   <div class="card" style="margin-bottom:20px">
     <div class="row">
