@@ -4,17 +4,19 @@ import Parse from '../lib/parse'
 import { deleteObjects } from '../lib/middleware'
 import { uploadParseFile } from '../lib/uploadFile'
 import { PlanObject, planToRecord } from '../models/Plan'
+import { CategoryObject, categoryToRecord } from '../models/Category'
 import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
 import {
   GenerationJobObject,
   applyGenerationJobRecord,
   generationJobToRecord,
 } from '../models/GenerationJob'
-import { fileUploadRejectionReason } from '../types'
+import { DEFAULT_CATEGORY_NAMES, fileUploadRejectionReason } from '../types'
 import type {
   ActivityCategory,
   ActivityRecord,
   AttachmentKey,
+  CategoryRecord,
   FileMeta,
   GenerationJobKind,
   GenerationJobRecord,
@@ -39,28 +41,69 @@ export interface ActivityFormInput {
 
 export const useDbStore = defineStore('db', () => {
   const plans = ref<PlanRecord[]>([])
+  const categories = ref<CategoryRecord[]>([])
   const activities = ref<ActivityRecord[]>([])
   const generationJobs = ref<GenerationJobRecord[]>([])
   const loading = ref(false)
   const error = ref('')
 
+  /** Category 集合第一次使用是空的（尚未有人建立過任何分類），這裡用舊版寫死的
+   * 分類清單當起始種子，讓既有使用習慣（下拉選單有 5 個預設分類）不會斷。 */
+  async function seedDefaultCategoriesIfEmpty(): Promise<CategoryRecord[]> {
+    const objs = await Promise.all(
+      DEFAULT_CATEGORY_NAMES.map((name) => {
+        const obj = new CategoryObject()
+        obj.set('name', name)
+        return obj.save()
+      }),
+    )
+    return objs.map(categoryToRecord)
+  }
+
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = ''
     try {
-      const [planObjs, activityObjs] = await Promise.all([
+      const [planObjs, categoryObjs, activityObjs] = await Promise.all([
         new Parse.Query(PlanObject).find(),
+        new Parse.Query(CategoryObject).find(),
         new Parse.Query(ActivityObject).find(),
       ])
       plans.value = planObjs.map(planToRecord)
+      categories.value = categoryObjs.length
+        ? categoryObjs.map(categoryToRecord)
+        : await seedDefaultCategoriesIfEmpty()
       activities.value = activityObjs.map(activityToRecord)
     } catch (e) {
       error.value = e instanceof Error ? e.message : '無法連線到 Parse 伺服器'
       plans.value = []
+      categories.value = []
       activities.value = []
     } finally {
       loading.value = false
     }
+  }
+
+  async function createCategory(name: string): Promise<void> {
+    const obj = new CategoryObject()
+    obj.set('name', name)
+    await obj.save()
+    categories.value.push(categoryToRecord(obj))
+  }
+
+  async function renameCategory(id: string, name: string): Promise<void> {
+    const obj = CategoryObject.createWithoutData(id)
+    obj.set('name', name)
+    await obj.save()
+    const existing = categories.value.find((c) => c.id === id)
+    if (existing) existing.name = name
+  }
+
+  /** 只刪分類管理清單裡的項目，不會動到已存活動的 categories 欄位——那裡存的是
+   * 分類名稱文字本身（不是參照 id），刪除或改名分類都不影響既有紀錄。 */
+  async function deleteCategory(id: string): Promise<void> {
+    await CategoryObject.createWithoutData(id).destroy()
+    categories.value = categories.value.filter((c) => c.id !== id)
   }
 
   async function createPlan(name: string): Promise<void> {
@@ -315,6 +358,7 @@ export const useDbStore = defineStore('db', () => {
 
   return {
     plans,
+    categories,
     activities,
     generationJobs,
     loading,
@@ -323,6 +367,9 @@ export const useDbStore = defineStore('db', () => {
     createPlan,
     renamePlan,
     deletePlan,
+    createCategory,
+    renameCategory,
+    deleteCategory,
     createActivity,
     updateActivity,
     duplicateActivity,

@@ -4,7 +4,6 @@ import { useDbStore } from '../stores/db'
 import { gaps, nFiles, score } from '../utils/activity'
 import { buildCsv, buildLedgerXlsx, buildNeimuReportDocx, downloadBlob, downloadFile } from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
-import { ACTIVITY_CATEGORIES } from '../types'
 import type { ActivityCategory } from '../types'
 
 const db = useDbStore()
@@ -109,12 +108,12 @@ async function doExport() {
 
     <label style="margin-top:14px">活動分類（不勾選＝全部）</label>
     <div class="row" style="gap:14px">
-      <label v-for="c in ACTIVITY_CATEGORIES" :key="c" class="chk">
+      <label v-for="c in db.categories" :key="c.id" class="chk">
         <input
           type="checkbox"
-          :checked="xCategories.includes(c)"
-          @change="toggleCategory(c, ($event.target as HTMLInputElement).checked)"
-        >{{ c }}
+          :checked="xCategories.includes(c.name)"
+          @change="toggleCategory(c.name, ($event.target as HTMLInputElement).checked)"
+        >{{ c.name }}
       </label>
     </div>
 

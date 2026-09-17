@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
-import { ACTIVITY_CATEGORIES } from '../types'
 import type { ActivityCategory, ActivityRecord } from '../types'
+import { loadGoogleMapsPlaces } from '../lib/googleMaps'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 
 const props = defineProps<{ activity?: ActivityRecord }>()
@@ -29,11 +29,39 @@ const remark = ref(props.activity?.remark ?? '')
 const selectedPlans = ref<string[]>(props.activity ? [...props.activity.plans] : [])
 const nameError = ref(false)
 
-const categoryOptions = ACTIVITY_CATEGORIES.map((c) => ({ id: c, label: c }))
+const categoryOptions = computed(() => db.categories.map((c) => ({ id: c.name, label: c.name })))
 const planOptions = () => db.plans.map((p) => ({ id: p.id, label: p.name }))
 
 watch([male, female], ([m, f]) => {
   total.value = (Number(m) || 0) + (Number(f) || 0)
+})
+
+// 地點欄位的 Google 地址自動建議；沒設 VITE_GOOGLE_MAPS_API_KEY 時 loadGoogleMapsPlaces()
+// 回傳 null，這裡就靜默略過，不影響地點欄位原本手動輸入的功能。
+const placeInput = ref<HTMLInputElement | null>(null)
+let placeAutocomplete: google.maps.places.Autocomplete | null = null
+
+onMounted(async () => {
+  const loading = loadGoogleMapsPlaces()
+  if (!loading || !placeInput.value) return
+  try {
+    const g = await loading
+    placeAutocomplete = new g.maps.places.Autocomplete(placeInput.value, {
+      fields: ['formatted_address', 'name'],
+      componentRestrictions: { country: 'tw' },
+    })
+    placeAutocomplete.addListener('place_changed', () => {
+      const selected = placeAutocomplete!.getPlace()
+      const address = selected.formatted_address || selected.name
+      if (address) place.value = address
+    })
+  } catch {
+    // 地址自動建議載入失敗時不影響手動輸入地點，靜默略過即可。
+  }
+})
+
+onBeforeUnmount(() => {
+  if (placeAutocomplete) google.maps.event.clearInstanceListeners(placeAutocomplete)
 })
 
 async function submit() {
@@ -103,8 +131,12 @@ async function submit() {
         <div><label>活動時間（選填）</label><input type="time" v-model="time"></div>
       </div>
 
-      <div class="grid3" style="margin-top:12px">
-        <div><label>地點</label><input v-model="place"></div>
+      <div style="margin-top:12px">
+        <label>地點</label>
+        <input ref="placeInput" v-model="place" placeholder="輸入地址，會自動帶出建議" autocomplete="off">
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
         <div><label>負責人</label><input v-model="owner"></div>
         <div><label>與會單位或成員</label><input v-model="attendees" placeholder="例如：○○里辦公室、○○協會"></div>
       </div>

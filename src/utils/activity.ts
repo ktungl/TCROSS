@@ -1,6 +1,11 @@
 import { ATTACHMENT_TYPES, PHOTO_MIN } from '../types'
 import type { ActivityRecord } from '../types'
 
+/** 用地點文字產生 Google 地圖搜尋連結（不需要地理編碼 API，直接讓 Google 用文字搜尋）。 */
+export function googleMapsUrl(place: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`
+}
+
 export function kb(bytes: number): string {
   if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
   return Math.max(1, Math.round(bytes / 1024)) + ' KB'

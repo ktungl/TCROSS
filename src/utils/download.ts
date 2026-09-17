@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import {
   AlignmentType,
+  BorderStyle,
   Document,
   HeadingLevel,
   ImageRun,
@@ -40,10 +41,10 @@ export function buildCsv(rows: (string | number)[][]): string {
   return rows.map((row) => row.map(q).join(',')).join('\n')
 }
 
-export type GeneratedFormKind = '簽到表' | '領據' | '活動紀錄表'
+export type GeneratedFormKind = '簽到表' | '領據' | '活動紀錄表' | '成果報告'
 
 export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx' {
-  return kind === '領據' ? 'docx' : 'xlsx'
+  return kind === '領據' || kind === '成果報告' ? 'docx' : 'xlsx'
 }
 
 function activityInfoLines(a: ActivityRecord, planNames: string): string[] {
@@ -95,6 +96,30 @@ export async function buildSignInSheetXlsx(a: ActivityRecord, planNames: string)
   return new Blob([buffer], { type: XLSX_MIME })
 }
 
+/** Excel 欄寬單位大致等同半形字元數；中文/全形字元約佔 2 個單位寬。用來估算
+ * 折行後的實際行數，避免像「附件」這種一行塞很多項目的內容被固定行高擋住。 */
+function estimateWrappedLines(text: string, columnWidthChars: number): number {
+  let lines = 0
+  for (const rawLine of text.split('\n')) {
+    let width = 0
+    for (const ch of rawLine) {
+      width += /[　-鿿＀-￯]/.test(ch) ? 2 : 1
+    }
+    lines += Math.max(1, Math.ceil(width / columnWidthChars))
+  }
+  return Math.max(1, lines)
+}
+
+/** 內容需要的行數與版面設計的最少行數（例如空白欄位要留幾行手寫空間）取較大者，
+ * 這樣文字較長時列高會跟著長，不會因固定行高被遮蔽；內容短或空白時仍保留設計的最小高度。 */
+function rowHeightForWrappedText(text: string, columnWidthChars: number, minLines: number): number {
+  // Excel 單行預設列高剛好等於 15pt 文字本身的高度，配上格線邊框後完全沒有留白，
+  // 視覺上會顯得被夾住；多留一點緩衝，避免文字看起來貼著上下邊框。
+  const LINE_HEIGHT_PT = 18
+  const needed = text ? estimateWrappedLines(text, columnWidthChars) : minLines
+  return Math.max(minLines, needed) * LINE_HEIGHT_PT
+}
+
 export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: string): Promise<Blob> {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('活動紀錄表')
@@ -115,11 +140,11 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
 
   const startRow = 2 + infoLines.length + 1
   const fields: [string, string, number][] = [
-    ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 1],
+    ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 2],
     ['活動流程', '', 5],
     ['執行情形', a.summary, 5],
     ['檢討與建議', '', 5],
-    ['附件', ATTACHMENT_TYPES.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0} 件`).join('　'), 1],
+    ['附件', ATTACHMENT_TYPES.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0} 件`).join('　'), 2],
   ]
   fields.forEach(([label, value, heightLines], i) => {
     const rowIdx = startRow + i
@@ -131,7 +156,7 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
     valueCell.value = value
     valueCell.alignment = { wrapText: true, vertical: 'top' }
     valueCell.border = THIN_BORDER
-    sheet.getRow(rowIdx).height = heightLines * 15
+    sheet.getRow(rowIdx).height = rowHeightForWrappedText(value, 70, heightLines)
   })
 
   const buffer = await workbook.xlsx.writeBuffer()
@@ -228,6 +253,36 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
+/** docx／exceljs 都只認得 jpg/png/gif，手機截圖、Line 傳圖、瀏覽器另存常見的 webp（或其他
+ * 瀏覽器看得懂但不在白名單裡的格式）會被上面的 fileKindFromName() 擋掉。這裡用瀏覽器內建
+ * 的圖片解碼能力把它畫到 canvas 上再輸出成 PNG，而不是直接放棄不嵌入。 */
+function convertToPng(blob: Blob): Promise<{ blob: Blob; width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob)
+    const img = new window.Image()
+    img.onload = () => {
+      const width = img.naturalWidth || 1
+      const height = img.naturalHeight || 1
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      URL.revokeObjectURL(url)
+      if (!ctx) {
+        resolve(null)
+        return
+      }
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob((pngBlob) => resolve(pngBlob ? { blob: pngBlob, width, height } : null), 'image/png')
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(null)
+    }
+    img.src = url
+  })
+}
+
 interface ImageAsset {
   dataUrl: string
   data: ArrayBuffer
@@ -238,18 +293,27 @@ interface ImageAsset {
 }
 
 async function loadImageAsset(file: FileMeta): Promise<ImageAsset | null> {
-  const kind = fileKindFromName(file.name)
-  if (!kind || !file.url) return null
+  if (!file.url) return null
   try {
     const res = await fetch(file.url)
     if (!res.ok) return null
-    const blob = await res.blob()
-    const [dataUrl, data, dims] = await Promise.all([
-      blobToDataUrl(blob),
-      blob.arrayBuffer(),
-      readImageDimensions(blob),
+    const originalBlob = await res.blob()
+    const kind = fileKindFromName(file.name)
+    if (kind) {
+      const [dataUrl, data, dims] = await Promise.all([
+        blobToDataUrl(originalBlob),
+        originalBlob.arrayBuffer(),
+        readImageDimensions(originalBlob),
+      ])
+      return { dataUrl, data, docxType: kind.docxType, xlsxExt: kind.xlsxExt, width: dims.width, height: dims.height }
+    }
+    const converted = await convertToPng(originalBlob)
+    if (!converted) return null
+    const [dataUrl, data] = await Promise.all([
+      blobToDataUrl(converted.blob),
+      converted.blob.arrayBuffer(),
     ])
-    return { dataUrl, data, docxType: kind.docxType, xlsxExt: kind.xlsxExt, width: dims.width, height: dims.height }
+    return { dataUrl, data, docxType: 'png', xlsxExt: 'png', width: converted.width, height: converted.height }
   } catch {
     return null
   }
@@ -258,6 +322,72 @@ async function loadImageAsset(file: FileMeta): Promise<ImageAsset | null> {
 function scaleToBox(w: number, h: number, maxW: number, maxH: number): { width: number; height: number } {
   const ratio = Math.min(maxW / w, maxH / h, 1)
   return { width: Math.max(1, Math.round(w * ratio)), height: Math.max(1, Math.round(h * ratio)) }
+}
+
+/** docx 的 ImageRun 尺寸以 96dpi 像素為單位。 */
+const PX_PER_CM = 96 / 2.54
+
+function cmToPx(cm: number): number {
+  return Math.round(cm * PX_PER_CM)
+}
+
+const PHOTO_CELL_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '999999' }
+const PHOTO_CELL_BORDERS = {
+  top: PHOTO_CELL_BORDER,
+  bottom: PHOTO_CELL_BORDER,
+  left: PHOTO_CELL_BORDER,
+  right: PHOTO_CELL_BORDER,
+}
+const PHOTO_TABLE_BORDERS = {
+  ...PHOTO_CELL_BORDERS,
+  insideHorizontal: PHOTO_CELL_BORDER,
+  insideVertical: PHOTO_CELL_BORDER,
+}
+
+/** 活動照片表格：固定 2 欄，照片統一高 5cm、寬度依原始比例縮放，每格加細框線。 */
+function buildPhotoTable(photos: ImageAsset[], captions: string[]): Table {
+  const PHOTO_HEIGHT_CM = 5
+  const targetHeight = cmToPx(PHOTO_HEIGHT_CM)
+  const maxWidth = cmToPx(8) // 兩欄並排時單張照片的寬度上限，避免超版面
+
+  const cells = photos.map((asset, i) => {
+    // 統一縮放到目標高度（不像其他匯出區塊只縮小不放大），讓表格裡的照片高度一致。
+    const scaleRatio = targetHeight / asset.height
+    let width = Math.max(1, Math.round(asset.width * scaleRatio))
+    let height = Math.max(1, Math.round(asset.height * scaleRatio))
+    if (width > maxWidth) {
+      const extra = maxWidth / width
+      width = Math.round(width * extra)
+      height = Math.round(height * extra)
+    }
+    return new TableCell({
+      borders: PHOTO_CELL_BORDERS,
+      width: { size: 50, type: WidthType.PERCENTAGE },
+      children: [
+        new Paragraph({
+          children: [new ImageRun({ type: asset.docxType, data: asset.data, transformation: { width, height } })],
+          alignment: AlignmentType.CENTER,
+        }),
+        new Paragraph({
+          text: captions[i] || '（未填圖說）',
+          alignment: AlignmentType.CENTER,
+          border: { top: PHOTO_CELL_BORDER },
+          spacing: { before: 60 },
+        }),
+      ],
+    })
+  })
+
+  const rows: TableRow[] = []
+  for (let i = 0; i < cells.length; i += 2) {
+    const rowCells = cells.slice(i, i + 2)
+    if (rowCells.length === 1) {
+      rowCells.push(new TableCell({ borders: PHOTO_CELL_BORDERS, width: { size: 50, type: WidthType.PERCENTAGE }, children: [] }))
+    }
+    rows.push(new TableRow({ children: rowCells }))
+  }
+
+  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: PHOTO_TABLE_BORDERS, rows })
 }
 
 /** 大紀事 Excel：分類／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
@@ -324,6 +454,73 @@ export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blo
   return new Blob([buffer], { type: XLSX_MIME })
 }
 
+/** 單場活動的內容區塊：活動內容／照片／簽到表／日期／地點／參加對象及人數／效益。
+ * 內政部結案報告（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
+async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
+  const children: (Paragraph | Table)[] = []
+
+  children.push(new Paragraph({ text: '二、活動內容', spacing: { before: 100 } }))
+  children.push(new Paragraph({ text: a.summary || '（活動內容待補）' }))
+
+  const photos = pickPhotosForExport(a.files.photo ?? [], 6)
+  const photoAssets: ImageAsset[] = []
+  const photoCaptions: string[] = []
+  for (const photo of photos) {
+    const asset = await loadImageAsset(photo)
+    if (!asset) continue
+    photoAssets.push(asset)
+    photoCaptions.push(photo.caption || '')
+  }
+  if (photoAssets.length) {
+    children.push(buildPhotoTable(photoAssets, photoCaptions))
+  }
+
+  const signInFiles = a.files.signIn ?? []
+  children.push(
+    new Paragraph({
+      text: `簽到表：${signInFiles.length ? `${signInFiles.map((f) => f.name).join('、')}（詳附件）` : '未附'}`,
+      spacing: { before: 120 },
+    }),
+  )
+
+  children.push(
+    new Paragraph({
+      text: `三、活動日期：${formatRocChinese(a.date)}${a.time ? ` ${a.time}` : ''}`,
+      spacing: { before: 120 },
+    }),
+  )
+  children.push(new Paragraph({ text: `四、活動地點：${a.place}` }))
+  children.push(
+    new Paragraph({
+      text: `五、參加對象及人數：${a.participantDesc || '—'}；男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`,
+    }),
+  )
+
+  children.push(new Paragraph({ text: '六、活動效益', spacing: { before: 100 } }))
+  if (a.kpis.length) {
+    const headerRow = new TableRow({
+      children: ['指標', '數值'].map(
+        (t) => new TableCell({ children: [new Paragraph({ text: t, alignment: AlignmentType.CENTER })] }),
+      ),
+    })
+    const rows = a.kpis.map(
+      (k) =>
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph(k.k)] }),
+            new TableCell({ children: [new Paragraph(`${k.v} ${k.u}`)] }),
+          ],
+        }),
+    )
+    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...rows] }))
+  } else {
+    children.push(new Paragraph({ text: '（尚未填寫效益指標）' }))
+  }
+  if (a.remark) children.push(new Paragraph({ text: `備註：${a.remark}` }))
+
+  return children
+}
+
 /** 內政部經常門結案報告 Word：計畫名稱／活動內容／活動日期／活動地點／參加對象及人數／活動效益 */
 export async function buildNeimuReportDocx(
   activities: ActivityRecord[],
@@ -338,69 +535,23 @@ export async function buildNeimuReportDocx(
   for (let i = 0; i < activities.length; i++) {
     const a = activities[i]
     children.push(new Paragraph({ text: `${i + 1}. ${a.name}`, heading: HeadingLevel.HEADING_2 }))
-
-    children.push(new Paragraph({ text: '二、活動內容', spacing: { before: 100 } }))
-    children.push(new Paragraph({ text: a.summary || '（活動內容待補）' }))
-
-    const photos = pickPhotosForExport(a.files.photo ?? [], 6)
-    for (const photo of photos) {
-      const asset = await loadImageAsset(photo)
-      if (!asset) continue
-      const { width, height } = scaleToBox(asset.width, asset.height, 320, 320)
-      children.push(
-        new Paragraph({
-          children: [new ImageRun({ type: asset.docxType, data: asset.data, transformation: { width, height } })],
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 120 },
-        }),
-      )
-      children.push(new Paragraph({ text: photo.caption || '（未填圖說）', alignment: AlignmentType.CENTER }))
-    }
-
-    const signInFiles = a.files.signIn ?? []
-    children.push(
-      new Paragraph({
-        text: `簽到表：${signInFiles.length ? `${signInFiles.map((f) => f.name).join('、')}（詳附件）` : '未附'}`,
-        spacing: { before: 120 },
-      }),
-    )
-
-    children.push(
-      new Paragraph({
-        text: `三、活動日期：${formatRocChinese(a.date)}${a.time ? ` ${a.time}` : ''}`,
-        spacing: { before: 120 },
-      }),
-    )
-    children.push(new Paragraph({ text: `四、活動地點：${a.place}` }))
-    children.push(
-      new Paragraph({
-        text: `五、參加對象及人數：${a.participantDesc || '—'}；男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`,
-      }),
-    )
-
-    children.push(new Paragraph({ text: '六、活動效益', spacing: { before: 100 } }))
-    if (a.kpis.length) {
-      const headerRow = new TableRow({
-        children: ['指標', '數值'].map(
-          (t) => new TableCell({ children: [new Paragraph({ text: t, alignment: AlignmentType.CENTER })] }),
-        ),
-      })
-      const rows = a.kpis.map(
-        (k) =>
-          new TableRow({
-            children: [
-              new TableCell({ children: [new Paragraph(k.k)] }),
-              new TableCell({ children: [new Paragraph(`${k.v} ${k.u}`)] }),
-            ],
-          }),
-      )
-      children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...rows] }))
-    } else {
-      children.push(new Paragraph({ text: '（尚未填寫效益指標）' }))
-    }
-    if (a.remark) children.push(new Paragraph({ text: `備註：${a.remark}` }))
+    children.push(...(await buildActivityReportBlock(a)))
     children.push(new Paragraph({ text: '', spacing: { after: 400 } }))
   }
+
+  const doc = new Document({ sections: [{ children }] })
+  return Packer.toBlob(doc)
+}
+
+/** 成果報告 Word：單場活動版，資料完全來自使用者手動填寫的欄位（摘要／KPI／照片圖說），
+ * 不經過 AI 生成，跟活動詳情頁的「儲存成果」表單資料一一對應。 */
+export async function buildResultReportDocx(a: ActivityRecord, planNames: string): Promise<Blob> {
+  const children: (Paragraph | Table)[] = [
+    new Paragraph({ text: '成果報告', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
+    new Paragraph({ text: `活動名稱：${a.name}`, spacing: { after: 60 } }),
+    new Paragraph({ text: `一、對應計畫：${planNames || '—'}`, spacing: { after: 200 } }),
+  ]
+  children.push(...(await buildActivityReportBlock(a)))
 
   const doc = new Document({ sections: [{ children }] })
   return Packer.toBlob(doc)

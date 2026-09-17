@@ -1,7 +1,20 @@
 import Parse from '../lib/parse'
 import { PlanObject } from './Plan'
 import { ATTACHMENT_TYPES } from '../types'
-import type { ActivityCategory, ActivityRecord, ActivityFiles, FileMeta } from '../types'
+import type { ActivityCategory, ActivityRecord, ActivityFiles, FileMeta, Kpi } from '../types'
+
+/** Cloud Code 要求 kpis 陣列的 k/v/u 都必須是字串；舊資料或曾經用 REST API 寫入的紀錄
+ * 可能帶著數字型別的 v/u。讀取時就轉成字串，讓本地狀態（之後任何一次存檔，不管是編輯
+ * 基本資料還是儲存成果，都會把整包 kpis 原封不動送回去）永遠是乾淨資料，不會被
+ * 「kpis 陣列項目格式不正確」擋下。 */
+function normalizeKpis(raw: unknown): Kpi[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((k) => ({
+    k: String((k as Partial<Kpi> | undefined)?.k ?? ''),
+    v: String((k as Partial<Kpi> | undefined)?.v ?? ''),
+    u: String((k as Partial<Kpi> | undefined)?.u ?? ''),
+  }))
+}
 
 export class ActivityObject extends Parse.Object {
   constructor() {
@@ -47,7 +60,7 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     plans: plans.map((p) => p.id!),
     summary: obj.get('summary') ?? '',
     remark: obj.get('remark') ?? '',
-    kpis: obj.get('kpis') ?? [],
+    kpis: normalizeKpis(obj.get('kpis')),
     files,
   }
 }

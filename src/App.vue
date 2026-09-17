@@ -14,6 +14,7 @@ const auth = useAuthStore()
 const navItems: { name: string; label: string }[] = [
   { name: 'dashboard', label: '總覽' },
   { name: 'plans', label: '計畫' },
+  { name: 'categories', label: '分類管理' },
   { name: 'list', label: '活動列表' },
   { name: 'export', label: '匯出成果' },
 ]

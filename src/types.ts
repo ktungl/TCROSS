@@ -77,8 +77,19 @@ export function fileUploadRejectionReason(file: { name: string; size: number }):
 
 export type ActivityFiles = Record<AttachmentKey, FileMeta[]>
 
-export const ACTIVITY_CATEGORIES = ['居場所', '會務', '合作教育', '社區關懷', '其他'] as const
-export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]
+/** 活動分類的值本身就是使用者自訂的名稱字串（存在 Activity.categories 裡），
+ * 分類清單由「分類管理」頁面維護（見 CategoryRecord），不再寫死成固定選項。 */
+export type ActivityCategory = string
+
+export interface CategoryRecord {
+  id: string
+  name: string
+}
+
+/** Category 集合（Parse class）首次為空時，用來建立起始選項的預設種子；
+ * 建立後即可在「分類管理」頁面自由新增／改名／刪除，調整不會動到已存活動
+ * 的 categories 欄位（那裡存的是分類名稱文字本身，不是參照 id）。 */
+export const DEFAULT_CATEGORY_NAMES = ['居場所', '會務', '合作教育', '社區關懷', '其他']
 
 export interface HeadcountStat {
   male: number

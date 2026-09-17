@@ -19,7 +19,9 @@ const FOLDER_FIELDS = [
   'socialFiles',
   'mediaFiles',
 ];
-const ACTIVITY_CATEGORIES = ['居場所', '會務', '合作教育', '社區關懷', '其他'];
+// 分類已改成使用者可在「分類管理」頁面自訂（見 Category class），不再是寫死的
+// 5 個選項，這裡只驗證格式（非空字串、長度上限），不再檢查是否落在某個固定清單。
+const ACTIVITY_CATEGORY_MAX_LENGTH = 50;
 
 // 上傳檔案安全限制（ISO 27001 A.8.7 惡意軟體防護／A.8.28 安全程式設計）。
 // 前端 src/types.ts 的 fileUploadRejectionReason() 有同樣規則做即時提示，但那邊能被繞過
@@ -60,6 +62,18 @@ Parse.Cloud.beforeSave('Plan', (request) => {
   }
   if (name.length > 100) {
     fail('計畫名稱過長（上限 100 字）');
+  }
+  object.set('name', name.trim());
+});
+
+Parse.Cloud.beforeSave('Category', (request) => {
+  const object = request.object;
+  const name = object.get('name');
+  if (typeof name !== 'string' || !name.trim()) {
+    fail('分類名稱不能為空');
+  }
+  if (name.length > ACTIVITY_CATEGORY_MAX_LENGTH) {
+    fail(`分類名稱過長（上限 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字）`);
   }
   object.set('name', name.trim());
 });
@@ -105,14 +119,17 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   // category 是舊版單一字串欄位，前端已改用 categories 陣列，但為相容性仍會同步寫入
   // 第一個分類，繼續驗證，不主動刪除欄位。
   const category = object.get('category');
-  if (typeof category === 'string' && category.trim() && !ACTIVITY_CATEGORIES.includes(category)) {
-    fail(`category 必須是 ${ACTIVITY_CATEGORIES.join('/')} 其中之一`);
+  if (typeof category === 'string' && category.length > ACTIVITY_CATEGORY_MAX_LENGTH) {
+    fail(`category 過長（上限 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字）`);
   }
 
   const categories = object.get('categories');
   if (categories !== undefined && categories !== null) {
-    if (!Array.isArray(categories) || categories.some((c) => !ACTIVITY_CATEGORIES.includes(c))) {
-      fail(`categories 必須是陣列，且每個項目都是 ${ACTIVITY_CATEGORIES.join('/')} 其中之一`);
+    if (
+      !Array.isArray(categories) ||
+      categories.some((c) => typeof c !== 'string' || !c.trim() || c.length > ACTIVITY_CATEGORY_MAX_LENGTH)
+    ) {
+      fail(`categories 必須是陣列，且每個項目都是不超過 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字的非空字串`);
     }
   }
 

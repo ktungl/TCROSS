@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import {
   buildActivityRecordXlsx,
   buildReceiptDocx,
+  buildResultReportDocx,
   buildSignInSheetXlsx,
   downloadBlob,
   generatedFormExtension,
@@ -31,6 +32,8 @@ const summary = computed(() => {
       return '將產生一份可列印簽章的 Word 領據'
     case '活動紀錄表':
       return `將產生活動紀錄表 Excel 檔（含執行情形、附件統計：${ATTACHMENT_TYPES.map(([k, l]) => `${l} ${props.activity.files[k]?.length ?? 0}`).join('、')}）`
+    case '成果報告':
+      return '將產生一份 Word 成果報告，內容取自下方「儲存成果」填寫的摘要、KPI 與照片圖說（不經過 AI）'
   }
 })
 
@@ -47,6 +50,9 @@ async function download() {
         break
       case '活動紀錄表':
         blob = await buildActivityRecordXlsx(props.activity, planNames.value)
+        break
+      case '成果報告':
+        blob = await buildResultReportDocx(props.activity, planNames.value)
         break
     }
     downloadBlob(`${props.activity.name}_${props.kind}.${generatedFormExtension(props.kind)}`, blob)

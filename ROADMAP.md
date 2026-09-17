@@ -65,12 +65,13 @@
 
 **下一步（依使用者指示，Gemini 部分先擱置）**：
 
-1. Cloud Run 的 `ALLOWED_ORIGIN` 目前只設了 `http://localhost:5173`（本機開發網域）——前端還沒有正式上線網域，等有了正式網域再回來更新這個環境變數，否則瀏覽器 CORS 會擋掉正式環境的請求。這項目前卡在「還沒決定/取得正式網域」，不是程式碼問題。
-2. **Phase 3b（Cloud Run 接 Gemini + 組裝真正檔案）**——使用者已表示先不要串 AI，待之後回來做時再展開：啟用 Vertex AI API、`requirements.txt` 加 Gemini SDK + 文件組裝套件、實作「讀 GCS 素材 → 呼叫 Gemini → 組裝 PDF/Word/Excel → 寫回 GCS → `write_with_master_key()` 回寫 Parse」的處理邏輯。
+1. ~~Cloud Run 的 `ALLOWED_ORIGIN` 只設了 `http://localhost:5173`~~ ✅ **2026-09-17 已更新並部署**——正式網域確定是 Netlify 的 `https://luminous-moxie-07a76c.netlify.app`，已用 `gcloud run services update --update-env-vars` 把 `ALLOWED_ORIGIN` 改成 `http://localhost:5173,https://luminous-moxie-07a76c.netlify.app`（`server/main.py` 本來就支援逗號分隔多個來源），部署為 revision `tcross-middleware-00010-d9z`，`/status` 已 200 確認正常。**如果之後正式網域又換了（例如換成自訂網域），要記得回來再更新一次這個環境變數**，否則瀏覽器 CORS 會擋掉新網域的請求。
+2. **Google Places API 金鑰申請中（使用者正在申請，尚未給金鑰）**——目的是讓「地點」欄位支援 Google 地址自動建議、選完自動填回欄位（比先前做的「地點旁加連結開 Google 地圖」更進一步）。金鑰建立好之後，**「Application restrictions → Websites」的允許網域清單，記得同時加上 `http://localhost:5173/*` 跟 `https://luminous-moxie-07a76c.netlify.app/*` 這兩個**（不是只加 localhost）；`API restrictions` 只勾 Places API 與 Maps JavaScript API。金鑰到手後會放進 `.env` 的 `VITE_GOOGLE_MAPS_API_KEY`（比照 `VITE_PARSE_APP_ID` 的模式，不寫死進程式碼），再接 `ActivityFormModal.vue` 的地點欄位。**未來如果正式網域又換掉，這把金鑰的網域限制也要一併更新**，跟上面第 1 項 Cloud Run 的 `ALLOWED_ORIGIN` 是同一個「換網域要記得改哪些地方」清單裡的項目。
+3. **Phase 3b（Cloud Run 接 Gemini + 組裝真正檔案）**——使用者已表示先不要串 AI，待之後回來做時再展開：啟用 Vertex AI API、`requirements.txt` 加 Gemini SDK + 文件組裝套件、實作「讀 GCS 素材 → 呼叫 Gemini → 組裝 PDF/Word/Excel → 寫回 GCS → `write_with_master_key()` 回寫 Parse」的處理邏輯。
    - **觸發方式已定案**：前端在建立好 `GenerationJob` 後直接呼叫 Cloud Run 新端點（例如 `POST /generate/{jobId}`，沿用 `/signed-url`／`/download-url` 同一套 `Depends(require_user)` session token 驗證）來觸發生成，**不用 GCS EventArc**——EventArc 是「檔案一上傳就觸發」，一個 job 通常有多個輸入檔，沒有「這個 job 的檔案都上傳完了」的語意，還要另外做計數/等待邏輯，且跟現有前端「上傳完才建立 GenerationJob」的流程對不上。
    - 另有一份《需求訪談.docx》內部技術分工提案，建議把 Gemini 呼叫寫在 **Parse (Back4App) Cloud Code 的 `afterSave` 觸發器**裡、搭配 GCP Cloud Tasks 做非同步重試——**評估後不採用這個方向**：一來 Back4App Cloud Code 不在 GCP 上，要嘛得讓它額外持有一份 GCP 服務帳戶憑證去發 Cloud Tasks（打破 Phase 1 定案的「只有 Cloud Run 持有 GCP 憑證」信任邊界），要嘛還是得繞回 Cloud Run 做事，等於多繞一手；二來 Back4App Cloud Code 的執行時間限制通常比 Cloud Run 更緊，更容易在多模態 Gemini 呼叫時逾時。Cloud Tasks 的「背景非同步＋退避重試」這個點子仍然有價值，但應該放在 Cloud Run 內部（例如 FastAPI `BackgroundTasks` 或 Cloud Run 呼叫 Cloud Tasks 佇列），而不是由 Back4App Cloud Code 發起。
 
-這兩項是目前整條 GCP 主線唯一剩下的工作，其餘（Phase 0/1/2/3a、附帶項目）都已完成、部署並實測驗證過。
+第 1 項已完成；第 2、3 項是目前整條 GCP 主線還剩下的工作，其餘（Phase 0/1/2/3a、附帶項目）都已完成、部署並實測驗證過。
 
 ## 背景：現況與目標架構的落差（2026-08-12 盤點，僅供歷史對照）
 
@@ -164,3 +165,19 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 9. **`exceljs`／`parse` SDK 的 breaking change 升級**（解 `uuid`／`ws` 中高風險漏洞）——需要你確認是否接受主版本升級風險後再處理
 
 **部署狀態**：`server/main.py`／`parse_auth.py`／`utils.py`／`Dockerfile` 的變更已於 2026-09-04 部署上線（revision `tcross-middleware-00007-nfm`），對正式網址直接測試確認：副檔名黑名單擋 400、假 activityId 擋 403、rate limit 第 28 次起擋 429、Cloud Logging 查得到稽核紀錄。**`cloud/main.js` 的變更還沒生效**，要貼回 Back4App Cloud Code Dashboard 才會生效（跟以前的部署方式一樣，這步只有你能做）。
+
+
+
+0917
+1. 活動照片匯出排版(src/utils/download.ts)
+buildNeimuReportDocx 的活動照片區塊,從原本一張張直向堆疊,改成 2 欄表格排版,照片統一縮放到高度 5cm(無邊框、居中,圖說在照片下方),符合 PDF 範例的呈現方式。
+
+2. 地點串接 Google Map(src/utils/activity.ts、ActivityFormModal.vue、DetailView.vue)
+新增 googleMapsUrl() 輔助函式。建立/編輯活動表單的「地點」欄位旁,有填值時會出現「地圖」按鈕開新分頁搜尋;活動詳情頁的地點文字也直接變成可點的地圖連結。
+
+3. 活動分類可自訂管理(新增 src/models/Category.ts、src/views/CategoriesView.vue,以及 types.ts／stores/db.ts／ActivityFormModal.vue／ExportView.vue)
+新增一個「分類管理」頁面(側邊選單、路由 /categories),可自由新增／改名／刪除分類,取代原本寫死的 5 個選項。設計上刻意讓活動的 categories 欄位繼續存純文字(不是像「計畫」那樣存參照 id)——這直接回答了 PDF 裡的疑問:調整分類清單(改名/刪除)不會影響已建立活動上已記錄的分類文字,只影響往後新增/編輯活動時看到的選項。第一次讀取時,若 Back4App 的 Category 集合還是空的,會自動用舊的 5 個分類名稱當種子建立。
+
+需要你手動做的部署步驟(跟以前改 cloud/main.js 一樣的流程):
+- 把更新後的 cloud/main.js 貼回 Back4App Cloud Code Dashboard(分類驗證已改成檢查格式而非固定清單,並新增了 Category class 的 beforeSave)
+- 到 Back4App 把新的 Category class 的 Class-Level Permissions 設成跟 Plan/Activity 一樣的 requiresAuthentication(目前專案是這樣鎖住其他 class 的)

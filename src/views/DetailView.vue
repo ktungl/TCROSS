@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
-import { gaps, kb } from '../utils/activity'
+import { gaps, googleMapsUrl, kb } from '../utils/activity'
 import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
 import type { AttachmentKey, Kpi } from '../types'
 import type { GeneratedFormKind } from '../utils/download'
@@ -10,7 +10,6 @@ import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
-import AiGenerationModal from '../components/AiGenerationModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
 
 const props = defineProps<{ id: string }>()
@@ -36,7 +35,6 @@ watch(
 
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
-const showAiGenModal = ref(false)
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
@@ -59,7 +57,11 @@ function removeKpi(i: number) {
 }
 async function saveResults() {
   if (!activity.value) return
-  const cleaned = kpisDraft.value.filter((k) => k.k.trim())
+  // Cloud Code 要求 k/v/u 都必須是字串；舊資料或曾經用 REST API 寫入的 KPI 可能帶著數字型別的
+  // v/u 混進來，這裡存檔前強制轉成字串，避免「kpis 陣列項目格式不正確」被伺服器擋下。
+  const cleaned = kpisDraft.value
+    .filter((k) => String(k.k ?? '').trim())
+    .map((k) => ({ k: String(k.k ?? '').trim(), v: String(k.v ?? ''), u: String(k.u ?? '') }))
   try {
     await db.saveActivityResults(activity.value.id, summaryDraft.value, cleaned)
     pushToast('已儲存成果')
@@ -148,7 +150,8 @@ async function duplicateActivity() {
     <h1>{{ activity.name }}</h1>
     <p class="sub mono">
       {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}</template>
-      　{{ activity.place }}　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '—' }}
+      　<a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template>
+      　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '—' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
     </p>
     <p v-if="activity.attendees || activity.participantDesc" class="sub" style="margin-top:-8px">
@@ -163,7 +166,7 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="genKind = '簽到表'">產生簽到表</button>
       <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
       <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
-      <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
+      <button class="btn ghost sm" @click="genKind = '成果報告'">產生成果報告</button>
       <button class="btn ghost sm" style="color:var(--stamp);margin-left:auto" @click="deleteActivity">刪除此活動</button>
     </div>
 
@@ -265,7 +268,6 @@ async function duplicateActivity() {
 
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="planName" @close="genKind = null" />
-    <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
   </div>
   <p v-else class="empty">{{ db.loading ? '載入中…' : '找不到這個活動。' }}</p>
 </template>
