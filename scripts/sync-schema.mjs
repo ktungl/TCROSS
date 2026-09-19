@@ -31,63 +31,77 @@ const headers = {
   'Content-Type': 'application/json',
 }
 
-/** 對應 src/models/Activity.ts 的 applyActivityRecord()／activityToRecord() */
-const WANTED = {
-  category: 'String',
-  categories: 'Array',
-  time: 'String',
-  attendees: 'String',
-  participantDesc: 'String',
-  remark: 'String',
-  maleCount: 'Number',
-  femaleCount: 'Number',
-  totalCount: 'Number',
-  photoFiles: 'Array',
-  signInFiles: 'Array',
-  recordFiles: 'Array',
-  agendaFiles: 'Array',
-  documentFiles: 'Array',
-  receiptFiles: 'Array',
-  socialFiles: 'Array',
-  mediaFiles: 'Array',
+/** 對應各 model 檔的 applyXRecord()／xToRecord()。key 是 Back4App 的 className。 */
+const WANTED_BY_CLASS = {
+  // src/models/Activity.ts
+  Activity: {
+    category: 'String',
+    categories: 'Array',
+    time: 'String',
+    attendees: 'String',
+    participantDesc: 'String',
+    remark: 'String',
+    maleCount: 'Number',
+    femaleCount: 'Number',
+    totalCount: 'Number',
+    photoFiles: 'Array',
+    signInFiles: 'Array',
+    recordFiles: 'Array',
+    agendaFiles: 'Array',
+    documentFiles: 'Array',
+    receiptFiles: 'Array',
+    socialFiles: 'Array',
+    mediaFiles: 'Array',
+  },
+  // src/models/Category.ts —— plans 是分類所屬的計畫（Pointer<Plan> 陣列，可複選可留空）
+  Category: {
+    plans: 'Array',
+  },
 }
 
-const res = await fetch(`${SERVER_URL}/schemas/Activity`, { headers })
-if (!res.ok) {
-  console.error(`讀取 schema 失敗 (${res.status})：${await res.text()}`)
-  process.exit(1)
+const apply = process.argv.includes('--apply')
+let anyMissing = false
+
+for (const [className, WANTED] of Object.entries(WANTED_BY_CLASS)) {
+  const res = await fetch(`${SERVER_URL}/schemas/${className}`, { headers })
+  if (!res.ok) {
+    console.error(`讀取 ${className} schema 失敗 (${res.status})：${await res.text()}`)
+    process.exit(1)
+  }
+  const existing = (await res.json()).fields || {}
+
+  const missing = Object.entries(WANTED).filter(([name]) => !existing[name])
+  if (!missing.length) {
+    console.log(`${className} schema 已經是最新的，沒有缺少的欄位。`)
+    continue
+  }
+  anyMissing = true
+
+  console.log(`${className}：前端需要但 Back4App 上不存在的欄位：`)
+  for (const [name, type] of missing) console.log(`  ${name.padEnd(18)} ${type}`)
+
+  if (!apply) continue
+
+  const fields = {}
+  for (const [name, type] of missing) fields[name] = { type }
+
+  const put = await fetch(`${SERVER_URL}/schemas/${className}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ className, fields }),
+  })
+  if (!put.ok) {
+    console.error(`\n建立 ${className} 欄位失敗 (${put.status})：${await put.text()}`)
+    process.exit(1)
+  }
+
+  console.log(`\n已建立 ${missing.length} 個欄位。${className} 現有欄位：`)
+  for (const [name, def] of Object.entries((await put.json()).fields || {})) {
+    console.log(`  ${name.padEnd(18)} ${def.type}`)
+  }
 }
-const existing = (await res.json()).fields || {}
 
-const missing = Object.entries(WANTED).filter(([name]) => !existing[name])
-if (!missing.length) {
-  console.log('Activity schema 已經是最新的，沒有缺少的欄位。')
-  process.exit(0)
-}
-
-console.log('前端需要但 Back4App 上不存在的欄位：')
-for (const [name, type] of missing) console.log(`  ${name.padEnd(18)} ${type}`)
-
-if (!process.argv.includes('--apply')) {
+if (anyMissing && !apply) {
   console.log('\n唯讀模式，未變更任何東西。要實際建立請加上 --apply：')
   console.log('  node scripts/sync-schema.mjs --apply')
-  process.exit(0)
-}
-
-const fields = {}
-for (const [name, type] of missing) fields[name] = { type }
-
-const put = await fetch(`${SERVER_URL}/schemas/Activity`, {
-  method: 'PUT',
-  headers,
-  body: JSON.stringify({ className: 'Activity', fields }),
-})
-if (!put.ok) {
-  console.error(`\n建立欄位失敗 (${put.status})：${await put.text()}`)
-  process.exit(1)
-}
-
-console.log(`\n已建立 ${missing.length} 個欄位。Activity 現有欄位：`)
-for (const [name, def] of Object.entries((await put.json()).fields || {})) {
-  console.log(`  ${name.padEnd(18)} ${def.type}`)
 }

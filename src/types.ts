@@ -84,6 +84,10 @@ export type ActivityCategory = string
 export interface CategoryRecord {
   id: string
   name: string
+  /** 這個分類所屬的計畫（可複選，可留空）。留空代表不限計畫，任何計畫底下
+   * 建活動都看得到；有指定的話，只有在活動表單選了對應計畫時才會出現在
+   * 「活動分類」的可選清單裡。 */
+  planIds: string[]
 }
 
 /** Category 集合（Parse class）首次為空時，用來建立起始選項的預設種子；

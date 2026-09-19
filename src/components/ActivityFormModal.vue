@@ -29,8 +29,23 @@ const remark = ref(props.activity?.remark ?? '')
 const selectedPlans = ref<string[]>(props.activity ? [...props.activity.plans] : [])
 const nameError = ref(false)
 
-const categoryOptions = computed(() => db.categories.map((c) => ({ id: c.name, label: c.name })))
+// 選了專案名稱後，分類清單只顯示那些專案底下的項目（沒有指定所屬專案的分類
+// 不限，任何專案都會顯示）。沒選任何專案時顯示全部分類。
+const categoryOptions = computed(() => {
+  const selectedPlanIds = new Set(selectedPlans.value)
+  const visible = selectedPlanIds.size
+    ? db.categories.filter((c) => !c.planIds.length || c.planIds.some((id) => selectedPlanIds.has(id)))
+    : db.categories
+  return visible.map((c) => ({ id: c.name, label: c.name }))
+})
 const planOptions = () => db.plans.map((p) => ({ id: p.id, label: p.name }))
+
+// 取消勾選專案後，原本跟著那個專案跳出來的分類選項也要一併從已選清單移除，
+// 不然使用者會看到分類還留著，但選單裡其實已經找不到它。
+watch(selectedPlans, () => {
+  const validNames = new Set(categoryOptions.value.map((o) => o.id))
+  categories.value = categories.value.filter((c) => validNames.has(c))
+})
 
 watch([male, female], ([m, f]) => {
   total.value = (Number(m) || 0) + (Number(f) || 0)
@@ -111,12 +126,13 @@ async function submit() {
 
       <div class="grid2">
         <div>
-          <label>對應計畫（可複選）</label>
-          <MultiSelectDropdown v-model="selectedPlans" :options="planOptions()" placeholder="請選擇對應計畫" />
+          <label>專案名稱（可複選）</label>
+          <MultiSelectDropdown v-model="selectedPlans" :options="planOptions()" placeholder="請選擇專案名稱" />
         </div>
         <div>
           <label>活動分類（可複選）</label>
           <MultiSelectDropdown v-model="categories" :options="categoryOptions" placeholder="請選擇活動分類" />
+          <p v-if="selectedPlans.length" class="meta" style="font-size:11.5px;margin:4px 0 0">依已選專案篩選相關項目</p>
         </div>
       </div>
 
