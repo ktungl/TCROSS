@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { confirm } from '../composables/useConfirm'
 import type { ActivityCategory, ActivityRecord } from '../types'
 import { loadGoogleMapsPlaces } from '../lib/googleMaps'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
@@ -28,6 +29,35 @@ const total = ref(props.activity?.headcount.total ?? 0)
 const remark = ref(props.activity?.remark ?? '')
 const selectedPlans = ref<string[]>(props.activity ? [...props.activity.plans] : [])
 const nameError = ref(false)
+
+// 點到 modal 背景或按「取消」都會直接關閉、清掉整份還沒存檔的表單內容——
+// 不小心點到旁邊就要整份重打。這裡記一份初始狀態，只要跟目前輸入不一樣
+// （代表使用者已經動過表單），關閉前就跳出確認，而不是直接消失。
+function snapshot() {
+  return JSON.stringify({
+    name: name.value,
+    categories: categories.value,
+    date: date.value,
+    time: time.value,
+    place: place.value,
+    owner: owner.value,
+    attendees: attendees.value,
+    participantDesc: participantDesc.value,
+    male: male.value,
+    female: female.value,
+    total: total.value,
+    remark: remark.value,
+    plans: selectedPlans.value,
+  })
+}
+const initialSnapshot = snapshot()
+
+async function requestClose() {
+  if (snapshot() !== initialSnapshot && !(await confirm('這份活動還沒儲存，確定要放棄目前輸入的內容嗎？'))) {
+    return
+  }
+  emit('close')
+}
 
 // 選了專案名稱後，分類清單只顯示那些專案底下的項目（沒有指定所屬專案的分類
 // 不限，任何專案都會顯示）。沒選任何專案時顯示全部分類。
@@ -120,7 +150,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="modal" @click.self="emit('close')">
+  <div class="modal" @click.self="requestClose">
     <div class="card">
       <h2 style="margin-top:0">{{ isNew ? '建立活動' : '編輯基本資料' }}</h2>
 
@@ -172,7 +202,7 @@ async function submit() {
 
       <div class="row" style="margin-top:20px">
         <button class="btn" @click="submit">{{ isNew ? '建立' : '儲存' }}</button>
-        <button class="btn ghost" @click="emit('close')">取消</button>
+        <button class="btn ghost" @click="requestClose">取消</button>
       </div>
     </div>
   </div>
