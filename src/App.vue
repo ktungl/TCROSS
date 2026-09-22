@@ -16,6 +16,7 @@ const navItems: { name: string; label: string }[] = [
   { name: 'plans', label: '計畫與分類管理' },
   { name: 'list', label: '活動列表' },
   { name: 'export', label: '匯出成果' },
+  { name: 'history-files', label: '歷史檔案' },
 ]
 
 const mobileNavOpen = ref(false)

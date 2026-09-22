@@ -12,6 +12,7 @@ import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
+import HistoryFilePickerModal from '../components/HistoryFilePickerModal.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -37,6 +38,7 @@ watch(
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
 const showAiGenModal = ref(false)
+const pickerFolder = ref<AttachmentKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
   if (!activity.value) return
@@ -95,10 +97,10 @@ async function upload(folder: AttachmentKey, files: File[]) {
 async function onRemoveFile(folder: AttachmentKey, i: number) {
   if (!activity.value) return
   const name = activity.value.files[folder][i]?.name ?? '此檔案'
-  if (!(await confirm(`確定要刪除「${name}」嗎？`))) return
+  if (!(await confirm(`確定要把「${name}」移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`))) return
   try {
-    await db.removeFile(activity.value.id, folder, i)
-    pushToast('已刪除檔案')
+    await db.trashFile(activity.value.id, folder, i)
+    pushToast('已移到垃圾桶')
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   }
@@ -205,9 +207,11 @@ async function duplicateActivity() {
             : `${activity.files[key].length} 件`
         "
         pick-label="上傳"
+        history-pickable
         :uploading="uploadingFiles[key]"
         @pick="(files) => upload(key, files)"
         @drop="(files) => upload(key, files)"
+        @browse-history="pickerFolder = key"
       >
         <ul v-if="activity.files[key].length" class="files">
           <template v-for="(f, i) in activity.files[key]" :key="i">
@@ -272,6 +276,12 @@ async function duplicateActivity() {
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="planName" @close="genKind = null" />
     <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
+    <HistoryFilePickerModal
+      v-if="pickerFolder"
+      :activity-id="activity.id"
+      :folder="pickerFolder"
+      @close="pickerFolder = null"
+    />
   </div>
   <p v-else class="empty">{{ db.loading ? '載入中…' : '找不到這個活動。' }}</p>
 </template>

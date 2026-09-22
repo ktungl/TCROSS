@@ -58,6 +58,11 @@ const WANTED_BY_CLASS = {
   Category: {
     plans: 'Array',
   },
+  // src/models/GenerationJob.ts —— deletedAt 是軟刪除時間戳記，有值代表在「歷史檔案」
+  // 垃圾桶裡，語意同 Activity 各 *Files 陣列項目裡的 FileMeta.deletedAt
+  GenerationJob: {
+    deletedAt: 'Date',
+  },
 }
 
 const apply = process.argv.includes('--apply')
