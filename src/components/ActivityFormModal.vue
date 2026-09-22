@@ -19,6 +19,7 @@ const name = ref(props.activity?.name ?? '')
 const categories = ref<ActivityCategory[]>(props.activity ? [...props.activity.categories] : [])
 const date = ref(props.activity?.date ?? '')
 const time = ref(props.activity?.time ?? '')
+const timeEnd = ref(props.activity?.timeEnd ?? '')
 const place = ref(props.activity?.place ?? '')
 const owner = ref(props.activity?.owner ?? '')
 const attendees = ref(props.activity?.attendees ?? '')
@@ -39,6 +40,7 @@ function snapshot() {
     categories: categories.value,
     date: date.value,
     time: time.value,
+    timeEnd: timeEnd.value,
     place: place.value,
     owner: owner.value,
     attendees: attendees.value,
@@ -120,6 +122,7 @@ async function submit() {
     categories: categories.value,
     date: date.value,
     time: time.value,
+    timeEnd: timeEnd.value,
     place: place.value.trim(),
     owner: owner.value.trim(),
     attendees: attendees.value.trim(),
@@ -172,9 +175,10 @@ async function submit() {
         <p v-if="nameError" style="color:var(--stamp);font-size:12px;margin:4px 0 0">請輸入活動名稱</p>
       </div>
 
-      <div class="grid2" style="margin-top:12px">
+      <div class="grid3" style="margin-top:12px">
         <div><label>活動日期</label><input type="date" v-model="date"></div>
-        <div><label>活動時間（選填）</label><input type="time" v-model="time"></div>
+        <div><label>開始時間（選填）</label><input type="time" v-model="time"></div>
+        <div><label>結束時間（選填，同一時間可留空）</label><input type="time" v-model="timeEnd"></div>
       </div>
 
       <div style="margin-top:12px">

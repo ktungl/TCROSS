@@ -114,8 +114,10 @@ export interface ActivityRecord {
   categories: ActivityCategory[]
   /** 活動日期 */
   date: string
-  /** 活動時間（HH:MM，選填） */
+  /** 活動開始時間（HH:MM，選填） */
   time: string
+  /** 活動結束時間（HH:MM，選填，同一時間可留空） */
+  timeEnd: string
   place: string
   /** 負責人（內部管理用） */
   owner: string

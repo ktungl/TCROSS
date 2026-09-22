@@ -38,6 +38,7 @@ const WANTED_BY_CLASS = {
     category: 'String',
     categories: 'Array',
     time: 'String',
+    timeEnd: 'String',
     attendees: 'String',
     participantDesc: 'String',
     remark: 'String',

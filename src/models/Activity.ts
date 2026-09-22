@@ -48,6 +48,7 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     categories: categories?.length ? categories : legacyCategory ? [legacyCategory] : [],
     date: obj.get('date') ?? '',
     time: obj.get('time') ?? '',
+    timeEnd: obj.get('timeEnd') ?? '',
     place: obj.get('place') ?? '',
     owner: obj.get('owner') ?? '',
     attendees: obj.get('attendees') ?? '',
@@ -75,6 +76,7 @@ export function applyActivityRecord(
   obj.set('category', record.categories[0] ?? '')
   obj.set('date', record.date)
   obj.set('time', record.time)
+  obj.set('timeEnd', record.timeEnd)
   obj.set('place', record.place)
   obj.set('owner', record.owner)
   obj.set('attendees', record.attendees)

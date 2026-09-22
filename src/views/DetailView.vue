@@ -151,7 +151,7 @@ async function duplicateActivity() {
     <button class="back" @click="router.push({ name: 'list' })">← 回活動列表</button>
     <h1>{{ activity.name }}</h1>
     <p class="sub mono">
-      {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}</template>
+      {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}<template v-if="activity.timeEnd && activity.timeEnd !== activity.time">～{{ activity.timeEnd }}</template></template>
       　<a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template>
       　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '—' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人

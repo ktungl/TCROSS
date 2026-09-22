@@ -47,9 +47,16 @@ export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx'
   return kind === '領據' || kind === '成果報告' ? 'docx' : 'xlsx'
 }
 
+/** 開始～結束時間格式：09:00～10:30；沒填結束時間或跟開始時間一樣就只顯示開始時間。 */
+function formatTimeRange(time: string, timeEnd: string): string {
+  if (!time) return ''
+  if (!timeEnd || timeEnd === time) return ` ${time}`
+  return ` ${time}～${timeEnd}`
+}
+
 function activityInfoLines(a: ActivityRecord, planNames: string): string[] {
   return [
-    `活動名稱：${a.name}　日期：${a.date}${a.time ? ` ${a.time}` : ''}`,
+    `活動名稱：${a.name}　日期：${a.date}${formatTimeRange(a.time, a.timeEnd)}`,
     `地點：${a.place}　負責人：${a.owner}`,
     `對應計畫：${planNames || '—'}`,
   ]
@@ -485,7 +492,7 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
 
   children.push(
     new Paragraph({
-      text: `三、活動日期：${formatRocChinese(a.date)}${a.time ? ` ${a.time}` : ''}`,
+      text: `三、活動日期：${formatRocChinese(a.date)}${formatTimeRange(a.time, a.timeEnd)}`,
       spacing: { before: 120 },
     }),
   )

@@ -122,6 +122,11 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     fail('時間格式必須是 HH:MM');
   }
 
+  const timeEnd = object.get('timeEnd');
+  if (typeof timeEnd === 'string' && timeEnd.trim() && !/^\d{2}:\d{2}$/.test(timeEnd.trim())) {
+    fail('結束時間格式必須是 HH:MM');
+  }
+
   // category 是舊版單一字串欄位，前端已改用 categories 陣列，但為相容性仍會同步寫入
   // 第一個分類，繼續驗證，不主動刪除欄位。
   const category = object.get('category');

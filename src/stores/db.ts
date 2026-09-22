@@ -30,6 +30,7 @@ export interface ActivityFormInput {
   categories: ActivityCategory[]
   date: string
   time: string
+  timeEnd: string
   place: string
   owner: string
   attendees: string
@@ -158,6 +159,7 @@ export const useDbStore = defineStore('db', () => {
       categories: [...existing.categories],
       date: '',
       time: '',
+      timeEnd: '',
       place: existing.place,
       owner: existing.owner,
       attendees: existing.attendees,
@@ -205,6 +207,7 @@ export const useDbStore = defineStore('db', () => {
           categories: existing.categories,
           date: existing.date,
           time: existing.time,
+          timeEnd: existing.timeEnd,
           place: existing.place,
           owner: existing.owner,
           attendees: existing.attendees,
