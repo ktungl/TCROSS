@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useDbStore } from '../stores/db'
 import { gaps, nFiles, score } from '../utils/activity'
 import { buildCsv, buildLedgerXlsx, buildNeimuReportDocx, downloadBlob, downloadFile } from '../utils/download'
@@ -22,6 +22,19 @@ const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—
 function toggleCategory(c: ActivityCategory, checked: boolean) {
   xCategories.value = checked ? [...xCategories.value, c] : xCategories.value.filter((x) => x !== c)
 }
+
+// 跟建立活動表單同一套規則：選了計畫後，分類清單只顯示那個計畫底下的項目
+// （沒有指定所屬計畫的分類不限，任何計畫都會顯示）。沒選計畫時顯示全部分類。
+const categoryOptions = computed(() =>
+  xPlan.value ? db.categories.filter((c) => !c.planIds.length || c.planIds.includes(xPlan.value)) : db.categories,
+)
+
+// 換了計畫後，原本勾的分類如果不再屬於這個計畫，就一併從已選清單移除，
+// 不然畫面上分類選項消失了、但篩選條件其實還留著看不到的勾選。
+watch(xPlan, () => {
+  const validNames = new Set(categoryOptions.value.map((c) => c.name))
+  xCategories.value = xCategories.value.filter((c) => validNames.has(c))
+})
 
 const picked = computed(() =>
   db.activities
@@ -107,8 +120,9 @@ async function doExport() {
     </div>
 
     <label style="margin-top:14px">活動分類（不勾選＝全部）</label>
+    <p v-if="xPlan" class="meta" style="font-size:11.5px;margin:-4px 0 6px">依已選計畫篩選相關項目</p>
     <div class="row" style="gap:14px">
-      <label v-for="c in db.categories" :key="c.id" class="chk">
+      <label v-for="c in categoryOptions" :key="c.id" class="chk">
         <input
           type="checkbox"
           :checked="xCategories.includes(c.name)"
