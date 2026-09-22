@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { confirm } from '../composables/useConfirm'
 import type { ActivityCategory, ActivityRecord } from '../types'
 import { loadGoogleMapsPlaces } from '../lib/googleMaps'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
@@ -29,8 +30,52 @@ const remark = ref(props.activity?.remark ?? '')
 const selectedPlans = ref<string[]>(props.activity ? [...props.activity.plans] : [])
 const nameError = ref(false)
 
-const categoryOptions = computed(() => db.categories.map((c) => ({ id: c.name, label: c.name })))
+// 點到 modal 背景或按「取消」都會直接關閉、清掉整份還沒存檔的表單內容——
+// 不小心點到旁邊就要整份重打。這裡記一份初始狀態，只要跟目前輸入不一樣
+// （代表使用者已經動過表單），關閉前就跳出確認，而不是直接消失。
+function snapshot() {
+  return JSON.stringify({
+    name: name.value,
+    categories: categories.value,
+    date: date.value,
+    time: time.value,
+    place: place.value,
+    owner: owner.value,
+    attendees: attendees.value,
+    participantDesc: participantDesc.value,
+    male: male.value,
+    female: female.value,
+    total: total.value,
+    remark: remark.value,
+    plans: selectedPlans.value,
+  })
+}
+const initialSnapshot = snapshot()
+
+async function requestClose() {
+  if (snapshot() !== initialSnapshot && !(await confirm('這份活動還沒儲存，確定要放棄目前輸入的內容嗎？'))) {
+    return
+  }
+  emit('close')
+}
+
+// 選了專案名稱後，分類清單只顯示那些專案底下的項目（沒有指定所屬專案的分類
+// 不限，任何專案都會顯示）。沒選任何專案時顯示全部分類。
+const categoryOptions = computed(() => {
+  const selectedPlanIds = new Set(selectedPlans.value)
+  const visible = selectedPlanIds.size
+    ? db.categories.filter((c) => !c.planIds.length || c.planIds.some((id) => selectedPlanIds.has(id)))
+    : db.categories
+  return visible.map((c) => ({ id: c.name, label: c.name }))
+})
 const planOptions = () => db.plans.map((p) => ({ id: p.id, label: p.name }))
+
+// 取消勾選專案後，原本跟著那個專案跳出來的分類選項也要一併從已選清單移除，
+// 不然使用者會看到分類還留著，但選單裡其實已經找不到它。
+watch(selectedPlans, () => {
+  const validNames = new Set(categoryOptions.value.map((o) => o.id))
+  categories.value = categories.value.filter((c) => validNames.has(c))
+})
 
 watch([male, female], ([m, f]) => {
   total.value = (Number(m) || 0) + (Number(f) || 0)
@@ -105,18 +150,19 @@ async function submit() {
 </script>
 
 <template>
-  <div class="modal" @click.self="emit('close')">
+  <div class="modal" @click.self="requestClose">
     <div class="card">
       <h2 style="margin-top:0">{{ isNew ? '建立活動' : '編輯基本資料' }}</h2>
 
       <div class="grid2">
         <div>
-          <label>對應計畫（可複選）</label>
-          <MultiSelectDropdown v-model="selectedPlans" :options="planOptions()" placeholder="請選擇對應計畫" />
+          <label>專案名稱（可複選）</label>
+          <MultiSelectDropdown v-model="selectedPlans" :options="planOptions()" placeholder="請選擇專案名稱" />
         </div>
         <div>
           <label>活動分類（可複選）</label>
           <MultiSelectDropdown v-model="categories" :options="categoryOptions" placeholder="請選擇活動分類" />
+          <p v-if="selectedPlans.length" class="meta" style="font-size:11.5px;margin:4px 0 0">依已選專案篩選相關項目</p>
         </div>
       </div>
 
@@ -156,7 +202,7 @@ async function submit() {
 
       <div class="row" style="margin-top:20px">
         <button class="btn" @click="submit">{{ isNew ? '建立' : '儲存' }}</button>
-        <button class="btn ghost" @click="emit('close')">取消</button>
+        <button class="btn ghost" @click="requestClose">取消</button>
       </div>
     </div>
   </div>

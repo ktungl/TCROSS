@@ -76,6 +76,12 @@ Parse.Cloud.beforeSave('Category', (request) => {
     fail(`分類名稱過長（上限 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字）`);
   }
   object.set('name', name.trim());
+
+  // plans：這個分類所屬的計畫（可複選，可留空＝不限計畫）。
+  const plans = object.get('plans');
+  if (plans !== undefined && !Array.isArray(plans)) {
+    fail('plans 必須是陣列');
+  }
 });
 
 Parse.Cloud.beforeSave('Activity', (request) => {

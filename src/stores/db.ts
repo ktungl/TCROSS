@@ -4,7 +4,7 @@ import Parse from '../lib/parse'
 import { deleteObjects } from '../lib/middleware'
 import { uploadParseFile } from '../lib/uploadFile'
 import { PlanObject, planToRecord } from '../models/Plan'
-import { CategoryObject, categoryToRecord } from '../models/Category'
+import { CategoryObject, applyCategoryRecord, categoryToRecord } from '../models/Category'
 import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
 import {
   GenerationJobObject,
@@ -84,19 +84,28 @@ export const useDbStore = defineStore('db', () => {
     }
   }
 
-  async function createCategory(name: string): Promise<void> {
+  async function createCategory(name: string, planIds: string[] = []): Promise<void> {
     const obj = new CategoryObject()
-    obj.set('name', name)
+    applyCategoryRecord(obj, { name, planIds })
     await obj.save()
     categories.value.push(categoryToRecord(obj))
   }
 
   async function renameCategory(id: string, name: string): Promise<void> {
-    const obj = CategoryObject.createWithoutData(id)
-    obj.set('name', name)
-    await obj.save()
     const existing = categories.value.find((c) => c.id === id)
+    const obj = CategoryObject.createWithoutData(id)
+    applyCategoryRecord(obj, { name, planIds: existing?.planIds ?? [] })
+    await obj.save()
     if (existing) existing.name = name
+  }
+
+  async function setCategoryPlans(id: string, planIds: string[]): Promise<void> {
+    const existing = categories.value.find((c) => c.id === id)
+    if (!existing) return
+    const obj = CategoryObject.createWithoutData(id)
+    applyCategoryRecord(obj, { name: existing.name, planIds })
+    await obj.save()
+    existing.planIds = planIds
   }
 
   /** 只刪分類管理清單裡的項目，不會動到已存活動的 categories 欄位——那裡存的是
@@ -123,10 +132,12 @@ export const useDbStore = defineStore('db', () => {
 
   async function deletePlan(id: string): Promise<void> {
     await PlanObject.createWithoutData(id).destroy()
-    const affected = activities.value.filter((a) => a.plans.includes(id))
-    await Promise.all(
-      affected.map((a) => setActivityPlans(a.id, a.plans.filter((p) => p !== id))),
-    )
+    const affectedActivities = activities.value.filter((a) => a.plans.includes(id))
+    const affectedCategories = categories.value.filter((c) => c.planIds.includes(id))
+    await Promise.all([
+      ...affectedActivities.map((a) => setActivityPlans(a.id, a.plans.filter((p) => p !== id))),
+      ...affectedCategories.map((c) => setCategoryPlans(c.id, c.planIds.filter((p) => p !== id))),
+    ])
     plans.value = plans.value.filter((p) => p.id !== id)
   }
 
@@ -369,6 +380,7 @@ export const useDbStore = defineStore('db', () => {
     deletePlan,
     createCategory,
     renameCategory,
+    setCategoryPlans,
     deleteCategory,
     createActivity,
     updateActivity,
