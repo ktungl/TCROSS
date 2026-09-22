@@ -48,12 +48,12 @@ function summary(): string {
 
 <style scoped>
 .msel{position:relative}
-.msel-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;
+.msel-btn{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
   width:100%;text-align:left;cursor:pointer;font-family:inherit;font-size:14px;color:var(--ink);
   background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px}
 .msel-btn.empty{color:var(--ink-faint)}
-.msel-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.msel-caret{color:var(--ink-soft);flex-shrink:0}
+.msel-summary{min-width:0;white-space:normal;word-break:break-word;line-height:1.5}
+.msel-caret{color:var(--ink-soft);flex-shrink:0;padding-top:1px}
 .msel-panel{position:absolute;z-index:20;top:calc(100% + 4px);left:0;right:0;
   max-height:220px;overflow:auto;background:var(--card);border:1px solid var(--line);
   border-radius:var(--r);box-shadow:0 6px 18px rgba(62,44,23,.15)}
