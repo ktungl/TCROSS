@@ -6,8 +6,11 @@ defineProps<{
   countLabel: string
   pickLabel?: string
   uploading?: { name: string; progress: number }[]
+  /** 只有正式歸檔附件（DetailView 的 8 分類）需要「從歷史檔案選取」，
+   * AI 生成素材（AiGenerationModal 的語音/影片/照片/文件）不適用，預設關閉。 */
+  historyPickable?: boolean
 }>()
-const emit = defineEmits<{ pick: [File[]]; drop: [File[]] }>()
+const emit = defineEmits<{ pick: [File[]]; drop: [File[]]; 'browse-history': [] }>()
 
 const dragOver = ref(false)
 
@@ -35,9 +38,18 @@ function onDrop(e: DragEvent) {
   >
     <header>
       <h3>{{ label }} <span class="count">{{ countLabel }}</span></h3>
-      <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">{{ pickLabel ?? '選擇檔案' }}
-        <input type="file" multiple style="display:none" @change="onPick">
-      </label>
+      <div class="row" style="gap:8px">
+        <button
+          v-if="historyPickable"
+          type="button"
+          class="btn ghost sm"
+          style="margin:0;width:auto;letter-spacing:0"
+          @click="emit('browse-history')"
+        >從歷史檔案選取</button>
+        <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">{{ pickLabel ?? '選擇檔案' }}
+          <input type="file" multiple style="display:none" @change="onPick">
+        </label>
+      </div>
     </header>
     <ul v-if="uploading?.length" class="upload-list">
       <li v-for="u in uploading" :key="u.name">

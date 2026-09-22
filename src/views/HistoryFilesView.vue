@@ -698,41 +698,5 @@ async function batchHardDeleteJobs() {
 .link { background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .link:hover { color: var(--gold-600); }
 
-.view-toggle { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; flex-shrink: 0; }
-.view-toggle button {
-  background: var(--card); border: 0; padding: 7px 14px; font-size: 12.5px; color: var(--ink-soft);
-}
-.view-toggle button + button { border-left: 1px solid var(--line); }
-.view-toggle button.active { background: var(--gold-100); color: var(--ink); font-weight: 500; }
-.view-toggle button:hover { color: var(--ink); }
-
 .selection-bar { min-height: 30px; }
-
-.file-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px;
-}
-.file-cell {
-  border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden;
-  background: var(--card); box-shadow: var(--shadow);
-}
-.file-cell:hover { border-color: var(--gold-400); }
-.file-thumb-wrap { display: block; width: 100%; }
-.file-thumb {
-  display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1 / 1;
-  background: var(--line-soft); overflow: hidden;
-}
-.file-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.file-icon { font-family: var(--f-mono); font-size: 13px; color: var(--ink-soft); letter-spacing: .04em; }
-.file-cell-body { display: block; padding: 9px 10px; }
-.file-cell-name {
-  display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.file-cell-meta { display: block; font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
-.file-cell-actions { display: flex; gap: 6px; margin-top: 8px; }
-.file-cell-actions .btn { flex: 1; justify-content: center; }
-
-.select-check {
-  position: absolute; top: 6px; left: 6px; z-index: 2; width: 18px; height: 18px; margin: 0;
-  accent-color: var(--gold-600); cursor: pointer;
-}
 </style>

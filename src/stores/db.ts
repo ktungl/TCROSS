@@ -288,6 +288,27 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
+  /** 把「歷史檔案」挑選頁選到的既有檔案掛到這個活動的這個分類——重用同一個已上傳
+   * 好的 Parse File URL，不用重新上傳一次。只留 name/size/url，caption／featured
+   * 是每個活動自己的，不沿用來源活動的值。 */
+  async function attachExistingFiles(
+    id: string,
+    folder: AttachmentKey,
+    files: Pick<FileMeta, 'name' | 'size' | 'url'>[],
+  ): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing || !files.length) return
+    const clean: FileMeta[] = files.map((f) => ({ name: f.name, size: f.size, url: f.url }))
+    const nextFull = [...existing.files[folder], ...existing.trash[folder], ...clean]
+    await patchActivity(
+      id,
+      (obj) => obj.set(`${folder}Files`, nextFull),
+      (existing) => {
+        existing.files[folder] = [...existing.files[folder], ...clean]
+      },
+    )
+  }
+
   /** 軟刪除：把檔案標上 deletedAt 移進垃圾桶，不會真的從 Back4App 刪掉。
    * index 是在「目前顯示中」的 files[folder] 陣列裡的位置。 */
   async function trashFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
@@ -459,6 +480,7 @@ export const useDbStore = defineStore('db', () => {
     setActivityPlans,
     saveActivityResults,
     uploadFiles,
+    attachExistingFiles,
     trashFile,
     restoreFile,
     hardDeleteFile,
