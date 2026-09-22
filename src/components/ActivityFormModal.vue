@@ -55,7 +55,7 @@ function snapshot() {
 const initialSnapshot = snapshot()
 
 async function requestClose() {
-  if (snapshot() !== initialSnapshot && !(await confirm('這份活動還沒儲存，確定要放棄目前輸入的內容嗎？'))) {
+  if (snapshot() !== initialSnapshot && !(await confirm('這份活動還沒儲存，確定要放棄目前輸入的內容嗎？', '放棄'))) {
     return
   }
   emit('close')
