@@ -12,6 +12,7 @@ Parse.Object.registerSubclass('GenerationJob', GenerationJobObject)
 
 export function generationJobToRecord(obj: Parse.Object): GenerationJobRecord {
   const activity = obj.get('activity') as Parse.Object | undefined
+  const deletedAt = obj.get('deletedAt') as Date | undefined
   return {
     id: obj.id!,
     activityId: activity?.id ?? '',
@@ -21,6 +22,7 @@ export function generationJobToRecord(obj: Parse.Object): GenerationJobRecord {
     resultFile: obj.get('resultFile') ?? '',
     errorMessage: obj.get('errorMessage') ?? '',
     createdAt: obj.createdAt?.toISOString() ?? '',
+    deletedAt: deletedAt ? deletedAt.toISOString() : undefined,
   }
 }
 

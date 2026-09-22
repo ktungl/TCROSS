@@ -12,6 +12,9 @@ export interface FileMeta {
   caption?: string
   /** 精選照片標記（作為大紀事精選照片） */
   featured?: boolean
+  /** 軟刪除時間戳記（ISO 字串）。有值代表在垃圾桶裡，正常畫面（含匯出、缺漏檢核）都會濾掉，
+   * 只有「歷史檔案」頁的垃圾桶會列出，可以復原或從那裡永久刪除。 */
+  deletedAt?: string
 }
 
 /**
@@ -132,6 +135,9 @@ export interface ActivityRecord {
   remark: string
   kpis: Kpi[]
   files: ActivityFiles
+  /** 軟刪除的附件（各分類裡 deletedAt 有值的項目），只給「歷史檔案」頁的垃圾桶用；
+   * files 已經濾掉這些，其他畫面（缺漏檢核、匯出、附件統計……）不用另外處理。 */
+  trash: ActivityFiles
 }
 
 export type GenerationJobKind = '成果報告' | '其他'
@@ -146,4 +152,6 @@ export interface GenerationJobRecord {
   resultFile: string
   errorMessage: string
   createdAt: string
+  /** 軟刪除時間戳記（ISO 字串），語意同 FileMeta.deletedAt。 */
+  deletedAt?: string
 }

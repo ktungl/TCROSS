@@ -32,8 +32,11 @@ function emptyFiles(): ActivityFiles {
 
 export function activityToRecord(obj: Parse.Object): ActivityRecord {
   const files = emptyFiles()
+  const trash = emptyFiles()
   for (const [key] of ATTACHMENT_TYPES) {
-    files[key] = (obj.get(`${key}Files`) as FileMeta[] | undefined) ?? []
+    const all = (obj.get(`${key}Files`) as FileMeta[] | undefined) ?? []
+    files[key] = all.filter((f) => !f.deletedAt)
+    trash[key] = all.filter((f) => f.deletedAt)
   }
   const plans = (obj.get('plans') as Parse.Object[] | undefined) ?? []
   const male = Number(obj.get('maleCount')) || 0
@@ -62,12 +65,13 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     remark: obj.get('remark') ?? '',
     kpis: normalizeKpis(obj.get('kpis')),
     files,
+    trash,
   }
 }
 
 export function applyActivityRecord(
   obj: Parse.Object,
-  record: Omit<ActivityRecord, 'id' | 'files'>,
+  record: Omit<ActivityRecord, 'id' | 'files' | 'trash'>,
 ): void {
   obj.set('name', record.name)
   obj.set('categories', record.categories)

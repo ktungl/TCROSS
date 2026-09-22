@@ -40,7 +40,7 @@ const totalSelected = computed(() =>
 
 const pastJobs = computed(() =>
   db.generationJobs.filter(
-    (j) => j.activityId === props.activity.id && j.id !== activeJob.value?.id,
+    (j) => j.activityId === props.activity.id && j.id !== activeJob.value?.id && !j.deletedAt,
   ),
 )
 
@@ -181,15 +181,15 @@ async function download(job: GenerationJobRecord) {
 const deletingJobId = ref<string | null>(null)
 
 async function removeJob(job: GenerationJobRecord) {
-  if (!(await confirm(`確定要刪除這筆「${job.kind}」生成工作嗎？已上傳的素材與產出檔案會一併刪除。`))) return
+  if (!(await confirm(`確定要把這筆「${job.kind}」生成工作移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`))) return
   deletingJobId.value = job.id
   try {
-    await db.deleteGenerationJob(job.id)
+    await db.trashGenerationJob(job.id)
     if (activeJob.value?.id === job.id) {
       stopPolling()
       activeJob.value = null
     }
-    pushToast('已刪除生成工作')
+    pushToast('已移到垃圾桶')
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   } finally {
@@ -275,7 +275,7 @@ function close() {
                 {{ downloading === j.id ? '取得中…' : '下載' }}
               </button>
               <span class="mono fsize">{{ new Date(j.createdAt).toLocaleString() }}</span>
-              <button class="x" title="刪除這筆生成工作" :disabled="deletingJobId === j.id" @click="removeJob(j)">×</button>
+              <button class="x" title="移到垃圾桶" :disabled="deletingJobId === j.id" @click="removeJob(j)">×</button>
             </span>
           </li>
         </ul>

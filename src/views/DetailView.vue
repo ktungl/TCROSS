@@ -95,10 +95,10 @@ async function upload(folder: AttachmentKey, files: File[]) {
 async function onRemoveFile(folder: AttachmentKey, i: number) {
   if (!activity.value) return
   const name = activity.value.files[folder][i]?.name ?? '此檔案'
-  if (!(await confirm(`確定要刪除「${name}」嗎？`))) return
+  if (!(await confirm(`確定要把「${name}」移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`))) return
   try {
-    await db.removeFile(activity.value.id, folder, i)
-    pushToast('已刪除檔案')
+    await db.trashFile(activity.value.id, folder, i)
+    pushToast('已移到垃圾桶')
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   }

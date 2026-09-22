@@ -276,25 +276,66 @@ export const useDbStore = defineStore('db', () => {
     await Promise.all(
       Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, worker),
     )
-    const nextList = [...existing.files[folder], ...uploaded]
+    // Parse 的 `${folder}Files` 欄位一次寫入整個陣列，會連垃圾桶裡的項目一起蓋掉，
+    // 所以每次寫入都要把 files（現存）＋ trash（垃圾桶）兩邊都併回去。
+    const nextFull = [...existing.files[folder], ...existing.trash[folder], ...uploaded]
     await patchActivity(
       id,
-      (obj) => obj.set(`${folder}Files`, nextList),
+      (obj) => obj.set(`${folder}Files`, nextFull),
       (existing) => {
-        existing.files[folder] = nextList
+        existing.files[folder] = [...existing.files[folder], ...uploaded]
       },
     )
   }
 
-  async function removeFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
+  /** 軟刪除：把檔案標上 deletedAt 移進垃圾桶，不會真的從 Back4App 刪掉。
+   * index 是在「目前顯示中」的 files[folder] 陣列裡的位置。 */
+  async function trashFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
-    if (!existing) return
-    const nextList = existing.files[folder].filter((_, i) => i !== index)
+    if (!existing || !existing.files[folder][index]) return
+    const target = { ...existing.files[folder][index], deletedAt: new Date().toISOString() }
+    const remainingActive = existing.files[folder].filter((_, i) => i !== index)
+    const nextFull = [...remainingActive, ...existing.trash[folder], target]
     await patchActivity(
       id,
-      (obj) => obj.set(`${folder}Files`, nextList),
+      (obj) => obj.set(`${folder}Files`, nextFull),
       (existing) => {
-        existing.files[folder] = nextList
+        existing.files[folder] = remainingActive
+        existing.trash[folder] = [...existing.trash[folder], target]
+      },
+    )
+  }
+
+  /** 從垃圾桶復原。index 是在 trash[folder] 陣列裡的位置。 */
+  async function restoreFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing || !existing.trash[folder][index]) return
+    const restored = { ...existing.trash[folder][index] }
+    delete restored.deletedAt
+    const remainingTrash = existing.trash[folder].filter((_, i) => i !== index)
+    const nextFull = [...existing.files[folder], restored, ...remainingTrash]
+    await patchActivity(
+      id,
+      (obj) => obj.set(`${folder}Files`, nextFull),
+      (existing) => {
+        existing.files[folder] = [...existing.files[folder], restored]
+        existing.trash[folder] = remainingTrash
+      },
+    )
+  }
+
+  /** 永久刪除：只能對垃圾桶裡的項目做，做了就真的從 Back4App 的陣列裡拿掉，無法復原。
+   * index 是在 trash[folder] 陣列裡的位置。 */
+  async function hardDeleteFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
+    if (!existing || !existing.trash[folder][index]) return
+    const remainingTrash = existing.trash[folder].filter((_, i) => i !== index)
+    const nextFull = [...existing.files[folder], ...remainingTrash]
+    await patchActivity(
+      id,
+      (obj) => obj.set(`${folder}Files`, nextFull),
+      (existing) => {
+        existing.trash[folder] = remainingTrash
       },
     )
   }
@@ -307,12 +348,13 @@ export const useDbStore = defineStore('db', () => {
   ): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !existing.files[folder][index]) return
-    const nextList = existing.files[folder].map((f, i) => (i === index ? { ...f, ...patch } : f))
+    const nextActive = existing.files[folder].map((f, i) => (i === index ? { ...f, ...patch } : f))
+    const nextFull = [...nextActive, ...existing.trash[folder]]
     await patchActivity(
       id,
-      (obj) => obj.set(`${folder}Files`, nextList),
+      (obj) => obj.set(`${folder}Files`, nextFull),
       (existing) => {
-        existing.files[folder] = nextList
+        existing.files[folder] = nextActive
       },
     )
   }
@@ -327,6 +369,12 @@ export const useDbStore = defineStore('db', () => {
       ...generationJobs.value.filter((j) => j.activityId !== activityId),
       ...records,
     ]
+  }
+
+  /** 「歷史檔案」頁用：撈全部活動的生成工作，不像 fetchGenerationJobs 只查單一活動。 */
+  async function fetchAllGenerationJobs(): Promise<void> {
+    const objs = await new Parse.Query(GenerationJobObject).descending('createdAt').find()
+    generationJobs.value = objs.map(generationJobToRecord)
   }
 
   async function createGenerationJob(
@@ -358,7 +406,29 @@ export const useDbStore = defineStore('db', () => {
     return record
   }
 
-  async function deleteGenerationJob(id: string): Promise<void> {
+  /** 軟刪除：標上 deletedAt 移進垃圾桶，素材與產出檔案都還留著。 */
+  async function trashGenerationJob(id: string): Promise<void> {
+    const existing = generationJobs.value.find((j) => j.id === id)
+    if (!existing) return
+    const obj = GenerationJobObject.createWithoutData(id)
+    const now = new Date()
+    obj.set('deletedAt', now)
+    await obj.save()
+    existing.deletedAt = now.toISOString()
+  }
+
+  /** 從垃圾桶復原。 */
+  async function restoreGenerationJob(id: string): Promise<void> {
+    const existing = generationJobs.value.find((j) => j.id === id)
+    if (!existing) return
+    const obj = GenerationJobObject.createWithoutData(id)
+    obj.unset('deletedAt')
+    await obj.save()
+    existing.deletedAt = undefined
+  }
+
+  /** 永久刪除：只能對垃圾桶裡的工作做，會把已上傳的素材與產出檔案一併從 GCS 清掉，無法復原。 */
+  async function hardDeleteGenerationJob(id: string): Promise<void> {
     const existing = generationJobs.value.find((j) => j.id === id)
     if (!existing) return
     const objectPaths = [...existing.sourceFiles, ...(existing.resultFile ? [existing.resultFile] : [])]
@@ -389,11 +459,16 @@ export const useDbStore = defineStore('db', () => {
     setActivityPlans,
     saveActivityResults,
     uploadFiles,
-    removeFile,
+    trashFile,
+    restoreFile,
+    hardDeleteFile,
     updateFileMeta,
     fetchGenerationJobs,
+    fetchAllGenerationJobs,
     createGenerationJob,
     refreshGenerationJob,
-    deleteGenerationJob,
+    trashGenerationJob,
+    restoreGenerationJob,
+    hardDeleteGenerationJob,
   }
 })
