@@ -25,6 +25,7 @@
 8. 備份機制頻率與還原演練排程還沒訂。
 9. 正式網域（現為 Netlify `luminous-moxie-07a76c.netlify.app`）之後若再更換，記得同步更新 Cloud Run 的 `ALLOWED_ORIGIN` 與（拿到金鑰後）Google Maps API 金鑰的網域白名單。
 10. 目前只有 `.docx` 輸出，還沒做 PDF/Excel（README 目標架構寫三種格式都要支援）。
+11. 若要更換 GCP／Back4App 的付款卡片或使用權人，流程見[帳號與帳單異動（換卡、換使用權人）](#帳號與帳單異動換卡換使用權人)，工作量小、不動 `.env`。
 
 ---
 
@@ -170,6 +171,30 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 1. **Parse CLP 角色分級**——⬜ 還沒動，需要先確認角色設計才能動手。
 2. **`exceljs`／`parse` SDK 的 breaking change 升級**（解 `uuid`／`ws` 漏洞）——⬜ 需要你確認是否接受主版本升級風險。
 3. **確認 `cloud/main.js` 與 Python 套件升級的實際部署狀態**——⬜ 需要你核對 Back4App Dashboard 與 Cloud Run 線上 revision。
+
+---
+
+## 帳號與帳單異動（換卡、換使用權人）
+
+情境：GCP 專案與 Back4App app 本身**不搬家**（Project ID、App ID、Service Account、Bucket 名稱都保留），只是要**換付款信用卡**、以及**換掉有使用權限的人**。這純粹是後台帳號設定，不動程式碼、不用重新部署，跟前面「整個換新帳號重建專案」（工作量大很多）是完全不同層級的事。
+
+### Google Cloud
+
+- **換信用卡**：主控台 → 帳單 → 付款方式 → 新增新卡片 → 設為預設 → 移除舊卡片。
+- **換使用權的人**：IAM 與管理 → IAM → 新增成員（新 email）→ 給 Owner 或需要的角色；舊帳號角色降級或移除。
+- Project ID、Service Account（`GCS_SIGNING_SERVICE_ACCOUNT` 等）、Bucket 名稱都不會變，`.env` 不用動。
+
+### Back4App（Parse）
+
+- **換信用卡**：Account Settings → Billing → 更新付款方式。
+- **換使用權的人**：進到這個 App → App Settings → Collaborators → 邀請新 email，設為 Admin；新帳號接受邀請後把舊帳號移除或降權。
+- App ID／JS Key／Master Key 都不會變，`.env` 不用動。
+
+### 注意事項
+
+1. Back4App 若目前是舊帳號的付費方案，換卡前先確認舊卡到期/移除的時間點不會導致服務中斷。
+2. GCP 帳單帳戶若換成別人持有，該帳號需要「帳單帳戶管理員」角色，跟專案的 IAM 角色是分開設定的兩個地方。
+3. 若舊帳號之後要整個移除存取權，記得先確認沒有東西是綁定「舊帳號個人身分」而非服務帳號在跑（例如本機開發用 `gcloud auth login` 登入的是舊帳號，之後要換成新帳號重新登入）。
 
 ---
 
