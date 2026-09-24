@@ -111,7 +111,13 @@ onBeforeUnmount(() => {
   if (placeAutocomplete) google.maps.event.clearInstanceListeners(placeAutocomplete)
 })
 
+const submitting = ref(false)
+
 async function submit() {
+  // 存檔是非同步的，手機網路較慢時，畫面在請求完成前不會有明顯變化，很容易讓人
+  // 以為沒點到而再點一次——尤其是「建立活動」，重複送出就是重複建立一筆新的
+  // 活動。這裡擋掉還在送出中的重複呼叫。
+  if (submitting.value) return
   const trimmed = name.value.trim()
   if (!trimmed) {
     nameError.value = true
@@ -135,6 +141,7 @@ async function submit() {
     plans: selectedPlans.value,
     remark: remark.value.trim(),
   }
+  submitting.value = true
   try {
     if (isNew) {
       const created = await db.createActivity(input)
@@ -148,6 +155,8 @@ async function submit() {
     }
   } catch (e) {
     pushToast(errorMessage(e), 'error')
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -205,7 +214,9 @@ async function submit() {
       <input v-model="remark" placeholder="補充說明（如場次、申請事項）">
 
       <div class="row" style="margin-top:20px">
-        <button class="btn" @click="submit">{{ isNew ? '建立' : '儲存' }}</button>
+        <button class="btn" :disabled="submitting" @click="submit">
+          {{ submitting ? '處理中…' : (isNew ? '建立' : '儲存') }}
+        </button>
         <button class="btn ghost" @click="requestClose">取消</button>
       </div>
     </div>
