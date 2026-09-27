@@ -3,8 +3,9 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { gaps, googleMapsUrl, kb } from '../utils/activity'
+import { actorLine } from '../utils/actor'
 import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
-import type { AttachmentKey, Kpi } from '../types'
+import type { AttachmentKey, AuditLogRecord, Kpi } from '../types'
 import type { GeneratedFormKind } from '../utils/download'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
@@ -13,6 +14,8 @@ import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
 import HistoryFilePickerModal from '../components/HistoryFilePickerModal.vue'
+import StampLine from '../components/StampLine.vue'
+import AuditLogList from '../components/AuditLogList.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -136,6 +139,35 @@ async function deleteActivity() {
   }
 }
 
+const activityLogs = ref<AuditLogRecord[]>([])
+const logsOpen = ref(false)
+const logsLoading = ref(false)
+
+async function loadActivityLogs() {
+  if (!activity.value) return
+  logsLoading.value = true
+  try {
+    activityLogs.value = await db.fetchAuditLogs({ activityId: activity.value.id, limit: 200 })
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+function onLogsToggle(e: Event) {
+  logsOpen.value = (e.target as HTMLDetailsElement).open
+  if (logsOpen.value) loadActivityLogs()
+}
+
+// 紀錄展開時，這個活動一有修改就重新抓，剛做的動作馬上看得到
+watch(
+  () => activity.value?.updatedAt,
+  () => {
+    if (logsOpen.value) loadActivityLogs()
+  },
+)
+
 async function duplicateActivity() {
   if (!activity.value) return
   try {
@@ -163,6 +195,7 @@ async function duplicateActivity() {
       <template v-if="activity.participantDesc">參加對象：{{ activity.participantDesc }}</template>
     </p>
     <p v-if="activity.remark" class="sub" style="margin-top:-8px">備註：{{ activity.remark }}</p>
+    <p class="sub" style="margin-top:-8px"><StampLine :record="activity" /></p>
 
     <div class="row" style="margin-bottom:6px">
       <button class="btn ghost sm" @click="showEdit = true">編輯基本資料</button>
@@ -225,6 +258,7 @@ async function duplicateActivity() {
                   <span class="fname">{{ f.name }}</span>
                   <span class="fsize mono">{{ kb(f.size) }}</span>
                 </div>
+                <div class="actor-stamp" style="margin-top:4px">上傳：{{ actorLine(f.uploadedByName, f.uploadedAt) }}</div>
                 <div class="photo-caption">
                   <input
                     :value="f.caption"
@@ -243,7 +277,7 @@ async function duplicateActivity() {
               </div>
             </li>
             <li v-else>
-              <span class="fname">{{ f.name }}</span>
+              <span class="fname">{{ f.name }}<span class="actor-stamp" style="display:table;margin-top:3px">上傳：{{ actorLine(f.uploadedByName, f.uploadedAt) }}</span></span>
               <span style="display:flex;align-items:center">
                 <span class="fsize mono">{{ kb(f.size) }}</span>
                 <button class="x" @click="onRemoveFile(key, i)">×</button>
@@ -272,6 +306,13 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="addKpi">新增一列 KPI</button>
       <div style="margin-top:16px"><button class="btn" @click="saveResults">儲存成果</button></div>
     </div>
+
+    <h2>操作紀錄</h2>
+    <details class="card" style="padding:0" @toggle="onLogsToggle">
+      <summary style="padding:12px 15px;cursor:pointer">顯示這個活動的操作紀錄（含附件與 AI 生成）</summary>
+      <p v-if="logsLoading && !activityLogs.length" class="empty">載入中…</p>
+      <AuditLogList v-else :logs="activityLogs" hide-activity-link />
+    </details>
 
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="planName" @close="genKind = null" />

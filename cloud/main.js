@@ -54,6 +54,358 @@ function fail(message) {
   throw new Parse.Error(Parse.Error.VALIDATION_ERROR, message);
 }
 
+// ───────────────────────── 操作者紀錄＋稽核紀錄 ─────────────────────────
+//
+// 「誰建立／誰最後修改／誰上傳／誰刪除」一律在這裡由伺服器寫入：前端送來的同名欄位
+// 會被覆蓋，拿到帳號的人也無法直打 REST API 冒名。每次寫入後再把差異寫一筆到
+// AuditLog（只有 Master Key 能寫，CLP 也不開放任何人新增/修改/刪除）。
+
+const ROLE_NAMES = ['member', 'developer'];
+const ACTOR_FIELDS = ['createdById', 'createdByName', 'updatedById', 'updatedByName'];
+const FILE_STAMP_FIELDS = ['uploadedById', 'uploadedByName', 'uploadedAt', 'deletedById', 'deletedByName'];
+
+const CLASS_LABELS = {
+  Plan: '計畫',
+  Category: '分類',
+  Activity: '活動',
+  GenerationJob: 'AI 生成任務',
+};
+
+const FOLDER_LABELS = {
+  photoFiles: '照片',
+  signInFiles: '簽到表',
+  recordFiles: '成果紀錄',
+  agendaFiles: '活動流程',
+  documentFiles: '公文',
+  receiptFiles: '領據',
+  socialFiles: '社群貼文',
+  mediaFiles: '影音檔',
+  audioFiles: '錄音（舊版）',
+  videoFiles: '影片（舊版）',
+  docFiles: '文件（舊版）',
+};
+
+const FIELD_LABELS = {
+  name: '名稱',
+  categories: '分類',
+  category: '分類（舊版欄位）',
+  date: '日期',
+  dateEnd: '結束日期（舊版欄位）',
+  time: '開始時間',
+  timeEnd: '結束時間',
+  place: '地點',
+  owner: '負責人',
+  attendees: '與會單位或成員',
+  participantDesc: '參加對象說明',
+  headcount: '人數（舊版欄位）',
+  maleCount: '男性人數',
+  femaleCount: '女性人數',
+  totalCount: '總人數',
+  plans: '所屬計畫',
+  summary: '活動內容簡述與效益',
+  kpis: 'KPI',
+  remark: '備註',
+  activity: '所屬活動',
+  kind: '類型',
+  status: '狀態',
+  sourceFiles: '素材檔案',
+  resultFile: '產出檔案',
+  errorMessage: '錯誤訊息',
+  deletedAt: '移到垃圾桶',
+};
+
+// 這些欄位不列進 AuditLog 的逐欄差異：系統欄位、操作者欄位本身，以及附件陣列
+// （附件改用 attachmentSummaries() 寫成「新增 N 個檔案到『照片』」這類摘要）。
+const AUDIT_SKIP_FIELDS = new Set(['objectId', 'createdAt', 'updatedAt', 'ACL', ...ACTOR_FIELDS, ...FOLDER_FIELDS]);
+
+/** 目前這個請求是誰做的。Master Key 請求沒有使用者：Cloud Run 更新 AI 生成狀態、
+ * 或有人從 Back4App Dashboard 直接改資料。 */
+function actorOf(request, className) {
+  const user = request.user;
+  if (user) {
+    return { id: user.id, name: user.get('displayName') || user.get('username') || user.id };
+  }
+  if (request.master) {
+    return { id: '', name: className === 'GenerationJob' ? '系統（AI 生成）' : '系統（後台）' };
+  }
+  return null;
+}
+
+function copyOrUnset(object, source, field) {
+  const value = source ? source.get(field) : undefined;
+  if (value === undefined) object.unset(field);
+  else object.set(field, value);
+}
+
+/** 在 beforeSave 最後呼叫：新建時寫入建立者，每次存檔都寫入最後修改者。 */
+function stampActor(request, className) {
+  const actor = actorOf(request, className);
+  if (!actor) fail('需要登入才能修改資料');
+  const { object, original } = request;
+  if (original) {
+    copyOrUnset(object, original, 'createdById');
+    copyOrUnset(object, original, 'createdByName');
+  } else {
+    object.set('createdById', actor.id);
+    object.set('createdByName', actor.name);
+  }
+  object.set('updatedById', actor.id);
+  object.set('updatedByName', actor.name);
+  return actor;
+}
+
+/** 以 url 對照存檔前後的附件陣列：新出現的檔案蓋上上傳者，既有檔案沿用原本的
+ * 上傳者（前端送什麼都不採用），這次才被移進垃圾桶的檔案蓋上刪除者。 */
+function stampAttachments(request, actor) {
+  const { object, original } = request;
+  const dirty = new Set(object.dirtyKeys());
+  const now = new Date().toISOString();
+  for (const field of FOLDER_FIELDS) {
+    if (!dirty.has(field)) continue;
+    const files = object.get(field);
+    if (!Array.isArray(files)) continue;
+    const before = new Map(
+      ((original && original.get(field)) || []).filter((f) => f && f.url).map((f) => [f.url, f]),
+    );
+    object.set(
+      field,
+      files.map((f) => {
+        if (typeof f !== 'object' || f === null) return f; // 格式錯誤交給後面的驗證擋下
+        const prev = before.get(f.url);
+        const next = { ...f };
+        for (const k of FILE_STAMP_FIELDS) delete next[k];
+        if (prev) {
+          for (const k of ['uploadedById', 'uploadedByName', 'uploadedAt']) {
+            if (prev[k] !== undefined) next[k] = prev[k];
+          }
+        } else {
+          next.uploadedById = actor.id;
+          next.uploadedByName = actor.name;
+          next.uploadedAt = now;
+        }
+        if (next.deletedAt) {
+          if (prev && prev.deletedAt) {
+            next.deletedAt = prev.deletedAt;
+            if (prev.deletedById !== undefined) next.deletedById = prev.deletedById;
+            if (prev.deletedByName !== undefined) next.deletedByName = prev.deletedByName;
+          } else {
+            next.deletedById = actor.id;
+            next.deletedByName = actor.name;
+          }
+        }
+        return next;
+      }),
+    );
+  }
+}
+
+/** 把 Parse 值轉成可存進 AuditLog 的純 JSON：Pointer → objectId、Date → ISO 字串。 */
+function plain(value) {
+  if (value === undefined || value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(plain);
+  if (typeof value === 'object') {
+    if (typeof value.toPointer === 'function') return value.id;
+    if (value.__type === 'Pointer') return value.objectId;
+    if (value.__type === 'Date') return value.iso;
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = plain(v);
+    return out;
+  }
+  return value;
+}
+
+function fieldChanges(object, original) {
+  const keys = new Set([
+    ...Object.keys(object.attributes),
+    ...(original ? Object.keys(original.attributes) : []),
+  ]);
+  const changes = [];
+  for (const field of keys) {
+    if (AUDIT_SKIP_FIELDS.has(field)) continue;
+    const before = original ? plain(original.get(field)) : null;
+    const after = plain(object.get(field));
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    if (!original && (after === null || after === '' || (Array.isArray(after) && !after.length))) continue;
+    changes.push({ field, label: FIELD_LABELS[field] || field, before, after });
+  }
+  return changes;
+}
+
+function fileNames(files) {
+  const names = files.map((f) => f.name);
+  return names.length > 5 ? `${names.slice(0, 5).join('、')} 等` : names.join('、');
+}
+
+function attachmentSummaries(object, original) {
+  const lines = [];
+  for (const field of FOLDER_FIELDS) {
+    const before = ((original && original.get(field)) || []).filter((f) => f && f.url);
+    const after = (object.get(field) || []).filter((f) => f && f.url);
+    if (!before.length && !after.length) continue;
+    const beforeMap = new Map(before.map((f) => [f.url, f]));
+    const afterUrls = new Set(after.map((f) => f.url));
+    const label = FOLDER_LABELS[field] || field;
+
+    const added = after.filter((f) => !beforeMap.has(f.url));
+    const removed = before.filter((f) => !afterUrls.has(f.url));
+    const trashed = after.filter((f) => f.deletedAt && beforeMap.has(f.url) && !beforeMap.get(f.url).deletedAt);
+    const restored = after.filter((f) => !f.deletedAt && beforeMap.has(f.url) && beforeMap.get(f.url).deletedAt);
+    const edited = after.filter((f) => {
+      const prev = beforeMap.get(f.url);
+      return prev && ((prev.caption || '') !== (f.caption || '') || !!prev.featured !== !!f.featured);
+    });
+
+    if (added.length) lines.push(`新增 ${added.length} 個檔案到「${label}」：${fileNames(added)}`);
+    if (trashed.length) lines.push(`將「${label}」的 ${trashed.length} 個檔案移到垃圾桶：${fileNames(trashed)}`);
+    if (restored.length) lines.push(`從垃圾桶復原「${label}」的 ${restored.length} 個檔案：${fileNames(restored)}`);
+    if (removed.length) lines.push(`永久刪除「${label}」的 ${removed.length} 個檔案：${fileNames(removed)}`);
+    if (edited.length) lines.push(`修改「${label}」的 ${edited.length} 個檔案圖說／精選：${fileNames(edited)}`);
+  }
+  return lines;
+}
+
+async function auditTarget(className, object) {
+  if (className === 'Activity') return { targetName: object.get('name') || '', activityId: object.id };
+  if (className === 'GenerationJob') {
+    const activity = object.get('activity');
+    let activityName = '';
+    if (activity && activity.id) {
+      try {
+        const fetched = await new Parse.Query('Activity').get(activity.id, { useMasterKey: true });
+        activityName = fetched.get('name') || '';
+      } catch (err) {
+        // 活動已被刪除時查不到，名稱留空即可
+      }
+    }
+    const kind = object.get('kind') || '成果報告';
+    return {
+      targetName: activityName ? `${activityName}／${kind}` : kind,
+      activityId: activity && activity.id ? activity.id : '',
+    };
+  }
+  return { targetName: object.get('name') || '', activityId: '' };
+}
+
+/** 寫一筆 AuditLog。失敗只記在 Cloud Code log，不讓原本的操作跟著失敗。 */
+async function writeAudit(entry) {
+  try {
+    const log = new Parse.Object('AuditLog');
+    const acl = new Parse.ACL();
+    for (const role of ROLE_NAMES) acl.setRoleReadAccess(role, true);
+    log.setACL(acl);
+    await log.save(entry, { useMasterKey: true });
+  } catch (err) {
+    console.error('寫入 AuditLog 失敗', err);
+  }
+}
+
+async function auditSave(className, request) {
+  const { object, original } = request;
+  const actor = actorOf(request, className) || { id: '', name: '（不明）' };
+  const changes = fieldChanges(object, original);
+  const fileLines = className === 'Activity' ? attachmentSummaries(object, original) : [];
+  if (original && !changes.length && !fileLines.length) return; // 內容沒有實際變動，不記
+
+  const { targetName, activityId } = await auditTarget(className, object);
+  const label = CLASS_LABELS[className];
+  let headline;
+  if (!original) headline = `建立${label}「${targetName}」`;
+  else if (changes.length) headline = `修改${label}「${targetName}」：${changes.map((c) => c.label).join('、')}`;
+  else headline = `更新${label}「${targetName}」的附件`;
+
+  await writeAudit({
+    action: original ? 'update' : 'create',
+    targetClass: className,
+    targetId: object.id,
+    targetName,
+    activityId,
+    actorId: actor.id,
+    actorName: actor.name,
+    changes,
+    summary: [headline, ...fileLines].join('\n'),
+  });
+}
+
+async function auditDelete(className, request) {
+  const { object } = request;
+  const actor = actorOf(request, className) || { id: '', name: '（不明）' };
+  const { targetName, activityId } = await auditTarget(className, object);
+  await writeAudit({
+    action: 'delete',
+    targetClass: className,
+    targetId: object.id,
+    targetName,
+    activityId,
+    actorId: actor.id,
+    actorName: actor.name,
+    changes: [],
+    summary: `刪除${CLASS_LABELS[className]}「${targetName}」`,
+  });
+}
+
+// AuditLog 只能由上面的 writeAudit() 用 Master Key 寫入；CLP 已擋，這裡再擋一次。
+Parse.Cloud.beforeSave('AuditLog', (request) => {
+  if (!request.master) {
+    throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, '稽核紀錄不可新增或修改');
+  }
+});
+
+Parse.Cloud.beforeDelete('AuditLog', (request) => {
+  if (!request.master) {
+    throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, '稽核紀錄不可刪除');
+  }
+});
+
+// displayName 會被蓋進每一筆操作紀錄，使用者如果能自己改名就能冒用別人的名字，
+// 所以 username／displayName 只能由 Master Key（scripts/setup-users.mjs）修改。
+Parse.Cloud.beforeSave(Parse.User, (request) => {
+  if (request.master || !request.original) return;
+  const dirty = request.object.dirtyKeys();
+  if (dirty.includes('displayName') || dirty.includes('username')) {
+    throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, '帳號名稱與顯示名稱只能由管理者修改');
+  }
+});
+
+Parse.Cloud.afterLogin(async (request) => {
+  const user = request.object;
+  const name = user.get('displayName') || user.get('username');
+  await writeAudit({
+    action: 'login',
+    targetClass: '_User',
+    targetId: user.id,
+    targetName: name,
+    activityId: '',
+    actorId: user.id,
+    actorName: name,
+    changes: [],
+    summary: `${name} 登入系統`,
+  });
+});
+
+Parse.Cloud.afterLogout(async (request) => {
+  const userPtr = request.object.get('user');
+  if (!userPtr) return;
+  let name = userPtr.id;
+  try {
+    const user = await new Parse.Query(Parse.User).get(userPtr.id, { useMasterKey: true });
+    name = user.get('displayName') || user.get('username');
+  } catch (err) {
+    // 查不到就用 id
+  }
+  await writeAudit({
+    action: 'logout',
+    targetClass: '_User',
+    targetId: userPtr.id,
+    targetName: name,
+    activityId: '',
+    actorId: userPtr.id,
+    actorName: name,
+    changes: [],
+    summary: `${name} 登出系統`,
+  });
+});
+
 Parse.Cloud.beforeSave('Plan', (request) => {
   const object = request.object;
   const name = object.get('name');
@@ -64,7 +416,11 @@ Parse.Cloud.beforeSave('Plan', (request) => {
     fail('計畫名稱過長（上限 100 字）');
   }
   object.set('name', name.trim());
+  stampActor(request, 'Plan');
 });
+
+Parse.Cloud.afterSave('Plan', (request) => auditSave('Plan', request));
+Parse.Cloud.afterDelete('Plan', (request) => auditDelete('Plan', request));
 
 Parse.Cloud.beforeSave('Category', (request) => {
   const object = request.object;
@@ -82,7 +438,11 @@ Parse.Cloud.beforeSave('Category', (request) => {
   if (plans !== undefined && !Array.isArray(plans)) {
     fail('plans 必須是陣列');
   }
+  stampActor(request, 'Category');
 });
+
+Parse.Cloud.afterSave('Category', (request) => auditSave('Category', request));
+Parse.Cloud.afterDelete('Category', (request) => auditDelete('Category', request));
 
 Parse.Cloud.beforeSave('Activity', (request) => {
   const object = request.object;
@@ -200,15 +560,23 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       if (BLOCKED_EXTENSIONS.includes(ext)) {
         fail(`${field} 的「${file.name}」檔案類型不允許上傳`);
       }
+      if (file.deletedAt !== undefined && typeof file.deletedAt !== 'string') {
+        fail(`${field} 的 deletedAt 必須是字串`);
+      }
     }
   }
+
+  const actor = stampActor(request, 'Activity');
+  stampAttachments(request, actor);
 });
 
 // 前端刪檔（removeFile()）只把項目從陣列拿掉再存回去，實際的 Parse.File blob
 // 從來沒被刪過，會在 Back4App 檔案儲存裡一直堆孤兒檔案。這裡改成不管陣列是怎麼變小的
 // （手動刪除、或任何其他寫入路徑），存檔後統一比對前後差異，把消失的檔案一併刪掉。
 // Parse.File.destroy() 需要 Master Key，前端沒有也不該有，所以放在這裡而不是 db.ts。
+// 每個 class 只能註冊一個 afterSave，所以稽核紀錄跟孤兒檔清理寫在同一個 handler。
 Parse.Cloud.afterSave('Activity', async (request) => {
+  await auditSave('Activity', request);
   if (!request.original) return; // 新建的活動沒有舊檔案可比對
 
   for (const field of FOLDER_FIELDS) {
@@ -228,6 +596,8 @@ Parse.Cloud.afterSave('Activity', async (request) => {
     }
   }
 });
+
+Parse.Cloud.afterDelete('Activity', (request) => auditDelete('Activity', request));
 
 Parse.Cloud.beforeSave('GenerationJob', (request) => {
   const object = request.object;
@@ -263,4 +633,9 @@ Parse.Cloud.beforeSave('GenerationJob', (request) => {
   if (errorMessage !== undefined && typeof errorMessage !== 'string') {
     fail('errorMessage 必須是字串');
   }
+
+  stampActor(request, 'GenerationJob');
 });
+
+Parse.Cloud.afterSave('GenerationJob', (request) => auditSave('GenerationJob', request));
+Parse.Cloud.afterDelete('GenerationJob', (request) => auditDelete('GenerationJob', request));

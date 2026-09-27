@@ -6,6 +6,7 @@ import PlansView from '../views/PlansView.vue'
 import PlanDetailView from '../views/PlanDetailView.vue'
 import ExportView from '../views/ExportView.vue'
 import HistoryFilesView from '../views/HistoryFilesView.vue'
+import AuditLogView from '../views/AuditLogView.vue'
 import LoginView from '../views/LoginView.vue'
 import Parse from '../lib/parse'
 
@@ -26,6 +27,7 @@ const router = createRouter({
     { path: '/plans/:id', name: 'plan-detail', component: PlanDetailView, props: true },
     { path: '/export', name: 'export', component: ExportView },
     { path: '/history-files', name: 'history-files', component: HistoryFilesView },
+    { path: '/audit', name: 'audit', component: AuditLogView },
   ],
 })
 

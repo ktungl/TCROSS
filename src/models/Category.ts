@@ -1,5 +1,6 @@
 import Parse from '../lib/parse'
 import { PlanObject } from './Plan'
+import { actorStampOf } from './actorStamp'
 import type { CategoryRecord } from '../types'
 
 export class CategoryObject extends Parse.Object {
@@ -16,6 +17,7 @@ export function categoryToRecord(obj: Parse.Object): CategoryRecord {
     id: obj.id!,
     name: obj.get('name') ?? '',
     planIds: plans.map((p) => p.id!),
+    ...actorStampOf(obj),
   }
 }
 

@@ -1,4 +1,5 @@
 import Parse from '../lib/parse'
+import { actorStampOf } from './actorStamp'
 import type { PlanRecord } from '../types'
 
 export class PlanObject extends Parse.Object {
@@ -13,6 +14,7 @@ export function planToRecord(obj: Parse.Object): PlanRecord {
   return {
     id: obj.id!,
     name: obj.get('name') ?? '',
+    ...actorStampOf(obj),
   }
 }
 

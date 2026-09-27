@@ -65,6 +65,29 @@ gcloud run services update-traffic tcross-middleware --region asia-east1 \
   --to-revisions=<上一個好的 revision 名稱>=100
 ```
 
+## 帳號與角色
+
+系統內有兩個角色，權限相同（活動／計畫／分類／附件／AI 生成全部可以新增、修改、刪除）：
+
+| 角色 | 帳號 | 顯示名稱 |
+| --- | --- | --- |
+| `member` | `ruoting.chen`、`qiyuan.huang`、`youjun.shen` | 陳若庭、黃琪媛、沈宥均 |
+| `developer` | `ching.chen`、`Test123`、`qa_cc_1786685240` | 陳怡靜、冠彤、雅婷 |
+
+**新增／修改帳號**：編輯 `scripts/users.local.json`（含初始密碼，不進 git；格式見 `scripts/users.example.json`），然後：
+
+```bash
+node scripts/setup-users.mjs                 # 唯讀，先看會改什麼
+node scripts/setup-users.mjs --apply         # 建帳號／改顯示名稱／加入角色
+node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一起套用
+```
+
+- 既有帳號**不會被改密碼**，腳本只更新 username／displayName 與角色。
+- 不在任何角色裡的帳號讀不到任何資料；`--clp` 會先檢查，有漏的會拒絕套用。
+- 顯示名稱只能用這支腳本（Master Key）改，使用者自己改會被 Cloud Code 擋下（防止冒用別人名字）。
+
+**操作紀錄**：每一次新增／修改／刪除、附件上傳／移到垃圾桶／復原／永久刪除、AI 生成狀態變化、登入登出，都會由 Cloud Code 寫一筆到 Back4App 的 `AuditLog`。前端「操作紀錄」頁可依人員／類型／日期查，活動詳情頁底部也可以看單一活動的紀錄。這些紀錄沒有人能改或刪（包含開發者用前端），只有 Back4App Dashboard／Master Key 能動。
+
 ## 部署 Back4App Cloud Code（`cloud/main.js`）
 
 沒有 CLI 流程，只能手動貼到 Dashboard：步驟見 [cloud/README.md](cloud/README.md#部署步驟back4app-dashboard沒有額外工具需要裝)。**這步無法自動化**，改完 `cloud/main.js` 後要記得手動部署，否則正式環境還是跑舊邏輯。

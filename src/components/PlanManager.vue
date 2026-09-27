@@ -5,6 +5,7 @@ import { useDbStore } from '../stores/db'
 import { gaps } from '../utils/activity'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
+import StampLine from './StampLine.vue'
 
 const router = useRouter()
 const db = useDbStore()
@@ -90,6 +91,7 @@ async function removePlan(id: string, name: string) {
           {{ db.activities.filter(a => a.plans.includes(p.id)).length }} 場活動　·
           {{ db.activities.filter(a => a.plans.includes(p.id) && gaps(a).length).length }} 場有缺漏
         </div>
+        <StampLine :record="p" />
       </button>
       <div class="row" style="gap:6px">
         <button class="btn ghost sm" title="重新命名" @click="startRename(p.id, p.name)">重新命名</button>

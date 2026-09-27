@@ -31,6 +31,14 @@ const headers = {
   'Content-Type': 'application/json',
 }
 
+/** 建立者／最後修改者，由 cloud/main.js 的 stampActor() 在伺服器端寫入，前端只讀。 */
+const ACTOR_FIELDS = {
+  createdById: 'String',
+  createdByName: 'String',
+  updatedById: 'String',
+  updatedByName: 'String',
+}
+
 /** 對應各 model 檔的 applyXRecord()／xToRecord()。key 是 Back4App 的 className。 */
 const WANTED_BY_CLASS = {
   // src/models/Activity.ts
@@ -53,15 +61,35 @@ const WANTED_BY_CLASS = {
     receiptFiles: 'Array',
     socialFiles: 'Array',
     mediaFiles: 'Array',
+    ...ACTOR_FIELDS,
   },
   // src/models/Category.ts —— plans 是分類所屬的計畫（Pointer<Plan> 陣列，可複選可留空）
   Category: {
     plans: 'Array',
+    ...ACTOR_FIELDS,
   },
   // src/models/GenerationJob.ts —— deletedAt 是軟刪除時間戳記，有值代表在「歷史檔案」
   // 垃圾桶裡，語意同 Activity 各 *Files 陣列項目裡的 FileMeta.deletedAt
   GenerationJob: {
     deletedAt: 'Date',
+    ...ACTOR_FIELDS,
+  },
+  Plan: { ...ACTOR_FIELDS },
+  // 顯示名稱（登入歡迎畫面、操作者紀錄用），由 scripts/setup-users.mjs 寫入
+  _User: {
+    displayName: 'String',
+  },
+  // 稽核紀錄，只有 cloud/main.js 的 writeAudit() 用 Master Key 寫入
+  AuditLog: {
+    action: 'String',
+    targetClass: 'String',
+    targetId: 'String',
+    targetName: 'String',
+    activityId: 'String',
+    actorId: 'String',
+    actorName: 'String',
+    changes: 'Array',
+    summary: 'String',
   },
 }
 
@@ -70,11 +98,19 @@ let anyMissing = false
 
 for (const [className, WANTED] of Object.entries(WANTED_BY_CLASS)) {
   const res = await fetch(`${SERVER_URL}/schemas/${className}`, { headers })
+  // 103 = Class 不存在（例如第一次跑時的 AuditLog），視為沒有任何欄位，--apply 時用 POST 建立
+  let classExists = true
   if (!res.ok) {
-    console.error(`讀取 ${className} schema 失敗 (${res.status})：${await res.text()}`)
-    process.exit(1)
+    const body = await res.text()
+    if (JSON.parse(body || '{}').code === 103) {
+      classExists = false
+    } else {
+      console.error(`讀取 ${className} schema 失敗 (${res.status})：${body}`)
+      process.exit(1)
+    }
   }
-  const existing = (await res.json()).fields || {}
+  const existing = classExists ? (await res.json()).fields || {} : {}
+  if (!classExists) console.log(`${className}：Back4App 上還沒有這個 class，會一併建立。`)
 
   const missing = Object.entries(WANTED).filter(([name]) => !existing[name])
   if (!missing.length) {
@@ -92,7 +128,7 @@ for (const [className, WANTED] of Object.entries(WANTED_BY_CLASS)) {
   for (const [name, type] of missing) fields[name] = { type }
 
   const put = await fetch(`${SERVER_URL}/schemas/${className}`, {
-    method: 'PUT',
+    method: classExists ? 'PUT' : 'POST',
     headers,
     body: JSON.stringify({ className, fields }),
   })

@@ -4,6 +4,7 @@ import { useDbStore } from '../stores/db'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
+import StampLine from './StampLine.vue'
 
 const db = useDbStore()
 const categoryName = ref('')
@@ -104,6 +105,7 @@ async function removeCategory(id: string, name: string) {
           {{ db.activities.filter(a => a.categories.includes(c.name)).length }} 場活動使用中
           　·　所屬計畫：{{ c.planIds.length ? c.planIds.map(planName).join('、') : '不限' }}
         </div>
+        <StampLine :record="c" />
       </div>
       <div class="row" style="gap:6px">
         <button class="btn ghost sm" title="重新命名／調整所屬計畫" @click="startRename(c.id, c.name, c.planIds)">編輯</button>

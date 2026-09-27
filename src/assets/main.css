@@ -89,6 +89,12 @@ nav button[aria-current="true"]{
 
 /* 登出跟其他導覽項目做出區隔：推到側欄最下方、加分隔線、字更小更低調 */
 .logout-zone{margin-top:auto;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)}
+/* 操作者資訊（建立／最後修改／上傳者／刪除者）：正的紅色細框。
+   注意不要跟下方「待補」用的歪斜印章 .stamp 混用 */
+.actor-stamp{display:inline-block;border:1px solid var(--stamp);color:var(--stamp);
+  font-size:11px;letter-spacing:.04em;padding:1px 7px;border-radius:var(--r);
+  line-height:1.6;white-space:normal}
+.whoami{font-size:12px;color:#C9B89A;padding:0 12px 6px}
 .logout-btn{background:none;border:0;color:#9C8567;text-align:left;
   padding:8px 12px;border-radius:var(--r);font-size:12.5px;width:100%;
   letter-spacing:.02em}

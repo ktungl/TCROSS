@@ -6,6 +6,8 @@ import { requestDownloadUrl } from '../lib/middleware'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { kb } from '../utils/activity'
+import { UNRECORDED, actorLine } from '../utils/actor'
+import StampLine from '../components/StampLine.vue'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityFiles, ActivityRecord, AttachmentKey, GenerationJobRecord, GenerationJobStatus } from '../types'
 
@@ -83,6 +85,9 @@ interface FileRow {
   size: number
   url: string
   deletedAt?: string
+  uploadedByName?: string
+  uploadedAt?: string
+  deletedByName?: string
 }
 
 function fileRowKey(r: FileRow): string {
@@ -106,6 +111,9 @@ function buildFileRows(source: (a: ActivityRecord) => ActivityFiles): FileRow[] 
           size: f.size,
           url: f.url,
           deletedAt: f.deletedAt,
+          uploadedByName: f.uploadedByName,
+          uploadedAt: f.uploadedAt,
+          deletedByName: f.deletedByName,
         })
       })
     }
@@ -398,7 +406,7 @@ async function batchHardDeleteJobs() {
 
     <table class="out" v-if="uploadedRows.length && uView === 'list'">
       <thead>
-        <tr><th></th><th>活動</th><th>對應計畫</th><th>類型</th><th>檔案名稱</th><th>大小</th><th></th></tr>
+        <tr><th></th><th>活動</th><th>對應計畫</th><th>類型</th><th>檔案名稱</th><th>大小</th><th>上傳者</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="r in uploadedRows" :key="fileRowKey(r)">
@@ -413,6 +421,7 @@ async function batchHardDeleteJobs() {
           <td>{{ attachmentLabel[r.type] }}</td>
           <td>{{ r.name }}</td>
           <td class="mono">{{ kb(r.size) }}</td>
+          <td><span class="actor-stamp">{{ actorLine(r.uploadedByName, r.uploadedAt) }}</span></td>
           <td>
             <div class="row" style="gap:10px;flex-wrap:nowrap">
               <a :href="r.url" target="_blank" rel="noopener">開啟</a>
@@ -443,6 +452,7 @@ async function batchHardDeleteJobs() {
           <span class="file-cell-name">{{ r.name }}</span>
           <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ kb(r.size) }}</span>
           <span class="file-cell-meta">{{ r.activityName || '（未命名活動）' }}</span>
+          <span class="file-cell-meta">上傳：{{ r.uploadedByName || UNRECORDED }}</span>
         </span>
       </div>
     </div>
@@ -500,7 +510,10 @@ async function batchHardDeleteJobs() {
             </span>
           </td>
           <td>{{ job.kind }}</td>
-          <td class="mono">{{ job.createdAt ? new Date(job.createdAt).toLocaleString() : '—' }}</td>
+          <td class="mono">
+            {{ job.createdAt ? new Date(job.createdAt).toLocaleString() : '—' }}
+            <span class="actor-stamp" style="display:table;margin-top:3px">建立者：{{ job.createdByName || UNRECORDED }}</span>
+          </td>
           <td>{{ statusLabels[job.status] }}</td>
           <td>
             <div class="row" style="gap:10px;flex-wrap:nowrap">
@@ -567,7 +580,10 @@ async function batchHardDeleteJobs() {
           </td>
           <td>{{ attachmentLabel[r.type] }}</td>
           <td>{{ r.name }}</td>
-          <td class="mono">{{ r.deletedAt ? new Date(r.deletedAt).toLocaleString() : '—' }}</td>
+          <td class="mono">
+            {{ r.deletedAt ? new Date(r.deletedAt).toLocaleString() : '—' }}
+            <span class="actor-stamp" style="display:table;margin-top:3px">刪除者：{{ r.deletedByName || UNRECORDED }}</span>
+          </td>
           <td>
             <div class="row" style="gap:8px;flex-wrap:nowrap">
               <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="restoreUploadedFile(r)">復原</button>
@@ -597,6 +613,7 @@ async function batchHardDeleteJobs() {
           <span class="file-cell-name">{{ r.name }}</span>
           <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ r.activityName || '（未命名活動）' }}</span>
           <span class="file-cell-meta">{{ r.deletedAt ? new Date(r.deletedAt).toLocaleString() : '—' }}</span>
+          <span class="file-cell-meta">刪除者：{{ r.deletedByName || UNRECORDED }}</span>
           <span class="file-cell-actions">
             <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="restoreUploadedFile(r)">復原</button>
             <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="hardDeleteUploadedFile(r)">永久刪除</button>
@@ -638,7 +655,10 @@ async function batchHardDeleteJobs() {
             </span>
           </td>
           <td>{{ job.kind }}</td>
-          <td class="mono">{{ job.deletedAt ? new Date(job.deletedAt).toLocaleString() : '—' }}</td>
+          <td class="mono">
+            {{ job.deletedAt ? new Date(job.deletedAt).toLocaleString() : '—' }}
+            <span class="actor-stamp" style="display:table;margin-top:3px">刪除者：{{ job.updatedByName || UNRECORDED }}</span>
+          </td>
           <td>{{ statusLabels[job.status] }}</td>
           <td>
             <div class="row" style="gap:8px;flex-wrap:nowrap">
@@ -665,6 +685,7 @@ async function batchHardDeleteJobs() {
       <p class="sub" style="margin:4px 0">
         <b>建立時間</b>：{{ viewingJob.job.createdAt ? new Date(viewingJob.job.createdAt).toLocaleString() : '—' }}
       </p>
+      <p class="sub" style="margin:4px 0"><StampLine :record="viewingJob.job" /></p>
       <p v-if="viewingJob.job.deletedAt" class="sub" style="margin:4px 0">
         <b>移入垃圾桶時間</b>：{{ new Date(viewingJob.job.deletedAt).toLocaleString() }}
       </p>

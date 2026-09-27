@@ -17,6 +17,7 @@ const navItems: { name: string; label: string }[] = [
   { name: 'list', label: '活動列表' },
   { name: 'export', label: '匯出成果' },
   { name: 'history-files', label: '歷史檔案' },
+  { name: 'audit', label: '操作紀錄' },
 ]
 
 const mobileNavOpen = ref(false)
@@ -34,7 +35,10 @@ async function logOut() {
 }
 
 onMounted(() => {
-  if (auth.user) db.fetchAll()
+  if (auth.user) {
+    db.fetchAll()
+    auth.refreshUser()
+  }
 })
 
 watch(
@@ -75,6 +79,7 @@ watch(
           >{{ item.label }}</button>
         </nav>
         <div class="logout-zone">
+          <div v-if="auth.displayName" class="whoami">登入者：{{ auth.displayName }}</div>
           <button class="logout-btn" @click="logOut">登出</button>
         </div>
       </div>

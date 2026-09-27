@@ -5,17 +5,25 @@ import { deleteObjects } from '../lib/middleware'
 import { uploadParseFile } from '../lib/uploadFile'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { CategoryObject, applyCategoryRecord, categoryToRecord } from '../models/Category'
-import { ActivityObject, activityToRecord, applyActivityRecord } from '../models/Activity'
+import {
+  ActivityObject,
+  activityToRecord,
+  applyActivityRecord,
+  splitAttachments,
+} from '../models/Activity'
+import { AuditLogObject, auditLogToRecord } from '../models/AuditLog'
+import { mergeUpdateStamp } from '../models/actorStamp'
 import {
   GenerationJobObject,
   applyGenerationJobRecord,
   generationJobToRecord,
 } from '../models/GenerationJob'
-import { DEFAULT_CATEGORY_NAMES, fileUploadRejectionReason } from '../types'
+import { ATTACHMENT_TYPES, DEFAULT_CATEGORY_NAMES, fileUploadRejectionReason } from '../types'
 import type {
   ActivityCategory,
   ActivityRecord,
   AttachmentKey,
+  AuditLogRecord,
   CategoryRecord,
   FileMeta,
   GenerationJobKind,
@@ -97,7 +105,10 @@ export const useDbStore = defineStore('db', () => {
     const obj = CategoryObject.createWithoutData(id)
     applyCategoryRecord(obj, { name, planIds: existing?.planIds ?? [] })
     await obj.save()
-    if (existing) existing.name = name
+    if (existing) {
+      existing.name = name
+      mergeUpdateStamp(existing, obj)
+    }
   }
 
   async function setCategoryPlans(id: string, planIds: string[]): Promise<void> {
@@ -107,6 +118,7 @@ export const useDbStore = defineStore('db', () => {
     applyCategoryRecord(obj, { name: existing.name, planIds })
     await obj.save()
     existing.planIds = planIds
+    mergeUpdateStamp(existing, obj)
   }
 
   /** 只刪分類管理清單裡的項目，不會動到已存活動的 categories 欄位——那裡存的是
@@ -128,7 +140,10 @@ export const useDbStore = defineStore('db', () => {
     obj.set('name', name)
     await obj.save()
     const existing = plans.value.find((p) => p.id === id)
-    if (existing) existing.name = name
+    if (existing) {
+      existing.name = name
+      mergeUpdateStamp(existing, obj)
+    }
   }
 
   async function deletePlan(id: string): Promise<void> {
@@ -175,7 +190,9 @@ export const useDbStore = defineStore('db', () => {
     activities.value = activities.value.filter((a) => a.id !== id)
   }
 
-  /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。 */
+  /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。
+   * 存檔後再用伺服器回傳的值補上最後修改者，以及附件陣列裡 Cloud Code 蓋上的
+   * 上傳者／刪除者（這些只有伺服器知道，mutateLocal 算不出來）。 */
   async function patchActivity(
     id: string,
     apply: (obj: ActivityObject, existing: ActivityRecord) => void,
@@ -187,6 +204,13 @@ export const useDbStore = defineStore('db', () => {
     apply(obj, existing)
     await obj.save()
     mutateLocal(existing)
+    mergeUpdateStamp(existing, obj)
+    for (const [key] of ATTACHMENT_TYPES) {
+      if (!obj.has(`${key}Files`)) continue
+      const split = splitAttachments(obj, key)
+      existing.files[key] = split.files
+      existing.trash[key] = split.trash
+    }
   }
 
   async function updateActivity(id: string, input: ActivityFormInput): Promise<void> {
@@ -439,6 +463,7 @@ export const useDbStore = defineStore('db', () => {
     obj.set('deletedAt', now)
     await obj.save()
     existing.deletedAt = now.toISOString()
+    mergeUpdateStamp(existing, obj)
   }
 
   /** 從垃圾桶復原。 */
@@ -449,6 +474,7 @@ export const useDbStore = defineStore('db', () => {
     obj.unset('deletedAt')
     await obj.save()
     existing.deletedAt = undefined
+    mergeUpdateStamp(existing, obj)
   }
 
   /** 永久刪除：只能對垃圾桶裡的工作做，會把已上傳的素材與產出檔案一併從 GCS 清掉，無法復原。 */
@@ -459,6 +485,15 @@ export const useDbStore = defineStore('db', () => {
     await deleteObjects(objectPaths)
     await GenerationJobObject.createWithoutData(id).destroy()
     generationJobs.value = generationJobs.value.filter((j) => j.id !== id)
+  }
+
+  /** 稽核紀錄，由新到舊。傳 activityId 只查這個活動（含它的 AI 生成任務）。 */
+  async function fetchAuditLogs(
+    options: { activityId?: string; limit?: number } = {},
+  ): Promise<AuditLogRecord[]> {
+    const query = new Parse.Query(AuditLogObject).descending('createdAt').limit(options.limit ?? 500)
+    if (options.activityId) query.equalTo('activityId', options.activityId)
+    return (await query.find()).map(auditLogToRecord)
   }
 
   return {
@@ -495,5 +530,6 @@ export const useDbStore = defineStore('db', () => {
     trashGenerationJob,
     restoreGenerationJob,
     hardDeleteGenerationJob,
+    fetchAuditLogs,
   }
 })

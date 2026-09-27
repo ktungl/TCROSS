@@ -9,7 +9,7 @@
 ## ⬜ 待辦事項總覽（依優先序，2026-09-17 更新）
 
 🔴 **高風險 / 需你決定才能動手**
-1. **Parse CLP 無角色分級**——`cloud/main.js` 仍是「所有登入使用者可讀寫」，沒有 viewer/editor/admin 區分。任一帳號外洩＝整個資料庫外洩。需要你先決定角色設計（見[資安檢視](#資安檢視依-iso-27001-annex-a-對照)第 2 項）。
+1. ~~Parse CLP 角色分級~~——✅ 2026-09-27 已完成並部署（見[資安檢視](#資安檢視依-iso-27001-annex-a-對照)第 2 項）。前端新畫面（登入歡迎、操作者、操作紀錄頁）在 `ching` 分支，尚未合併到 main／部署到 Netlify。
 2. **`cloud/main.js` 實際部署版本無法從程式碼確認**——CLP 驗證、上傳大小/副檔名檢查、Category `beforeSave` 都要手動貼回 Back4App Dashboard 才生效，目前不確定線上跑的是哪一版（見[部署落差](#資安檢視依-iso-27001-annex-a-對照)）。
 
 🟠 **中—需要你確認是否接受風險**
@@ -151,7 +151,7 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 | # | 風險 | 對應控制項 | 狀態 |
 | --- | --- | --- | --- |
 | 1 | 🔴 高｜Cloud Run 端點缺少物件層級授權——只驗證「是不是已登入的 Parse 使用者」，沒驗證檔案是否屬於該使用者有權存取的活動 | A.8.3／A.5.15 | ✅ **已修正並部署上線**（09-04，revision `00006-qlz`）——`server/parse_auth.py` 新增 `activity_exists()`／`find_generation_job_for_object_path()`，改用呼叫者 session token 查詢授權；已用真實資料實測 4 種情境全部正確。**09-17 複查程式碼仍成立。** |
-| 2 | 🔴 高｜**Parse CLP 無角色分級**——`cloud/main.js` 註解明講「CLP 開放給所有登入使用者讀寫」，沒有 row-level ACL 或 viewer/editor/admin 區分 | A.5.15／A.5.18 | ⬜ **未處理**。09-17 複查仍未修正。需要你先決定角色設計（例如現有 3 人是否都要保留完整讀寫權限）才能動手，不宜自行決定。 |
+| 2 | 🔴 高｜**Parse CLP 無角色分級**——`cloud/main.js` 註解明講「CLP 開放給所有登入使用者讀寫」，沒有 row-level ACL 或 viewer/editor/admin 區分 | A.5.15／A.5.18 | ✅ **已修正並部署上線**（09-27）——角色 `member`／`developer`（系統內權限相同），資料 class 的 CLP 只開放給這兩個角色；`AuditLog` 只能讀不能寫；`_Role` 原本完全公開（連未登入都能建角色），一併鎖住；`_User` 關閉公開註冊。建立者／最後修改者／上傳者／刪除者由 Cloud Code 在伺服器端寫入。09-27：`cloud/main.js` 已由使用者貼到 Back4App 部署、角色 CLP 已套用；用 REST 實測 15 項（冒名覆蓋、member/developer 可讀寫、未登入被拒、AuditLog 不可寫、公開註冊與建角色已關閉、無法自改顯示名稱、新增/修改/刪除/登入皆有紀錄）全部通過。 |
 | 3 | 🟠 中｜檔案上傳無型別／大小限制 | A.8.7／A.8.28 | ✅ 前端＋Cloud Run 端已修正生效（`fileUploadRejectionReason()` 50MB 上限＋副檔名黑名單；`/signed-url` 也加了副檔名檢查）。🟡 **`cloud/main.js` 的同款檢查要貼回 Back4App Dashboard 才生效，09-17 仍無法確認線上版本是否已包含**（見下方「部署落差」）。 |
 | 4 | 🟠 中｜相依套件已知漏洞（npm） | A.8.8 | 🟡 **部分完成**——`nanoid` 已升到 3.3.18（高風險已解）。`ws`（經 `parse` SDK，高）與 `uuid`（經 `exceljs`，中）**09-17 複查仍未解決**，需 `npm audit fix --force` 換主版本（`parse@3.4.2`／`exceljs@3.4.0`），會影響登入與匯出功能，需你確認是否接受 breaking change。 |
 | 5 | 🟠 中｜相依套件已知漏洞（Python，`fastapi`/`starlette`） | A.8.8 | 🟡 **程式碼已修正**（`requirements.txt` 已是 `fastapi==0.141.1`／`starlette` 新版，09-17 直接讀檔確認），本機 `TestClient` 測試通過。**部署到 Cloud Run 的狀態原始記錄前後矛盾**（09-04 記錄一度寫「已部署上線 revision `00008-rmc`」，又寫「尚未部署，等你確認後再跑 `gcloud run deploy`」），09-17 沒有 `gcloud` 存取權限核對，**需要你跑一次 [OPERATIONS.md](OPERATIONS.md) 的健康檢查指令確認線上 revision 是否已含這次升級**。 |
@@ -159,6 +159,7 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 | 7 | 🟠 中｜`ALLOWED_ORIGIN` 預設 fail-open | A.8.20／A.8.26 | ✅ **已修正並部署上線**（09-04）——未設定會直接啟動失敗（`RuntimeError`），不再靜默放行所有來源。 |
 | 8 | 🟡 低｜Cloud Run 容器以 root 執行 | A.8.9 | ✅ **已修正並部署**（09-04）——新增 `useradd appuser` + `USER appuser`。 |
 | 9 | 🟡 低｜無速率限制 | A.8.16 | ✅ **已修正（輕量版）並部署**（09-04）——每使用者每分鐘 30 次記憶體內限流，超過回 429；已對正式網址實測 32 次連續請求驗證。**已知限制**：狀態不共享、重啟歸零，多 instance 下不是精確硬上限，只拉高濫用門檻。 |
+| 10 | 🟠 中｜**初始密碼可被猜測**——6 個帳號中 4 個新帳號的初始密碼規則是「帳號＋1234」，知道規則的人可以登入別人的帳號，而所有操作都會記在那個人名下 | A.5.17 | ⬜ **已知風險，依決定暫不處理**（09-27）。建議之後加「首次登入強制改密碼」，或請成員登入後自行改密碼。 |
 
 **已符合的作法**（值得保留，不需要動）：`PARSE_MASTER_KEY` 存於 Secret Manager、非明文環境變數；Signed URL 用 IAM 自我模擬簽章且 15 分鐘短效期；`.env` 正確被 `.gitignore`、全 git 歷史掃描未發現硬編碼金鑰；`objectPath` 有路徑穿越（`..`）與前綴白名單檢查；Cloud Code `beforeSave` 對前端請求做了伺服器端二次驗證；前端無 `v-html`／`innerHTML` 等 XSS 注入點。
 
@@ -168,7 +169,7 @@ README 裡規劃的「語音/影片/圖片/文字 → Gemini 分析 → Cloud Ru
 
 ### 資安待辦優先序
 
-1. **Parse CLP 角色分級**——⬜ 還沒動，需要先確認角色設計才能動手。
+1. **Parse CLP 角色分級**——✅ 09-27 已完成並部署。
 2. **`exceljs`／`parse` SDK 的 breaking change 升級**（解 `uuid`／`ws` 漏洞）——⬜ 需要你確認是否接受主版本升級風險。
 3. **確認 `cloud/main.js` 與 Python 套件升級的實際部署狀態**——⬜ 需要你核對 Back4App Dashboard 與 Cloud Run 線上 revision。
 

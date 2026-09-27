@@ -1,7 +1,16 @@
 import Parse from '../lib/parse'
 import { PlanObject } from './Plan'
+import { actorStampOf } from './actorStamp'
 import { ATTACHMENT_TYPES } from '../types'
-import type { ActivityCategory, ActivityRecord, ActivityFiles, FileMeta, Kpi } from '../types'
+import type {
+  ActivityCategory,
+  ActivityRecord,
+  ActivityFiles,
+  ActorStampKey,
+  AttachmentKey,
+  FileMeta,
+  Kpi,
+} from '../types'
 
 /** Cloud Code 要求 kpis 陣列的 k/v/u 都必須是字串；舊資料或曾經用 REST API 寫入的紀錄
  * 可能帶著數字型別的 v/u。讀取時就轉成字串，讓本地狀態（之後任何一次存檔，不管是編輯
@@ -30,13 +39,22 @@ function emptyFiles(): ActivityFiles {
   return files
 }
 
+/** 把某個附件分類的完整陣列拆成「現存」與「垃圾桶」兩邊。 */
+export function splitAttachments(
+  obj: Parse.Object,
+  key: AttachmentKey,
+): { files: FileMeta[]; trash: FileMeta[] } {
+  const all = (obj.get(`${key}Files`) as FileMeta[] | undefined) ?? []
+  return { files: all.filter((f) => !f.deletedAt), trash: all.filter((f) => f.deletedAt) }
+}
+
 export function activityToRecord(obj: Parse.Object): ActivityRecord {
   const files = emptyFiles()
   const trash = emptyFiles()
   for (const [key] of ATTACHMENT_TYPES) {
-    const all = (obj.get(`${key}Files`) as FileMeta[] | undefined) ?? []
-    files[key] = all.filter((f) => !f.deletedAt)
-    trash[key] = all.filter((f) => f.deletedAt)
+    const split = splitAttachments(obj, key)
+    files[key] = split.files
+    trash[key] = split.trash
   }
   const plans = (obj.get('plans') as Parse.Object[] | undefined) ?? []
   const male = Number(obj.get('maleCount')) || 0
@@ -67,12 +85,13 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     kpis: normalizeKpis(obj.get('kpis')),
     files,
     trash,
+    ...actorStampOf(obj),
   }
 }
 
 export function applyActivityRecord(
   obj: Parse.Object,
-  record: Omit<ActivityRecord, 'id' | 'files' | 'trash'>,
+  record: Omit<ActivityRecord, 'id' | 'files' | 'trash' | ActorStampKey>,
 ): void {
   obj.set('name', record.name)
   obj.set('categories', record.categories)

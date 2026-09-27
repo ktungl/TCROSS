@@ -1,6 +1,12 @@
 import Parse from '../lib/parse'
 import { ActivityObject } from './Activity'
-import type { GenerationJobKind, GenerationJobRecord, GenerationJobStatus } from '../types'
+import { actorStampOf } from './actorStamp'
+import type {
+  ActorStampKey,
+  GenerationJobKind,
+  GenerationJobRecord,
+  GenerationJobStatus,
+} from '../types'
 
 export class GenerationJobObject extends Parse.Object {
   constructor() {
@@ -21,14 +27,14 @@ export function generationJobToRecord(obj: Parse.Object): GenerationJobRecord {
     sourceFiles: (obj.get('sourceFiles') as string[] | undefined) ?? [],
     resultFile: obj.get('resultFile') ?? '',
     errorMessage: obj.get('errorMessage') ?? '',
-    createdAt: obj.createdAt?.toISOString() ?? '',
+    ...actorStampOf(obj),
     deletedAt: deletedAt ? deletedAt.toISOString() : undefined,
   }
 }
 
 export function applyGenerationJobRecord(
   obj: Parse.Object,
-  record: Omit<GenerationJobRecord, 'id' | 'createdAt'>,
+  record: Omit<GenerationJobRecord, 'id' | ActorStampKey>,
 ): void {
   obj.set('activity', ActivityObject.createWithoutData(record.activityId))
   obj.set('kind', record.kind)

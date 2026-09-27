@@ -43,13 +43,19 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 
 ## 資料結構（Parse Classes）
 
+所有資料 class（Plan／Category／Activity／GenerationJob）都有 `createdById`／`createdByName`／`updatedById`／`updatedByName`（建立者／最後修改者），由 `cloud/main.js` 的 `stampActor()` 在伺服器端寫入，前端送來的值會被覆蓋、無法冒名；前端只讀（`src/models/actorStamp.ts`）。
+
 - **Plan**：`name`
 - **Activity**（欄位依《需求訪談》規格，2026-09-03）
   - 基本資料：`name`（活動名稱／事由）/ `category`（活動分類）/ `date`＋`dateEnd`（起訖日期，同一天時 `dateEnd` 留空）/ `place` / `owner`（負責人，內部管理用）/ `plans`（對應多個 Plan）
   - 與會資訊：`attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `maleCount`＋`femaleCount`＋`totalCount`（與會人數統計）
   - 成果：`summary`（活動內容簡述與效益）/ `kpis` / `remark`（備註）
-  - 附件（8 分類，各存一個 `{name, size, url, caption?, featured?}` 陣列）：`photoFiles`（照片，`caption` 為圖說、`featured` 為大紀事精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
+  - 附件（8 分類，各存一個 `{name, size, url, caption?, featured?, deletedAt?, uploadedById?, uploadedByName?, uploadedAt?, deletedById?, deletedByName?}` 陣列；`uploaded*`／`deleted*` 是上傳者／移到垃圾桶的人，由 Cloud Code 以 url 比對前後陣列後寫入）：`photoFiles`（照片，`caption` 為圖說、`featured` 為大紀事精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
   - 舊版殘留：`headcount`（單一人數數字，已由 `maleCount`/`femaleCount`/`totalCount` 取代）/ `audioFiles`／`videoFiles`／`docFiles`（舊 4 分類附件）——前端不再讀寫，但舊資料可能還在，Cloud Code 仍會驗證與清孤兒檔
+- **Category**：`name` / `plans`（所屬計畫，可留空）
+- **AuditLog**（稽核紀錄，2026-09-27）：`action`（create/update/delete/login/logout）/ `targetClass` / `targetId` / `targetName` / `activityId` / `actorId` / `actorName` / `changes`（`[{field, label, before, after}]`）/ `summary`（中文摘要）——由 Cloud Code 的 afterSave/afterDelete/afterLogin/afterLogout 用 Master Key 寫入，CLP 不開放任何人新增／修改／刪除；前端「操作紀錄」頁與活動詳情頁底部可查
+- **_User**：多了 `displayName`（顯示名稱，登入歡迎畫面與操作紀錄用），只能由 `scripts/setup-users.mjs`（Master Key）修改，使用者自己改會被 Cloud Code 擋下
+- **角色（_Role）**：`member`、`developer`，兩者在系統內權限相同（全部 CRUD）；資料 class 的 CLP 只開放給這兩個角色，不在任何角色裡的帳號讀不到資料。帳號管理見 [OPERATIONS.md](OPERATIONS.md#帳號與角色)
 - **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，前端 `AiGenerationModal.vue`（掛在 `DetailView.vue`「AI 自動生成成果報告」按鈕）已串上傳/建立/輪詢/下載/刪除；Cloud Run 端呼叫 Gemini＋組裝文件已完成、部署上線並通過端到端測試（見 [ROADMAP.md](ROADMAP.md) Phase 3b）
 
 **新增欄位時要記得同步 Back4App schema**：Back4App 不允許前端（JS Key）自動建欄位，`Activity.ts` 加了新欄位卻沒在 Back4App 建對應欄位的話，存檔會收到 `Permission denied for action addField on class Activity`。改完 `src/models/Activity.ts` 後，更新 `scripts/sync-schema.mjs` 的 `WANTED` 再跑：

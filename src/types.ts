@@ -15,6 +15,54 @@ export interface FileMeta {
   /** 軟刪除時間戳記（ISO 字串）。有值代表在垃圾桶裡，正常畫面（含匯出、缺漏檢核）都會濾掉，
    * 只有「歷史檔案」頁的垃圾桶會列出，可以復原或從那裡永久刪除。 */
   deletedAt?: string
+  /** 以下由 cloud/main.js 在伺服器端寫入（前端送出的值會被覆蓋），前端只拿來顯示。 */
+  /** 把這個檔案加進此活動的人（上傳，或從歷史檔案選取） */
+  uploadedById?: string
+  uploadedByName?: string
+  /** 加進此活動的時間（ISO 字串） */
+  uploadedAt?: string
+  /** 把這個檔案移到垃圾桶的人 */
+  deletedById?: string
+  deletedByName?: string
+}
+
+/** 建立者／最後修改者，由 cloud/main.js 的 stampActor() 在伺服器端寫入，前端只讀、
+ * 不送出。功能上線前建立的舊資料是空字串，畫面顯示「（未記錄）」。 */
+export interface ActorStamp {
+  createdByName: string
+  updatedByName: string
+  /** ISO 字串 */
+  createdAt: string
+  /** ISO 字串 */
+  updatedAt: string
+}
+
+export type ActorStampKey = keyof ActorStamp
+
+export type AuditAction = 'create' | 'update' | 'delete' | 'login' | 'logout'
+
+export interface AuditChange {
+  field: string
+  label: string
+  before: unknown
+  after: unknown
+}
+
+/** 稽核紀錄（Parse class AuditLog），只有 Cloud Code 能寫入，前端只讀。 */
+export interface AuditLogRecord {
+  id: string
+  action: AuditAction
+  /** Plan／Category／Activity／GenerationJob／_User（登入登出） */
+  targetClass: string
+  targetId: string
+  targetName: string
+  activityId: string
+  actorId: string
+  actorName: string
+  changes: AuditChange[]
+  /** 中文摘要，可能有多行（附件異動各一行） */
+  summary: string
+  createdAt: string
 }
 
 /**
@@ -84,7 +132,7 @@ export type ActivityFiles = Record<AttachmentKey, FileMeta[]>
  * 分類清單由「分類管理」頁面維護（見 CategoryRecord），不再寫死成固定選項。 */
 export type ActivityCategory = string
 
-export interface CategoryRecord {
+export interface CategoryRecord extends ActorStamp {
   id: string
   name: string
   /** 這個分類所屬的計畫（可複選，可留空）。留空代表不限計畫，任何計畫底下
@@ -104,12 +152,12 @@ export interface HeadcountStat {
   total: number
 }
 
-export interface PlanRecord {
+export interface PlanRecord extends ActorStamp {
   id: string
   name: string
 }
 
-export interface ActivityRecord {
+export interface ActivityRecord extends ActorStamp {
   id: string
   /** 活動名稱／事由 */
   name: string
@@ -154,6 +202,10 @@ export interface GenerationJobRecord {
   resultFile: string
   errorMessage: string
   createdAt: string
+  updatedAt: string
+  createdByName: string
+  /** 移到垃圾桶的工作，最後修改者就是把它移進垃圾桶的人 */
+  updatedByName: string
   /** 軟刪除時間戳記（ISO 字串），語意同 FileMeta.deletedAt。 */
   deletedAt?: string
 }

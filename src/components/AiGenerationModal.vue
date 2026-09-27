@@ -13,6 +13,7 @@ import {
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import FolderDropzone from './FolderDropzone.vue'
+import { UNRECORDED } from '../utils/actor'
 import { FOLDERS, fileUploadRejectionReason } from '../types'
 import type { ActivityRecord, FolderKey, GenerationJobRecord, GenerationJobStatus } from '../types'
 
@@ -263,7 +264,7 @@ function close() {
         <label>過去的生成工作</label>
         <ul class="files">
           <li v-for="j in pastJobs" :key="j.id">
-            <span>{{ j.kind }}　{{ statusLabel(j.status) }}</span>
+            <span>{{ j.kind }}　{{ statusLabel(j.status) }}<span class="actor-stamp" style="margin-left:6px">建立者：{{ j.createdByName || UNRECORDED }}</span></span>
             <span style="display:flex;align-items:center;gap:8px">
               <button
                 v-if="j.status === 'done' && j.resultFile"

@@ -1,0 +1,10 @@
+{
+  "users": [
+    { "username": "ruoting.chen", "displayName": "陳若庭", "password": "<初始密碼>", "roles": ["member"] },
+    { "username": "qiyuan.huang", "displayName": "黃琪媛", "password": "<初始密碼>", "roles": ["member"] },
+    { "username": "youjun.shen", "displayName": "沈宥均", "password": "<初始密碼>", "roles": ["member"] },
+    { "username": "ching.chen", "displayName": "陳怡靜", "password": "<初始密碼>", "roles": ["developer"] },
+    { "username": "Test123", "displayName": "冠彤", "roles": ["developer"] },
+    { "username": "qa_cc_1786685240", "displayName": "雅婷", "roles": ["developer"] }
+  ]
+}

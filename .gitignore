@@ -30,3 +30,6 @@ __pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# 帳號清單（含初始密碼），見 scripts/setup-users.mjs
+scripts/users.local.json
