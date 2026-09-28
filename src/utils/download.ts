@@ -397,39 +397,84 @@ function buildPhotoTable(photos: ImageAsset[], captions: string[]): Table {
   return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: PHOTO_TABLE_BORDERS, rows })
 }
 
-/** 大紀事 Excel：分類／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
-export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blob> {
+export type LedgerPhotoSize = 'small' | 'medium' | 'large'
+
+/** 大紀事精選照片的尺寸選項（每張照片框的寬×高，公分）。「標準」對應《114年大紀事_範例.xlsx》
+ * 裡的照片大小。每一列的列高、照片欄的欄寬都由這裡推算，整份表格列高固定一致，照片一定落在
+ * 格子內，不用匯出後再手動調版面。 */
+export const LEDGER_PHOTO_SIZES: Record<LedgerPhotoSize, { label: string; widthCm: number; heightCm: number }> = {
+  small: { label: '小（5 × 3.75 公分）', widthCm: 5, heightCm: 3.75 },
+  medium: { label: '標準（6.7 × 5 公分，同範例）', widthCm: 6.67, heightCm: 5 },
+  large: { label: '大（8 × 6 公分）', widthCm: 8, heightCm: 6 },
+}
+
+/** 每場活動最多放幾張精選照片（範例檔最多 3 張並排） */
+export const LEDGER_MAX_PHOTOS = 3
+
+/** 照片與格線之間、照片與照片之間的留白（px） */
+const LEDGER_PHOTO_GAP_PX = 8
+/** Excel 欄寬單位是「字元數」，以預設字型約 7px／字元＋5px 邊界換算 */
+const excelColWidthToPx = (w: number) => Math.round(w * 7 + 5)
+const pxToExcelColWidth = (px: number) => Math.ceil(((px - 5) / 7) * 100) / 100
+/** 列高單位是 pt（1pt = 96/72 px） */
+const pxToPt = (px: number) => Math.ceil(px * 0.75 * 10) / 10
+
+const LEDGER_FONT = { name: '微軟正黑體', size: 12 }
+
+/** 大紀事 Excel，格式比照《114年大紀事_範例.xlsx》：
+ * 專案名稱／計畫項目／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
+export async function buildLedgerXlsx(
+  activities: ActivityRecord[],
+  planName: (id: string) => string,
+  options: { photoSize?: LedgerPhotoSize; photosPerRow?: number } = {},
+): Promise<Blob> {
+  const { photoSize = 'medium', photosPerRow = 1 } = options
   const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet('大紀事')
-  const headers = ['分類', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', '精選照片']
+  const sheet = workbook.addWorksheet('大紀事', { views: [{ state: 'frozen', ySplit: 1, zoomScale: 70 }] })
+  const headers = ['專案名稱', '計畫項目', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', '精選照片']
+  const CENTERED_COLS = new Set([3, 8])
+
+  const box = LEDGER_PHOTO_SIZES[photoSize]
+  const boxW = cmToPx(box.widthCm)
+  const boxH = cmToPx(box.heightCm)
+  const slots = Math.min(Math.max(1, photosPerRow), LEDGER_MAX_PHOTOS)
+  const photoColWidth = pxToExcelColWidth(slots * boxW + (slots + 1) * LEDGER_PHOTO_GAP_PX)
+  const photoColPx = excelColWidthToPx(photoColWidth)
+  const rowHeightPt = pxToPt(boxH + LEDGER_PHOTO_GAP_PX * 2)
+  const rowHeightPx = rowHeightPt / 0.75
+
   sheet.columns = [
-    { width: 10 },
-    { width: 14 },
     { width: 16 },
-    { width: 26 },
-    { width: 20 },
-    { width: 20 },
+    { width: 15 },
     { width: 12 },
-    { width: 14 },
+    { width: 34 },
+    { width: 23 },
+    { width: 21 },
+    { width: 15 },
+    { width: 14.5 },
+    { width: photoColWidth },
   ]
   const PHOTO_COL = headers.length
 
   const headerRow = sheet.getRow(1)
+  headerRow.height = 30
   headers.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1)
     cell.value = h
-    cell.font = { bold: true }
-    cell.border = THIN_BORDER
-    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.font = LEDGER_FONT
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
   })
 
   for (let i = 0; i < activities.length; i++) {
     const a = activities[i]
     const rowIdx = i + 2
     const row = sheet.getRow(rowIdx)
-    const values = [
+    const rocDate = formatLedgerDate(a.date)
+    const values: (string | number)[] = [
+      a.plans.map(planName).join('、'),
       a.categories.join('、'),
-      formatLedgerDate(a.date),
+      // 範例檔的日期是數字（1140103），存數字才能在 Excel 裡直接排序／篩選
+      rocDate ? Number(rocDate) : '',
       a.place,
       a.name,
       a.attendees,
@@ -439,20 +484,40 @@ export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blo
     values.forEach((v, ci) => {
       const cell = row.getCell(ci + 1)
       cell.value = v
-      cell.border = THIN_BORDER
-      cell.alignment = { vertical: 'top', wrapText: true }
+      cell.font = LEDGER_FONT
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: CENTERED_COLS.has(ci + 1) ? 'center' : undefined,
+        wrapText: true,
+      }
     })
-    row.getCell(PHOTO_COL).border = THIN_BORDER
-    row.height = 60
+    row.height = rowHeightPt
 
-    const [photo] = pickPhotosForExport(a.files.photo ?? [], 1)
-    const asset = photo ? await loadImageAsset(photo) : null
-    if (asset) {
-      const { width, height } = scaleToBox(asset.width, asset.height, 70, 55)
+    const photos = pickPhotosForExport(a.files.photo ?? [], slots)
+    const assets: ImageAsset[] = []
+    for (const photo of photos) {
+      const asset = await loadImageAsset(photo)
+      if (asset) assets.push(asset)
+    }
+    // 照片由左到右並排、整組在格子裡水平置中，每張在自己的照片框裡置中。
+    const groupW = assets.length * boxW + (assets.length - 1) * LEDGER_PHOTO_GAP_PX
+    let slotX = (photoColPx - groupW) / 2
+    for (const asset of assets) {
+      const { width, height } = scaleToBox(asset.width, asset.height, boxW, boxH)
+      const offsetX = slotX + (boxW - width) / 2
+      const offsetY = (rowHeightPx - height) / 2
+      slotX += boxW + LEDGER_PHOTO_GAP_PX
+      // ExcelJS 把 tl 的小數部分換算成位移時，是用「欄寬×10000」、「列高×10000」EMU
+      // 當一整格（不是 Excel 實際的格子大小），所以要用同一套基準反推小數，位移才會
+      // 等於想要的像素（1px = 9525 EMU）。
       const imageId = workbook.addImage({ base64: asset.dataUrl, extension: asset.xlsxExt })
       sheet.addImage(imageId, {
-        tl: { col: PHOTO_COL - 1 + 0.05, row: rowIdx - 1 + 0.05 },
+        tl: {
+          col: PHOTO_COL - 1 + (offsetX * 9525) / (photoColWidth * 10000),
+          row: rowIdx - 1 + (offsetY * 9525) / (rowHeightPt * 10000),
+        },
         ext: { width, height },
+        editAs: 'oneCell',
       })
     }
   }

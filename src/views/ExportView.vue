@@ -2,7 +2,16 @@
 import { computed, ref, watch } from 'vue'
 import { useDbStore } from '../stores/db'
 import { gaps, nFiles, score } from '../utils/activity'
-import { buildCsv, buildLedgerXlsx, buildNeimuReportDocx, downloadBlob, downloadFile } from '../utils/download'
+import {
+  buildCsv,
+  buildLedgerXlsx,
+  buildNeimuReportDocx,
+  downloadBlob,
+  downloadFile,
+  LEDGER_MAX_PHOTOS,
+  LEDGER_PHOTO_SIZES,
+  type LedgerPhotoSize,
+} from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
 import type { ActivityCategory } from '../types'
 
@@ -14,6 +23,8 @@ const xTo = ref('')
 const xCategories = ref<ActivityCategory[]>([])
 const wantLedger = ref(true)
 const wantNeimu = ref(true)
+const ledgerPhotoSize = ref<LedgerPhotoSize>('medium')
+const ledgerPhotosPerRow = ref(1)
 const exporting = ref(false)
 const previewVisible = ref(false)
 
@@ -88,7 +99,10 @@ async function doExport() {
   exporting.value = true
   try {
     if (wantLedger.value) {
-      const blob = await buildLedgerXlsx(picked.value)
+      const blob = await buildLedgerXlsx(picked.value, planName, {
+        photoSize: ledgerPhotoSize.value,
+        photosPerRow: ledgerPhotosPerRow.value,
+      })
       downloadBlob('大紀事.xlsx', blob)
     }
     if (wantNeimu.value) {
@@ -136,6 +150,24 @@ async function doExport() {
       <label class="chk"><input type="checkbox" v-model="wantLedger">大紀事 Excel</label>
       <label class="chk"><input type="checkbox" v-model="wantNeimu">內政部結案 Word</label>
     </div>
+
+    <div v-if="wantLedger" class="grid3" style="margin-top:14px">
+      <div>
+        <label>大紀事照片大小</label>
+        <select v-model="ledgerPhotoSize">
+          <option v-for="(s, key) in LEDGER_PHOTO_SIZES" :key="key" :value="key">{{ s.label }}</option>
+        </select>
+      </div>
+      <div>
+        <label>每場照片張數</label>
+        <select v-model.number="ledgerPhotosPerRow">
+          <option v-for="n in LEDGER_MAX_PHOTOS" :key="n" :value="n">最多 {{ n }} 張</option>
+        </select>
+      </div>
+    </div>
+    <p v-if="wantLedger" class="meta" style="font-size:11.5px;margin:4px 0 0">
+      優先放標記為精選的照片；每列列高固定、照片欄寬依張數自動調整，照片不會超出格子
+    </p>
 
     <div class="row" style="margin-top:16px">
       <button class="btn" :disabled="exporting" @click="doExport">{{ exporting ? '產生中…' : '下載匯出檔案' }}</button>
