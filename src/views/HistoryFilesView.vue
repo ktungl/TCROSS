@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { requestDownloadUrl } from '../lib/middleware'
@@ -135,6 +135,15 @@ const trashedFileRows = computed<FileRow[]>(() =>
 
 const uploadedSel = useSelection()
 const trashedFileSel = useSelection()
+
+/** 方格檢視一次只渲染這麼多張，其餘按「顯示更多」再載入。原圖動輒數 MB，
+ * 一次把幾十張都丟給瀏覽器下載會讓整頁卡住很久。 */
+const GRID_PAGE_SIZE = 24
+const uGridLimit = ref(GRID_PAGE_SIZE)
+const tGridLimit = ref(GRID_PAGE_SIZE)
+watch([uPlan, uType, uKeyword], () => (uGridLimit.value = GRID_PAGE_SIZE))
+const visibleUploadedRows = computed(() => uploadedRows.value.slice(0, uGridLimit.value))
+const visibleTrashedFileRows = computed(() => trashedFileRows.value.slice(0, tGridLimit.value))
 
 /** 批次動作用 url 找回「當下」在陣列裡的位置，而不是沿用選取當下的 index——
  * 因為前一筆處理完，陣列可能已經因為刪除／復原而位移，index 會對不上。 */
@@ -433,7 +442,7 @@ async function batchHardDeleteJobs() {
     </table>
 
     <div class="file-grid" v-else-if="uploadedRows.length && uView === 'grid'">
-      <div v-for="r in uploadedRows" :key="fileRowKey(r)" class="file-cell">
+      <div v-for="r in visibleUploadedRows" :key="fileRowKey(r)" class="file-cell">
         <span class="thumb-wrap file-thumb-wrap">
           <input
             type="checkbox"
@@ -443,7 +452,7 @@ async function batchHardDeleteJobs() {
             @change="uploadedSel.toggle(fileRowKey(r))"
           >
           <a class="file-thumb" :href="r.url" target="_blank" rel="noopener" :title="r.name">
-            <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy">
+            <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy" decoding="async">
             <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
           </a>
           <button class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
@@ -458,6 +467,11 @@ async function batchHardDeleteJobs() {
     </div>
 
     <p v-else class="empty">目前篩選條件下沒有檔案。</p>
+    <div v-if="uView === 'grid' && uploadedRows.length > uGridLimit" class="row" style="justify-content:center;margin-top:14px">
+      <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="uGridLimit += GRID_PAGE_SIZE">
+        顯示更多（還有 {{ uploadedRows.length - uGridLimit }} 個）
+      </button>
+    </div>
   </div>
 
   <h2>各計畫已有生成的匯出檔案</h2>
@@ -595,7 +609,7 @@ async function batchHardDeleteJobs() {
     </table>
 
     <div class="file-grid" v-else-if="trashedFileRows.length && tView === 'grid'">
-      <div v-for="r in trashedFileRows" :key="fileRowKey(r)" class="file-cell">
+      <div v-for="r in visibleTrashedFileRows" :key="fileRowKey(r)" class="file-cell">
         <span class="thumb-wrap file-thumb-wrap">
           <input
             type="checkbox"
@@ -605,7 +619,7 @@ async function batchHardDeleteJobs() {
             @change="trashedFileSel.toggle(fileRowKey(r))"
           >
           <a class="file-thumb" :href="r.url" target="_blank" rel="noopener" :title="r.name">
-            <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy">
+            <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy" decoding="async">
             <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
           </a>
         </span>
@@ -623,6 +637,11 @@ async function batchHardDeleteJobs() {
     </div>
 
     <p v-else class="empty">垃圾桶裡沒有上傳的檔案。</p>
+    <div v-if="tView === 'grid' && trashedFileRows.length > tGridLimit" class="row" style="justify-content:center;margin-top:14px">
+      <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="tGridLimit += GRID_PAGE_SIZE">
+        顯示更多（還有 {{ trashedFileRows.length - tGridLimit }} 個）
+      </button>
+    </div>
 
     <label style="margin-top:22px">已生成的匯出檔案</label>
     <div class="row selection-bar" style="margin:10px 0">
