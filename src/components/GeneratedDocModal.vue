@@ -5,11 +5,12 @@ import {
   buildOfficialLetterDocx,
   buildReceiptDocx,
   buildResultReportDocx,
-  buildSignInSheetXlsx,
+  buildSignInSheetDocx,
   downloadBlob,
   generatedFormExtension,
+  SIGN_IN_LAYOUTS,
 } from '../utils/download'
-import type { GeneratedFormKind, OfficialLetterPurpose } from '../utils/download'
+import type { GeneratedFormKind, OfficialLetterPurpose, SignInLayout } from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord } from '../types'
@@ -35,17 +36,23 @@ function readIssuer(): string {
 const letterIssuer = ref(readIssuer())
 const letterRecipient = ref('')
 const letterPurpose = ref<OfficialLetterPurpose>('邀請參加')
-// 說明「依據」要列哪些專案：活動上掛的專案不一定都是計畫（例如「2026大事紀」），
-// 所以讓使用者自己勾，預設全勾
-const letterPlanOptions = computed(() => props.activity.plans.map(props.planName))
-const letterBasisPlans = ref<string[]>([...letterPlanOptions.value])
+// 公文「依據」、簽到表標題要列哪些專案：活動上掛的專案不一定都是計畫
+// （例如「2026大事紀」），所以讓使用者自己勾，預設全勾
+const planOptions = computed(() => props.activity.plans.map(props.planName))
+const pickedPlans = ref<string[]>([...planOptions.value])
+const pickedPlansInOrder = () => planOptions.value.filter((n) => pickedPlans.value.includes(n))
+
+const signInLayout = ref<SignInLayout>('detailed')
 
 const planNames = computed(() => props.activity.plans.map(props.planName).join('、'))
 
 const summary = computed(() => {
   switch (props.kind) {
-    case '簽到表':
-      return `將產生 ${Math.max(10, props.activity.headcount.total || 10)} 列簽到欄位的 Excel 檔`
+    case '簽到表': {
+      const { perPage } = SIGN_IN_LAYOUTS[signInLayout.value]
+      const pages = Math.ceil(Math.max(props.activity.headcount.total || 0, 1) / perPage)
+      return `將產生 Word 簽到表，依活動人數（${props.activity.headcount.total || 0} 人）共 ${pages} 頁、${pages * perPage} 個簽到欄位`
+    }
     case '領據':
       return '將產生一份可列印簽章的 Word 領據'
     case '活動紀錄表':
@@ -63,7 +70,7 @@ async function download() {
     let blob: Blob
     switch (props.kind) {
       case '簽到表':
-        blob = await buildSignInSheetXlsx(props.activity, planNames.value)
+        blob = await buildSignInSheetDocx(props.activity, { titlePlans: pickedPlansInOrder(), layout: signInLayout.value })
         break
       case '領據':
         blob = await buildReceiptDocx(props.activity, planNames.value)
@@ -84,7 +91,7 @@ async function download() {
           issuer: letterIssuer.value,
           recipient: letterRecipient.value,
           purpose: letterPurpose.value,
-          basisPlans: letterPlanOptions.value.filter((n) => letterBasisPlans.value.includes(n)),
+          basisPlans: pickedPlansInOrder(),
         })
         break
     }
@@ -112,14 +119,20 @@ async function download() {
         <input v-model="letterIssuer" placeholder="例：社團法人○○協會">
         <label style="margin-top:12px">受文者</label>
         <input v-model="letterRecipient" placeholder="例：內政部">
-        <template v-if="letterPlanOptions.length">
-          <label style="margin-top:12px">說明「依據」的專案（不勾＝不寫依據）</label>
-          <div class="row" style="gap:14px">
-            <label v-for="n in letterPlanOptions" :key="n" class="chk">
-              <input v-model="letterBasisPlans" type="checkbox" :value="n">{{ n }}
-            </label>
-          </div>
-        </template>
+      </template>
+      <template v-if="kind === '簽到表'">
+        <label>版型</label>
+        <select v-model="signInLayout">
+          <option v-for="(l, key) in SIGN_IN_LAYOUTS" :key="key" :value="key">{{ l.label }}</option>
+        </select>
+      </template>
+      <template v-if="(kind === '公文' || kind === '簽到表') && planOptions.length">
+        <label style="margin-top:12px">{{ kind === '公文' ? '說明「依據」的專案（不勾＝不寫依據）' : '標題顯示的專案（不勾＝不顯示）' }}</label>
+        <div class="row" style="gap:14px">
+          <label v-for="n in planOptions" :key="n" class="chk">
+            <input v-model="pickedPlans" type="checkbox" :value="n">{{ n }}
+          </label>
+        </div>
       </template>
       <div class="row" style="margin-top:20px">
         <button class="btn" :disabled="downloading" @click="download">{{ downloading ? '產生中…' : '下載' }}</button>

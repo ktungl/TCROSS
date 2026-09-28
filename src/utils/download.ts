@@ -4,13 +4,16 @@ import {
   BorderStyle,
   Document,
   HeadingLevel,
+  HeightRule,
   ImageRun,
   Packer,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableRow,
   TextRun,
+  VerticalAlign,
   WidthType,
 } from 'docx'
 import { ATTACHMENT_TYPES } from '../types'
@@ -45,7 +48,7 @@ export function buildCsv(rows: (string | number)[][]): string {
 export type GeneratedFormKind = '簽到表' | '領據' | '活動紀錄表' | '成果報告' | '公文'
 
 export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx' {
-  return kind === '領據' || kind === '成果報告' || kind === '公文' ? 'docx' : 'xlsx'
+  return kind === '活動紀錄表' ? 'xlsx' : 'docx'
 }
 
 /** 開始～結束時間格式：09:00～10:30；沒填結束時間或跟開始時間一樣就只顯示開始時間。 */
@@ -63,45 +66,125 @@ function activityInfoLines(a: ActivityRecord, planNames: string): string[] {
   ]
 }
 
-export async function buildSignInSheetXlsx(a: ActivityRecord, planNames: string): Promise<Blob> {
-  const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet('簽到表')
-  sheet.columns = [{ width: 8 }, { width: 16 }, { width: 20 }, { width: 20 }, { width: 16 }]
+export type SignInLayout = 'detailed' | 'double'
 
-  sheet.mergeCells('A1:E1')
-  const title = sheet.getCell('A1')
-  title.value = '簽到表'
-  title.font = { bold: true, size: 16 }
-  title.alignment = { horizontal: 'center' }
+/** 簽到表版型，對照場域實際使用的兩份範例：
+ * - detailed：編號／單位／職稱／姓名／簽到，一頁 15 人（簽到表(1).docx）
+ * - double：編號／姓名／簽到 左右兩欄，一頁 30 人（簽到表(2).docx） */
+export const SIGN_IN_LAYOUTS: Record<SignInLayout, { label: string; perPage: number }> = {
+  detailed: { label: '含單位、職稱（一頁 15 人）', perPage: 15 },
+  double: { label: '姓名雙欄（一頁 30 人）', perPage: 30 },
+}
 
-  const infoLines = activityInfoLines(a, planNames)
-  infoLines.forEach((line, i) => {
-    const rowIdx = 2 + i
-    sheet.mergeCells(`A${rowIdx}:E${rowIdx}`)
-    sheet.getCell(`A${rowIdx}`).value = line
-  })
+const WEEKDAYS = '日一二三四五六'
 
-  const headerRowIdx = 2 + infoLines.length + 1
-  const headers = ['編號', '姓名', '單位／身分', '聯絡方式', '簽名']
-  headers.forEach((h, i) => {
-    const cell = sheet.getRow(headerRowIdx).getCell(i + 1)
-    cell.value = h
-    cell.font = { bold: true }
-    cell.border = THIN_BORDER
-  })
+/** 簽到表日期：114年10月20日(星期一) 09:00～12:00 */
+function formatSignInDate(a: ActivityRecord): string {
+  const roc = formatRocChinese(a.date)
+  if (!roc) return ''
+  const weekday = WEEKDAYS[new Date(`${a.date}T00:00:00`).getDay()]
+  return `${roc}(星期${weekday})${formatTimeRange(a.time, a.timeEnd)}`
+}
 
-  const rowCount = Math.max(10, a.headcount.total || 10)
-  for (let i = 0; i < rowCount; i++) {
-    const row = sheet.getRow(headerRowIdx + 1 + i)
-    for (let c = 1; c <= 5; c++) {
-      const cell = row.getCell(c)
-      if (c === 1) cell.value = i + 1
-      cell.border = THIN_BORDER
+/** 簽到表 Word，格式比照場域範例：A4、邊界 2 公分、微軟正黑體；標題兩行（計畫名稱、
+ * 活動名稱＋簽到表）、時間地點條列，表格標題列灰底、全部置中。人數多時每頁重複標題與表頭。 */
+export async function buildSignInSheetDocx(
+  a: ActivityRecord,
+  opts: { titlePlans: string[]; layout: SignInLayout },
+): Promise<Blob> {
+  const FONT = '微軟正黑體'
+  const { perPage } = SIGN_IN_LAYOUTS[opts.layout]
+  const total = Math.max(a.headcount.total || 0, 1)
+  const pages = Math.ceil(total / perPage)
+
+  const run = (text: string, extra: { bold?: boolean; size?: number } = {}) =>
+    new TextRun({ text, font: FONT, bold: extra.bold, size: (extra.size ?? 12) * 2 })
+  const centered = (text: string, extra: { bold?: boolean; size?: number; after?: number; pageBreakBefore?: boolean } = {}) =>
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: extra.after ?? 0 },
+      pageBreakBefore: extra.pageBreakBefore,
+      children: [run(text, extra)],
+    })
+
+  const HEADER_SHADING = { type: ShadingType.CLEAR, color: 'auto', fill: 'D9D9D9' }
+  // 欄寬（twip），加總等於 A4 扣掉左右各 2 公分的版心寬度
+  const columns =
+    opts.layout === 'detailed'
+      ? { headers: ['編號', '單位', '職稱', '姓名', '簽到'], widths: [710, 2970, 1840, 1700, 2418] }
+      : { headers: ['編號', '姓名', '簽到', '編號', '姓名', '簽到'], widths: [710, 1695, 2415, 710, 1695, 2413] }
+  const ROW_HEIGHT = 680 // 1.2 公分，留足手寫簽名空間
+  const rowsOnPage = opts.layout === 'detailed' ? perPage : perPage / 2
+
+  const cell = (text: string, width: number, header = false) =>
+    new TableCell({
+      width: { size: width, type: WidthType.DXA },
+      verticalAlign: VerticalAlign.CENTER,
+      shading: header ? HEADER_SHADING : undefined,
+      children: [centered(text)],
+    })
+
+  const titleLines = [...(opts.titlePlans.length ? [opts.titlePlans.join('、')] : []), `${a.name} 簽到表`]
+  const children: (Paragraph | Table)[] = []
+  for (let page = 0; page < pages; page++) {
+    const first = page * perPage
+    titleLines.forEach((t, i) =>
+      children.push(
+        centered(t, {
+          bold: true,
+          size: 14,
+          after: i === titleLines.length - 1 ? 120 : 0,
+          // 人數超過一頁時，每頁都重複標題、時間地點與表頭
+          pageBreakBefore: page > 0 && i === 0,
+        }),
+      ),
+    )
+    children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 0 }, children: [run(`時間：${formatSignInDate(a)}`)] }))
+    children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 120 }, children: [run(`地點：${a.place}`)] }))
+
+    const rows = [
+      new TableRow({
+        height: { value: 560, rule: HeightRule.ATLEAST },
+        children: columns.headers.map((h, i) => cell(h, columns.widths[i], true)),
+      }),
+    ]
+    for (let r = 0; r < rowsOnPage; r++) {
+      const values =
+        opts.layout === 'detailed'
+          ? [String(first + r + 1), '', '', '', '']
+          : [String(first + r + 1), '', '', String(first + rowsOnPage + r + 1), '', '']
+      rows.push(
+        new TableRow({
+          height: { value: ROW_HEIGHT, rule: HeightRule.ATLEAST },
+          children: values.map((v, i) => cell(v, columns.widths[i])),
+        }),
+      )
     }
+    children.push(
+      new Table({
+        width: { size: columns.widths.reduce((x, y) => x + y, 0), type: WidthType.DXA },
+        columnWidths: columns.widths,
+        alignment: AlignmentType.CENTER,
+        rows,
+      }),
+    )
   }
 
-  const buffer = await workbook.xlsx.writeBuffer()
-  return new Blob([buffer], { type: XLSX_MIME })
+  const MARGIN = 1134 // 2 公分
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            size: { width: 11906, height: 16838 },
+            margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN },
+          },
+        },
+        children,
+      },
+    ],
+  })
+  return Packer.toBlob(doc)
 }
 
 /** Excel 欄寬單位大致等同半形字元數；中文/全形字元約佔 2 個單位寬。用來估算
