@@ -10,6 +10,7 @@ import {
   Table,
   TableCell,
   TableRow,
+  TextRun,
   WidthType,
 } from 'docx'
 import { ATTACHMENT_TYPES } from '../types'
@@ -41,10 +42,10 @@ export function buildCsv(rows: (string | number)[][]): string {
   return rows.map((row) => row.map(q).join(',')).join('\n')
 }
 
-export type GeneratedFormKind = '簽到表' | '領據' | '活動紀錄表' | '成果報告'
+export type GeneratedFormKind = '簽到表' | '領據' | '活動紀錄表' | '成果報告' | '公文'
 
 export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx' {
-  return kind === '領據' || kind === '成果報告' ? 'docx' : 'xlsx'
+  return kind === '領據' || kind === '成果報告' || kind === '公文' ? 'docx' : 'xlsx'
 }
 
 /** 開始～結束時間格式：09:00～10:30；沒填結束時間或跟開始時間一樣就只顯示開始時間。 */
@@ -189,6 +190,86 @@ export async function buildReceiptDocx(a: ActivityRecord, planNames: string): Pr
       },
     ],
   })
+  return Packer.toBlob(doc)
+}
+
+export type OfficialLetterPurpose = '邀請參加' | '檢送成果'
+
+export interface OfficialLetterOptions {
+  /** 發文機關全銜 */
+  issuer: string
+  /** 受文者 */
+  recipient: string
+  purpose: OfficialLetterPurpose
+  /** 說明「依據」要寫的專案名稱（使用者在對話框勾選；空陣列就不寫這一條） */
+  basisPlans: string[]
+}
+
+/** 公文（函）Word：依公文格式排好檔號、發文日期、字號、主旨、說明、正副本，
+ * 主旨與說明由活動資料帶入，字號、發文日期等機關內部編號留白給承辦人填寫。 */
+export async function buildOfficialLetterDocx(a: ActivityRecord, opts: OfficialLetterOptions): Promise<Blob> {
+  const issuer = opts.issuer.trim() || '（發文機關全銜）'
+  const recipient = opts.recipient.trim() || '（受文者）'
+  const when = `${formatRocChinese(a.date) || '（日期）'}${formatTimeRange(a.time, a.timeEnd)}`
+  const headcount = a.headcount.total ? `，參加人數計 ${a.headcount.total} 人` : ''
+  const basis = opts.basisPlans.length ? `依據${opts.basisPlans.map((n) => `「${n}」`).join('、')}辦理。` : ''
+
+  const subject =
+    opts.purpose === '邀請參加'
+      ? `本會訂於${when}假${a.place || '（地點）'}辦理「${a.name}」，敬邀　貴單位派員參加，請　查照。`
+      : `檢送本會辦理「${a.name}」活動成果資料 1 份，請　查照。`
+  const explanations =
+    opts.purpose === '邀請參加'
+      ? [
+          basis,
+          `活動時間：${when}。`,
+          `活動地點：${a.place || '（地點）'}。`,
+          a.participantDesc ? `參加對象：${a.participantDesc}。` : '',
+          a.summary ? `活動內容：${a.summary}` : '',
+          `聯絡人：${a.owner || '（聯絡人）'}。`,
+        ]
+      : [
+          basis,
+          `本會已於${when}假${a.place || '（地點）'}辦理旨揭活動${headcount}。`,
+          a.summary ? `活動內容與效益：${a.summary}` : '',
+          '檢附活動成果資料（含活動照片、簽到表）如附件。',
+        ]
+  const items = explanations.filter(Boolean)
+  const toChineseNum = (n: number) => '一二三四五六七八九十'[n - 1] ?? String(n)
+
+  const FONT = '標楷體'
+  const line = (text: string, opts: { size?: number; bold?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; indent?: number; after?: number } = {}) =>
+    new Paragraph({
+      alignment: opts.align,
+      indent: opts.indent ? { left: opts.indent, hanging: opts.indent } : undefined,
+      spacing: { after: opts.after ?? 60, line: 360 },
+      children: [new TextRun({ text, font: FONT, size: (opts.size ?? 14) * 2, bold: opts.bold })],
+    })
+
+  const children: Paragraph[] = [
+    line('檔　　號：', { size: 12, after: 0 }),
+    line('保存年限：', { size: 12, after: 200 }),
+    line(`${issuer}　函`, { size: 20, bold: true, align: AlignmentType.CENTER, after: 200 }),
+    line('地址：', { size: 12, after: 0 }),
+    line(`聯絡人：${a.owner}`, { size: 12, after: 0 }),
+    line('電話：', { size: 12, after: 0 }),
+    line('電子信箱：', { size: 12, after: 200 }),
+    line(`受文者：${recipient}`, { size: 16, after: 120 }),
+    line('發文日期：中華民國　　年　　月　　日', { size: 12, after: 0 }),
+    line('發文字號：　　字第　　　　　　號', { size: 12, after: 0 }),
+    line('速別：普通件', { size: 12, after: 0 }),
+    line('密等及解密條件或保密期限：', { size: 12, after: 0 }),
+    line(opts.purpose === '檢送成果' ? '附件：活動成果資料 1 份' : '附件：', { size: 12, after: 240 }),
+    line(`主旨：${subject}`, { size: 16, indent: 960, after: 120 }),
+    line('說明：', { size: 16, after: 0 }),
+    ...items.map((t, i) => line(`${toChineseNum(i + 1)}、${t}`, { size: 16, indent: 640 })),
+    line('', { after: 240 }),
+    line(`正本：${recipient}`, { size: 12, after: 0 }),
+    line(`副本：${issuer}`, { size: 12, after: 480 }),
+    line('（機關首長署名）', { size: 20, align: AlignmentType.RIGHT }),
+  ]
+
+  const doc = new Document({ sections: [{ children }] })
   return Packer.toBlob(doc)
 }
 
@@ -411,7 +492,7 @@ export const LEDGER_PHOTO_SIZES: Record<LedgerPhotoSize, { label: string; widthC
 /** 每場活動最多放幾張精選照片（範例檔最多 3 張並排） */
 export const LEDGER_MAX_PHOTOS = 3
 
-/** 照片與格線之間、照片與照片之間的留白（px） */
+/** 照片與格線之間的留白（px） */
 const LEDGER_PHOTO_GAP_PX = 8
 /** Excel 欄寬單位是「字元數」，以預設字型約 7px／字元＋5px 邊界換算 */
 const excelColWidthToPx = (w: number) => Math.round(w * 7 + 5)
@@ -438,7 +519,8 @@ export async function buildLedgerXlsx(
   const boxW = cmToPx(box.widthCm)
   const boxH = cmToPx(box.heightCm)
   const slots = Math.min(Math.max(1, photosPerRow), LEDGER_MAX_PHOTOS)
-  const photoColWidth = pxToExcelColWidth(slots * boxW + (slots + 1) * LEDGER_PHOTO_GAP_PX)
+  // 比照範例：一張照片一個格子，「精選照片」依張數往右延伸成幾欄，每欄剛好放一張
+  const photoColWidth = pxToExcelColWidth(boxW + LEDGER_PHOTO_GAP_PX * 2)
   const photoColPx = excelColWidthToPx(photoColWidth)
   const rowHeightPt = pxToPt(boxH + LEDGER_PHOTO_GAP_PX * 2)
   const rowHeightPx = rowHeightPt / 0.75
@@ -452,7 +534,7 @@ export async function buildLedgerXlsx(
     { width: 21 },
     { width: 15 },
     { width: 14.5 },
-    { width: photoColWidth },
+    ...Array.from({ length: slots }, () => ({ width: photoColWidth })),
   ]
   const PHOTO_COL = headers.length
 
@@ -464,6 +546,7 @@ export async function buildLedgerXlsx(
     cell.font = LEDGER_FONT
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
   })
+  if (slots > 1) sheet.mergeCells(1, PHOTO_COL, 1, PHOTO_COL + slots - 1)
 
   for (let i = 0; i < activities.length; i++) {
     const a = activities[i]
@@ -499,23 +582,24 @@ export async function buildLedgerXlsx(
       const asset = await loadImageAsset(photo)
       if (asset) assets.push(asset)
     }
-    // 照片由左到右並排、整組在格子裡水平置中，每張在自己的照片框裡置中。
-    const groupW = assets.length * boxW + (assets.length - 1) * LEDGER_PHOTO_GAP_PX
-    let slotX = (photoColPx - groupW) / 2
-    for (const asset of assets) {
+    // 照片由左到右各放一格（I、J、K…），每張在自己的格子裡置中。
+    for (let pi = 0; pi < assets.length; pi++) {
+      const asset = assets[pi]
       const { width, height } = scaleToBox(asset.width, asset.height, boxW, boxH)
-      const offsetX = slotX + (boxW - width) / 2
+      const offsetX = (photoColPx - width) / 2
       const offsetY = (rowHeightPx - height) / 2
-      slotX += boxW + LEDGER_PHOTO_GAP_PX
-      // ExcelJS 把 tl 的小數部分換算成位移時，是用「欄寬×10000」、「列高×10000」EMU
-      // 當一整格（不是 Excel 實際的格子大小），所以要用同一套基準反推小數，位移才會
-      // 等於想要的像素（1px = 9525 EMU）。
+      // 位移直接用 EMU 指定（1px = 9525 EMU）。不能用 tl 的小數欄列：ExcelJS 換算小數時
+      // 是用「欄寬×10000」當一整格，比 Excel 實際格寬小很多，照片往右偏一點就會溢位
+      // 跳到後面的欄位。ExcelJS 的 Anchor 本身支援 nativeCol/nativeColOff，只是型別沒寫。
+      const tl = {
+        nativeCol: PHOTO_COL - 1 + pi,
+        nativeColOff: Math.round(offsetX * 9525),
+        nativeRow: rowIdx - 1,
+        nativeRowOff: Math.round(offsetY * 9525),
+      }
       const imageId = workbook.addImage({ base64: asset.dataUrl, extension: asset.xlsxExt })
       sheet.addImage(imageId, {
-        tl: {
-          col: PHOTO_COL - 1 + (offsetX * 9525) / (photoColWidth * 10000),
-          row: rowIdx - 1 + (offsetY * 9525) / (rowHeightPt * 10000),
-        },
+        tl: tl as unknown as { col: number; row: number },
         ext: { width, height },
         editAs: 'oneCell',
       })

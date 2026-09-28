@@ -166,7 +166,7 @@ async function doExport() {
       </div>
     </div>
     <p v-if="wantLedger" class="meta" style="font-size:11.5px;margin:4px 0 0">
-      優先放標記為精選的照片；每列列高固定、照片欄寬依張數自動調整，照片不會超出格子
+      優先放標記為精選的照片；一張照片一個格子，每列列高固定，照片不會超出格子
     </p>
 
     <div class="row" style="margin-top:16px">

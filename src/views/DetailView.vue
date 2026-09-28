@@ -204,6 +204,7 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
       <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
       <button class="btn ghost sm" @click="genKind = '成果報告'">產生成果報告</button>
+      <button class="btn ghost sm" @click="genKind = '公文'">產生公文</button>
       <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
       <button class="btn ghost sm" style="color:var(--stamp);margin-left:auto" @click="deleteActivity">刪除此活動</button>
     </div>
