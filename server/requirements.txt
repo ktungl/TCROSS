@@ -1,5 +1,9 @@
 fastapi==0.141.1
-uvicorn[standard]==0.52.4
+# Not uvicorn[standard]: its extras (watchfiles for --reload, python-dotenv, pyyaml)
+# are unused in production; keep only the performance extras uvloop/httptools.
+uvicorn==0.52.4
+uvloop==0.22.1; sys_platform != "win32"
+httptools==0.8.0
 pydantic==2.13.5
 httpx==0.28.1
 google-cloud-storage==3.13.1

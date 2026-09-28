@@ -15,6 +15,9 @@ GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "us-central1")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GCS_BUCKET = os.environ["GCS_BUCKET"]
+# 照片／影片送進 Gemini 的解析度：LOW 每張圖／每格影格的 token 數只有預設的約 1/4，
+# 大幅壓低費用；如果發現簽到表之類小字辨識不出來，再把環境變數改成 MEDIUM／HIGH。
+GEMINI_MEDIA_RESOLUTION = os.environ.get("GEMINI_MEDIA_RESOLUTION", "LOW").upper()
 
 _client: genai.Client | None = None
 
@@ -95,6 +98,7 @@ def analyze_sources(object_paths: list[str]) -> dict:
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=_RESPONSE_SCHEMA,
+            media_resolution=f"MEDIA_RESOLUTION_{GEMINI_MEDIA_RESOLUTION}",
         ),
     )
     data = json.loads(response.text)

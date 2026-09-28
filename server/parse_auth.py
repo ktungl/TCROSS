@@ -1,5 +1,7 @@
+import hashlib
 import json
 import os
+import time
 
 import httpx
 
@@ -22,14 +24,33 @@ def _user_headers(session_token: str) -> dict:
     }
 
 
+# 驗證通過的 session token 在記憶體快取一小段時間：同一個使用者連續打好幾支端點
+# （例如上傳→觸發生成→下載）不用每次都再問一次 Back4App /users/me，省下往返等待的
+# Cloud Run 計費時間。只快取「有效」的結果；代價是登出後這支 token 最多還能用
+# _SESSION_CACHE_TTL_SECONDS 秒。key 存 token 的雜湊，不在記憶體留明文 token。
+_SESSION_CACHE_TTL_SECONDS = 60
+_SESSION_CACHE_MAX_ENTRIES = 1000
+_session_cache: dict[str, tuple[float, dict]] = {}
+
+
 def verify_session_token(session_token: str) -> dict | None:
     """Confirm a Parse session token is valid using the JS Key only (no Master Key)."""
     if not session_token:
         return None
+    key = hashlib.sha256(session_token.encode()).hexdigest()
+    now = time.monotonic()
+    cached = _session_cache.get(key)
+    if cached and now - cached[0] < _SESSION_CACHE_TTL_SECONDS:
+        return dict(cached[1])
     resp = _client.get(f"{PARSE_SERVER_URL}/users/me", headers=_user_headers(session_token))
     if resp.status_code != 200:
+        _session_cache.pop(key, None)
         return None
-    return resp.json()
+    user = resp.json()
+    if len(_session_cache) >= _SESSION_CACHE_MAX_ENTRIES:
+        _session_cache.clear()
+    _session_cache[key] = (now, user)
+    return dict(user)
 
 
 def activity_exists(session_token: str, activity_id: str) -> bool:
@@ -103,6 +124,7 @@ def get_generation_job(session_token: str, job_id: str) -> dict | None:
         "kind": body.get("kind", "成果報告"),
         "sourceFiles": body.get("sourceFiles") or [],
         "activityId": activity_ptr.get("objectId", ""),
+        "updatedAt": body.get("updatedAt", ""),
     }
 
 

@@ -130,13 +130,31 @@
 
 **🐛 過程中發現並修正一個既有 bug（跟 Phase 3b 本身無關）**：`src/views/DetailView.vue` 完全沒有引用 `AiGenerationModal.vue`，「AI 自動生成成果報告」這個按鈕在畫面上根本不存在——`git log` 追出來是今天稍早的 [[0917 新功能]] 那個commit（`ae87e4e`，分類管理／地圖／匯出排版那筆）意外把這個按鈕跟入口都拿掉了（同一個 diff 裡被换成了「產生成果報告」，看起来像是改動時的疏漏，不是刻意移除）。這代表 ROADMAP／README 原本寫的「Phase 3a 已完成並上線」在今天這筆commit之後其實是不成立的——程式碼都在，但 UI 沒有入口，使用者點不到。已修正：`DetailView.vue` 重新掛回 `AiGenerationModal`，新增一個獨立的「AI 自動生成成果報告」按鈕（跟手動的「產生成果報告」並列，兩者不互相取代），修好後才能做上面的端到端測試。
 
-**已知限制**：用 `BackgroundTasks` 而不是 Cloud Tasks 佇列，如果 Cloud Run instance 在背景工作跑到一半被縮容砍掉，job 會卡在 `processing` 沒有自動重試（需要手動改回 `pending` 重新觸發，或刪除重建）；`--no-cpu-throttling` 讓 instance 常駐運算資源，這會提高 Cloud Run 的閒置計費，是用可靠性換取的成本。目前只組裝 `.docx`，還沒做 PDF／Excel 輸出（README 目標架構寫三種格式都要支援，這裡先做一種當 MVP）。
+**已知限制**（2026-09-28 更新）：`/generate` 已改成在請求內同步做完、Cloud Run 改回按請求計費（見下方「節省 GCP 費用」）。沒有用 Cloud Tasks 佇列，逾時或 instance 中途被砍掉時 job 會停在 `processing`，20 分鐘後可從前端「重新觸發」。目前只組裝 `.docx`，還沒做 PDF／Excel 輸出（README 目標架構寫三種格式都要支援，這裡先做一種當 MVP）。
 
 ### ⬜ 待處理
 
 | 項目 | 說明 |
 | --- | --- |
 | Google Places API 金鑰 | **申請中，尚未拿到金鑰**。目的是讓「地點」欄位支援 Google 地址自動建議（比目前「地點旁加連結開 Google 地圖」更進一步）。拿到金鑰後待辦：①「Application restrictions → Websites」加上 `http://localhost:5173/*` 與 `https://luminous-moxie-07a76c.netlify.app/*`；②`API restrictions` 只勾 Places API 與 Maps JavaScript API；③放進 `.env` 的 `VITE_GOOGLE_MAPS_API_KEY`；④接 `ActivityFormModal.vue` 的地點欄位。**若之後正式網域再換掉，這把金鑰的網域限制也要一併更新**。 |
+
+### ✅ 節省 GCP 費用（2026-09-28）
+
+盤點當下 30 天內 Cloud Run 只收到約 73 個請求、GCS 主桶 1.57 MB，大部分項目都在免費額度內；這次調整主要是避免用量變大後成本失控。
+
+| 項目 | 調整 | 狀態 |
+|---|---|---|
+| Cloud Run 計費模式 | `/generate` 改成請求內同步做完，撤銷 `--no-cpu-throttling` 改回按請求計費；`--max-instances` 20→2、`--timeout` 300→900 | ✅ 已部署（revision `tcross-middleware-00012-6nc`），`/status` 200、`/generate` 缺 token 422／假 token 401 |
+| Gemini token 用量 | `GEMINI_MEDIA_RESOLUTION=LOW`（照片／影片 token 約為預設 1/4）；每筆工作最多 20 個素材（前後端都擋） | ✅ 已部署；🟡 尚未用真實素材確認 LOW 解析度的辨識品質 |
+| Gemini region | `us-central1` → `asia-northeast1`（`asia-east1` 沒有 `gemini-2.5-flash`），素材不必跨洲讀取 | ✅ 已部署 |
+| Back4App 往返 | session 驗證結果記憶體快取 60 秒（登出後 token 最多仍可用 60 秒） | ✅ 已部署 |
+| 重複 log | uvicorn `--no-access-log`（Cloud Run 本身已記錄請求） | ✅ 已部署 |
+| 相依套件 | `uvicorn[standard]` 改成 `uvicorn`＋`uvloop`／`httptools`，拿掉正式環境用不到的 `watchfiles` 等（第一次建置就是卡在 PyPI 下載 `watchfiles` 逾時） | ✅ 已部署 |
+| 前端 | `AiGenerationModal.vue` 不等 `/generate` 回應、20 檔上限、「重新觸發」按鈕 | 🟡 程式碼完成，尚未部署到 Netlify |
+| Artifact Registry | cleanup policy 只保留最新 3 份 image，其餘超過 7 天刪除 | ✅ 已設定（2026-09-28） |
+| GCS lifecycle | `run-sources-*`／`*_cloudbuild` 桶 30 天刪除；主桶 `activities/` 下照片／影音／PDF 等 64 種副檔名的素材 30 天刪除（`.docx` 不在清單內，AI 產出報告與使用者上傳的 Word 素材都保留）。GCS lifecycle 不支援 regex，只能用 `matchesPrefix`＋`matchesSuffix` | ✅ 已設定（2026-09-28） |
+| 未使用 API | 原本想關閉 BigQuery 相關、dataform、dataplex 等 | ⏭️ 不做——這些都被專案預設的 `cloudapis.googleapis.com` 套件依賴，要 `--force` 才關得掉；只啟用不使用不會計費，不值得冒險 |
+| 預算警示 | 每月預算＋50%／90% 通知（需帳單帳戶權限） | ⬜ 待執行 |
 
 ### 背景：現況與目標架構的落差（2026-08-12 盤點，僅供歷史對照）
 

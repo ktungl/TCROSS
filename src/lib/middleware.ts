@@ -65,14 +65,16 @@ export async function deleteObjects(objectPaths: string[], activityId?: string):
 }
 
 /** 建立好 GenerationJob 後呼叫，觸發 Cloud Run 端的 Gemini 分析＋文件組裝（Phase 3b）。
- * 這個請求本身很快就回應（202，實際生成在背景執行），結果透過既有的
- * useGenerationJobPolling.ts 輪詢 GenerationJob.status 取得，不是等這個 fetch 回應。 */
+ * Cloud Run 會在這個請求裡把整份報告做完才回應（這樣才能用按請求計費，不用常駐 CPU），
+ * 呼叫端不該 await 它，結果透過 useGenerationJobPolling.ts 輪詢 GenerationJob.status 取得。
+ * keepalive 讓使用者關掉頁面後請求仍能送達。 */
 export async function triggerGeneration(jobId: string): Promise<void> {
   const token = Parse.User.current()?.getSessionToken()
   if (!token) throw new Error('請重新登入')
   const res = await fetch(`${baseUrl()}/generate/${jobId}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
+    keepalive: true,
   })
   if (!res.ok) throw new Error(await readErrorMessage(res, '無法觸發自動生成'))
 }

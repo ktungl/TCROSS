@@ -32,6 +32,11 @@ const fileStates = reactive(new Map<File, 'queued' | 'uploading' | 'uploaded' | 
 const fileProgress = reactive(new Map<File, number>())
 /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
 const UPLOAD_CONCURRENCY = 3
+/** 每筆生成工作的素材數量上限，要跟 server/main.py 的 MAX_SOURCE_FILES 一致——
+ * 素材越多 Gemini 費用越高。 */
+const MAX_SOURCE_FILES = 20
+/** 停在「處理中」超過這麼久，視為後端中途中斷，允許重新觸發（同 server/main.py STALE_PROCESSING_AFTER）。 */
+const STALE_PROCESSING_MS = 20 * 60 * 1000
 const submitting = ref(false)
 const activeJob = ref<GenerationJobRecord | null>(null)
 
@@ -53,6 +58,27 @@ const statusLabels: Record<GenerationJobStatus, string> = {
 }
 function statusLabel(status: GenerationJobStatus): string {
   return statusLabels[status]
+}
+
+const canRetrigger = computed(() => {
+  const job = activeJob.value
+  if (!job) return false
+  if (job.status === 'pending') return true
+  return job.status === 'processing' && Date.now() - new Date(job.updatedAt).getTime() > STALE_PROCESSING_MS
+})
+
+/** /generate 會在同一個請求裡把整份報告做完（可能要一兩分鐘），這裡不等它回應，
+ * 結果一律靠輪詢 GenerationJob.status 取得；只有請求本身被拒（例如 409／403）才提示。 */
+function fireGeneration(jobId: string) {
+  triggerGeneration(jobId).catch((e) => pushToast(errorMessage(e), 'error'))
+}
+
+function retrigger() {
+  const job = activeJob.value
+  if (!job) return
+  fireGeneration(job.id)
+  startPolling(job.id, (r) => (activeJob.value = r))
+  pushToast('已重新送出')
 }
 
 onMounted(async () => {
@@ -88,6 +114,10 @@ function removeSelected(folder: FolderKey, i: number) {
 async function startGeneration() {
   if (!totalSelected.value) {
     pushToast('請先選擇至少一個檔案', 'error')
+    return
+  }
+  if (totalSelected.value > MAX_SOURCE_FILES) {
+    pushToast(`一次最多 ${MAX_SOURCE_FILES} 個檔案，請減少素材`, 'error')
     return
   }
   submitting.value = true
@@ -145,14 +175,9 @@ async function startGeneration() {
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))
     startPolling(job.id, (r) => (activeJob.value = r))
-    try {
-      await triggerGeneration(job.id)
-      pushToast('已送出，AI 正在處理中')
-    } catch (e) {
-      // 素材已上傳、job 已建立，只是觸發生成這一步失敗——工作會停在「待處理」，
-      // 不要把已完成的上傳流程當成整體失敗來處理。
-      pushToast(errorMessage(e), 'error')
-    }
+    // 素材已上傳、job 已建立；觸發失敗時工作會停在「待處理」，可以按「重新觸發」再送一次。
+    fireGeneration(job.id)
+    pushToast('已送出，AI 正在處理中')
   } catch (e) {
     // 清掉已經上傳成功、但沒機會掛到 GenerationJob 上的孤兒檔案，避免留在 GCS 裡持續計費。
     // best-effort：清不掉就算了，不要蓋掉原本要顯示給使用者的錯誤訊息。
@@ -245,6 +270,7 @@ function close() {
         <b>目前工作</b>：{{ activeJob.kind }}　狀態：{{ statusLabel(activeJob.status) }}
         <p v-if="activeJob.status !== 'done' && activeJob.status !== 'error'" class="sub" style="margin:6px 0 0">
           已送出，等待後端處理（此頁面每 5 秒自動查詢一次最新狀態）。
+          <button v-if="canRetrigger" class="btn ghost sm" style="margin-left:8px;width:auto;letter-spacing:0" @click="retrigger">重新觸發</button>
         </p>
         <p v-else-if="activeJob.status === 'error'" class="sub" style="margin:6px 0 0">
           {{ activeJob.errorMessage || '生成失敗' }}

@@ -5,17 +5,17 @@
 - `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL（PUT）給前端直傳檔案。
 - `/download-url`：同樣驗證 session token 後，對 `objectPath` 發一個限時的 GCS v4 signed URL（GET）給前端下載/預覽檔案；`objectPath` 必須以 `activities/` 開頭且不含 `..`（`utils.is_valid_object_path()`），避免任何登入使用者拿去簽發桶內任意路徑的下載網址。前端 `AiGenerationModal.vue` 在 `GenerationJob.status === 'done'` 時會呼叫這個端點。
 - `/delete-objects`：驗證 session token 後，批次刪除傳入的 `objectPaths`（同樣用 `is_valid_object_path()` 檢查每個路徑），供前端在刪除 `GenerationJob` 記錄前先清掉對應的 GCS 來源/產出檔案（`src/stores/db.ts` 的 `deleteGenerationJob()`）。
-- `/generate/{job_id}`：Phase 3b。驗證呼叫者能讀到這筆 `GenerationJob` 且狀態是 `pending` 後，先用 Master Key 把 `status` 改成 `processing`，回應 202；實際生成（呼叫 Gemini → 組裝 `.docx` → 寫回 GCS → 用 Master Key 把 `status`/`resultFile` 或 `errorMessage` 寫回 Parse）在 FastAPI `BackgroundTasks` 裡背景執行（`report.py` 的 `analyze_sources()`／`build_report_docx()`）。前端 `AiGenerationModal.vue` 在建立好 `GenerationJob` 後立刻呼叫這個端點觸發，結果透過既有的 5 秒輪詢取得，不等這個請求的回應。
+- `/generate/{job_id}`：Phase 3b。驗證呼叫者能讀到這筆 `GenerationJob` 且狀態是 `pending` 後，先用 Master Key 把 `status` 改成 `processing`，接著**在同一個請求裡**把生成做完（呼叫 Gemini → 組裝 `.docx` → 寫回 GCS → 用 Master Key 把 `status`/`resultFile` 或 `errorMessage` 寫回 Parse，`report.py` 的 `analyze_sources()`／`build_report_docx()`）才回應 `{"status": "done"|"error"}`。前端 `AiGenerationModal.vue` 建立好 `GenerationJob` 後用 `keepalive` 送出觸發請求但**不等回應**，結果透過既有的 5 秒輪詢取得。停在 `processing` 超過 20 分鐘的工作允許重新觸發（前端有「重新觸發」按鈕）。每筆工作最多 `MAX_SOURCE_FILES`（預設 20）個素材檔。
 
 `parse_auth.write_with_master_key()` 現在由 `/generate` 使用，把 `GenerationJob` 推進 `processing`/`done`/`error`。
 
 **部署前提，2026-09-17 已執行並驗證**：
 1. ✅ GCP 專案已啟用 Vertex AI API（`aiplatform.googleapis.com`）——這是會計費的服務。
 2. ✅ `tcross-middleware-sa` 已授權 `roles/aiplatform.user`。
-3. ✅ Cloud Run 環境變數已補上 `GCP_PROJECT=project-80ac5e1a-2ea4-4000-9ff`／`GCP_LOCATION=us-central1`／`GEMINI_MODEL=gemini-2.5-flash`。**若之後想換模型或 region，記得先到 [Vertex AI 主控台](https://console.cloud.google.com/vertex-ai)確認新的 `GEMINI_MODEL` 在該 `GCP_LOCATION` 是否可用**（Gemini 模型的可用 region 會隨時間變動，這裡沒有寫死驗證）。
-4. ✅ 已用 `--no-cpu-throttling` 重部署（revision `tcross-middleware-00011-hdv`，`gcloud run services describe` 確認 `run.googleapis.com/cpu-throttling: 'false'`）——這是必須的：FastAPI 的 `BackgroundTasks` 要在 HTTP 回應送出**之後**繼續跑 Gemini／組裝／寫回這幾步，沒有這個旗標 Cloud Run 預設會在沒有進來的請求時限制 CPU，背景工作可能因此被凍結／跑很慢甚至跑不完。**這個旗標會提高 Cloud Run 的閒置計費**（instance 常駐拿得到 CPU），是用可靠性換取的成本，之後如果覺得不划算可以評估改用 Cloud Tasks 佇列。
+3. ✅ Cloud Run 環境變數已補上 `GCP_PROJECT=project-80ac5e1a-2ea4-4000-9ff`／`GCP_LOCATION`／`GEMINI_MODEL=gemini-2.5-flash`。2026-09-28 `GCP_LOCATION` 從 `us-central1` 改成 `asia-northeast1`（東京）——`gemini-2.5-flash` 在 `asia-east1`（台灣）實測回 404 不可用，東京是離 GCS 桶最近、實測可用的 region。另可用 `GEMINI_MEDIA_RESOLUTION`（預設 `LOW`）調整照片／影片送進 Gemini 的解析度，小字辨識不出來再改 `MEDIUM`。**若之後想換模型或 region，記得先到 [Vertex AI 主控台](https://console.cloud.google.com/vertex-ai)確認新的 `GEMINI_MODEL` 在該 `GCP_LOCATION` 是否可用**（Gemini 模型的可用 region 會隨時間變動，這裡沒有寫死驗證）。
+4. ~~已用 `--no-cpu-throttling` 重部署~~（**2026-09-28 已撤銷**：`/generate` 改成在請求內同步做完，不再需要常駐 CPU；revision `tcross-middleware-00012-6nc` 改回 `--cpu-throttling` 按請求計費，並設 `--max-instances 2`、`--timeout 900`，見 [../ROADMAP.md](../ROADMAP.md)「節省 GCP 費用」。以下為原始紀錄）已用 `--no-cpu-throttling` 重部署（revision `tcross-middleware-00011-hdv`，`gcloud run services describe` 確認 `run.googleapis.com/cpu-throttling: 'false'`）——這是必須的：FastAPI 的 `BackgroundTasks` 要在 HTTP 回應送出**之後**繼續跑 Gemini／組裝／寫回這幾步，沒有這個旗標 Cloud Run 預設會在沒有進來的請求時限制 CPU，背景工作可能因此被凍結／跑很慢甚至跑不完。**這個旗標會提高 Cloud Run 的閒置計費**（instance 常駐拿得到 CPU），是用可靠性換取的成本，之後如果覺得不划算可以評估改用 Cloud Tasks 佇列。
 5. **✅ 端到端測試已完成**（2026-09-17）：用瀏覽器對一筆測試活動實際跑過「上傳照片→開始生成→下載 `.docx`」全流程，確認 Gemini 呼叫、GCS 寫入、Parse 寫回都正常。過程中第一次觸發遇到 `400 FAILED_PRECONDITION`（Google：「Service agents are being provisioned...please try again in a few minutes」），這是剛啟用 Vertex AI API 後的正常過渡狀態；等了幾分鐘重新觸發後成功，下載的 `.docx` 內容確認 Gemini 正確讀出測試照片裡的文字並填入摘要／重點／KPI 表格。測試資料已清除，不留在正式資料庫。
-6. **已知限制（暫時接受，之後有需要再處理）**：用 `BackgroundTasks` 而不是 Cloud Tasks 佇列，如果 Cloud Run instance 在背景工作跑到一半被砍掉（例如流量掉到 0 被縮容），這筆 `GenerationJob` 會卡在 `processing` 沒有自動重試，需要手動把 Parse 上的 `status` 改回 `pending` 再重新呼叫 `/generate`，或直接刪除重建。若這種情況常發生，之後應該換成 Cloud Tasks（在 Cloud Run 裡呼叫佇列，而不是讓 Back4App Cloud Code 持有 GCP 憑證——理由跟 [../README.md](../README.md#資料流向) 說明的信任邊界一致）。
+6. **已知限制（暫時接受，之後有需要再處理）**：沒有用 Cloud Tasks 佇列。生成超過 `--timeout`（900 秒）或 instance 中途被砍掉時，這筆 `GenerationJob` 會停在 `processing`；20 分鐘後可以從前端「重新觸發」再跑一次（2026-09-28 起），不用再手動改 Parse。若這種情況常發生，之後應該換成 Cloud Tasks（在 Cloud Run 裡呼叫佇列，而不是讓 Back4App Cloud Code 持有 GCP 憑證——理由跟 [../README.md](../README.md#資料流向) 說明的信任邊界一致）。
 
 另有 `/status` 做健康檢查（回傳 `{"ok": true}`）。**不要叫它 `/healthz`**——實測發現 Cloud Run 預設網域（`*.run.app`）對完全小寫的 `/healthz` 這個路徑字串會在 Google Frontend 層攔截、直接回一個跟這個服務無關的通用 404 頁面，請求根本不會進到容器（用 Cloud Run 的請求記錄可以驗證：`/healthz` 完全沒有記錄，`/health`、`/Healthz` 這種相近但不完全相同的路徑則正常）。
 
@@ -69,15 +69,15 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
   --role="roles/aiplatform.user"
 
 # 7. 部署（用 Cloud Build 直接從原始碼建置）
-# --no-cpu-throttling 是 Phase 3b 必需的：/generate 用 FastAPI BackgroundTasks
-# 在 HTTP 回應送出後才做 Gemini 呼叫與文件組裝，沒有這個旗標 Cloud Run 預設會在
-# 沒有進來的請求時限制 CPU，背景工作可能被凍結或跑不完。
+# --cpu-throttling（按請求計費）：/generate 在請求內同步做完，不需要常駐 CPU。
+# --timeout 900 讓多素材的生成有足夠時間；--max-instances 2 對這個流量已足夠，
+# 也讓記憶體內的 rate limit 不會被分散到太多 instance。
 gcloud run deploy $SERVICE_NAME \
   --source . \
   --region $REGION \
   --service-account $SA_EMAIL \
-  --no-cpu-throttling \
-  --set-env-vars PARSE_SERVER_URL=https://parseapi.back4app.com,PARSE_APP_ID=...,PARSE_JS_KEY=...,GCS_BUCKET=your-gcs-bucket-name,GCS_SIGNING_SERVICE_ACCOUNT=$SA_EMAIL,ALLOWED_ORIGIN=https://your-production-domain.example,GCP_PROJECT=$PROJECT_ID,GCP_LOCATION=us-central1,GEMINI_MODEL=gemini-2.5-flash \
+  --cpu-throttling --max-instances 2 --timeout 900 \
+  --set-env-vars PARSE_SERVER_URL=https://parseapi.back4app.com,PARSE_APP_ID=...,PARSE_JS_KEY=...,GCS_BUCKET=your-gcs-bucket-name,GCS_SIGNING_SERVICE_ACCOUNT=$SA_EMAIL,ALLOWED_ORIGIN=https://your-production-domain.example,GCP_PROJECT=$PROJECT_ID,GCP_LOCATION=asia-northeast1,GEMINI_MODEL=gemini-2.5-flash \
   --set-secrets PARSE_MASTER_KEY=parse-master-key:latest \
   --no-allow-unauthenticated=false
 ```
@@ -115,7 +115,8 @@ curl -X POST https://<cloud-run-url>/delete-objects \
 
 curl -X POST https://<cloud-run-url>/generate/<某筆 pending 狀態的 GenerationJob objectId> \
   -H "Authorization: Bearer <該 GenerationJob 所屬活動、呼叫者能讀到的 Parse session token>"
-# 應立即回傳 {"status": "processing"}（202）；實際生成在背景跑，之後用
+# 生成做完才回應 {"status": "done"} 或 {"status": "error"}（可能要一兩分鐘）。
+# 注意：curl 對沒有 body 的 POST 要加 -d ''，否則 Google Frontend 會回 411。也可以用
 # GET /classes/GenerationJob/<id>（帶同一個 session token）或前端頁面觀察
 # status 是否變成 done（連同 resultFile）或 error（連同 errorMessage）
 ```

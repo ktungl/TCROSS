@@ -3,8 +3,9 @@ import os
 import time
 import uuid
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -42,6 +43,14 @@ app.add_middleware(
 )
 
 ALLOWED_FOLDERS = {"photo", "audio", "video", "doc"}
+
+# 每個 GenerationJob 最多幾個素材檔：素材越多，Gemini 的 token 費用越高，這裡設上限
+# 避免一次丟進大量照片／影片。前端 AiGenerationModal.vue 的 MAX_SOURCE_FILES 要一起改。
+MAX_SOURCE_FILES = int(os.environ.get("MAX_SOURCE_FILES", "20"))
+
+# 停在 processing 超過這麼久，視為 instance 中途被砍掉的殘留工作，允許重新觸發。
+# 要比 Cloud Run 的 --timeout（900 秒）長，避免把還在跑的工作重複觸發（重複計費）。
+STALE_PROCESSING_AFTER = timedelta(minutes=20)
 
 
 class SignedUrlFile(BaseModel):
@@ -114,6 +123,8 @@ def status():
 def signed_url(body: SignedUrlRequest, user: dict = Depends(enforce_rate_limit)):
     if not body.files:
         raise HTTPException(400, "files 不能為空")
+    if len(body.files) > MAX_SOURCE_FILES:
+        raise HTTPException(400, f"一次最多只能上傳 {MAX_SOURCE_FILES} 個檔案")
     for f in body.files:
         if f.folder not in ALLOWED_FOLDERS:
             raise HTTPException(400, f"folder 必須是 {sorted(ALLOWED_FOLDERS)} 其中之一")
@@ -181,19 +192,31 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
     return {"deleted": len(body.objectPaths)}
 
 
-@app.post("/generate/{job_id}", status_code=202)
-def trigger_generation(job_id: str, background_tasks: BackgroundTasks, user: dict = Depends(enforce_rate_limit)):
+def _is_stale_processing(job: dict) -> bool:
+    updated_at = job.get("updatedAt")
+    if job["status"] != "processing" or not updated_at:
+        return False
+    updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    return datetime.now(timezone.utc) - updated > STALE_PROCESSING_AFTER
+
+
+@app.post("/generate/{job_id}")
+def trigger_generation(job_id: str, user: dict = Depends(enforce_rate_limit)):
     """Phase 3b trigger: frontend calls this right after creating a pending
-    GenerationJob. The heavy work (Gemini + docx assembly + GCS write + Parse
-    write-back) runs in a background task so this request returns immediately;
-    the frontend already polls GenerationJob.status every 5s to learn the
-    outcome, same as before this endpoint existed."""
+    GenerationJob. The whole generation (Gemini + docx assembly + GCS write +
+    Parse write-back) runs inside this request, so Cloud Run can stay on
+    request-based billing (CPU throttled between requests) instead of the
+    always-allocated CPU a post-response BackgroundTask would need. The frontend
+    doesn't wait on this response — it learns the outcome by polling
+    GenerationJob.status every 5s, same as before."""
     job = get_generation_job(user["sessionToken"], job_id)
     if not job or not job["activityId"]:
         audit_log.warning("rejected: unauthorized generationJob user=%s jobId=%s", user.get("username"), job_id)
         raise HTTPException(403, "generationJob 不存在或無權存取")
-    if job["status"] != "pending":
+    if job["status"] != "pending" and not _is_stale_processing(job):
         raise HTTPException(409, f"這筆工作目前狀態是「{job['status']}」，無法重複觸發")
+    if len(job["sourceFiles"]) > MAX_SOURCE_FILES:
+        raise HTTPException(400, f"素材檔案最多 {MAX_SOURCE_FILES} 個")
 
     activity = get_activity(user["sessionToken"], job["activityId"])
     activity_name = (activity or {}).get("name", "")
@@ -203,11 +226,11 @@ def trigger_generation(job_id: str, background_tasks: BackgroundTasks, user: dic
         "generation triggered user=%s jobId=%s activityId=%s sourceCount=%d",
         user.get("username"), job_id, job["activityId"], len(job["sourceFiles"]),
     )
-    background_tasks.add_task(_run_generation, job_id, job["activityId"], activity_name, job["sourceFiles"])
-    return {"status": "processing"}
+    status = _run_generation(job_id, job["activityId"], activity_name, job["sourceFiles"])
+    return {"status": status}
 
 
-def _run_generation(job_id: str, activity_id: str, activity_name: str, source_paths: list[str]) -> None:
+def _run_generation(job_id: str, activity_id: str, activity_name: str, source_paths: list[str]) -> str:
     try:
         analysis = analyze_sources(source_paths)
         docx_bytes = build_report_docx(activity_name, analysis)
@@ -219,6 +242,8 @@ def _run_generation(job_id: str, activity_id: str, activity_name: str, source_pa
         )
         write_with_master_key("GenerationJob", job_id, {"status": "done", "resultFile": result_path})
         audit_log.info("generation done jobId=%s resultFile=%s", job_id, result_path)
+        return "done"
     except Exception as exc:  # noqa: BLE001 — any failure here must still flip status away from "processing"
         audit_log.exception("generation failed jobId=%s", job_id)
         write_with_master_key("GenerationJob", job_id, {"status": "error", "errorMessage": str(exc)[:500]})
+        return "error"
