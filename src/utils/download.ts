@@ -3,14 +3,17 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  Footer,
   HeadingLevel,
   HeightRule,
   ImageRun,
   Packer,
+  PageNumber,
   Paragraph,
   ShadingType,
   Table,
   TableCell,
+  TableOfContents,
   TableRow,
   TextRun,
   VerticalAlign,
@@ -502,63 +505,72 @@ function cmToPx(cm: number): number {
   return Math.round(cm * PX_PER_CM)
 }
 
-const PHOTO_CELL_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '999999' }
-const PHOTO_CELL_BORDERS = {
+const PHOTO_CELL_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '000000' }
+const PHOTO_TABLE_BORDERS = {
   top: PHOTO_CELL_BORDER,
   bottom: PHOTO_CELL_BORDER,
   left: PHOTO_CELL_BORDER,
   right: PHOTO_CELL_BORDER,
-}
-const PHOTO_TABLE_BORDERS = {
-  ...PHOTO_CELL_BORDERS,
   insideHorizontal: PHOTO_CELL_BORDER,
   insideVertical: PHOTO_CELL_BORDER,
 }
 
-/** 活動照片表格：固定 2 欄，照片統一高 5cm、寬度依原始比例縮放，每格加細框線。 */
-function buildPhotoTable(photos: ImageAsset[], captions: string[]): Table {
-  const PHOTO_HEIGHT_CM = 5
-  const targetHeight = cmToPx(PHOTO_HEIGHT_CM)
-  const maxWidth = cmToPx(8) // 兩欄並排時單張照片的寬度上限，避免超版面
+/** 成果報告書用字：微軟正黑體 12pt（比照《成果報告書範本》） */
+const REPORT_FONT = '微軟正黑體'
 
-  const cells = photos.map((asset, i) => {
-    // 統一縮放到目標高度（不像其他匯出區塊只縮小不放大），讓表格裡的照片高度一致。
-    const scaleRatio = targetHeight / asset.height
-    let width = Math.max(1, Math.round(asset.width * scaleRatio))
-    let height = Math.max(1, Math.round(asset.height * scaleRatio))
-    if (width > maxWidth) {
-      const extra = maxWidth / width
-      width = Math.round(width * extra)
-      height = Math.round(height * extra)
+/** 活動照片表格（比照範本）：固定 2 欄，照片列與圖說列交錯；照片統一高 5cm、寬度依原始
+ * 比例縮放（上限 7.5cm，避免超出欄寬），圖說粗體置中。 */
+function buildPhotoTable(photos: ImageAsset[], captions: string[]): Table {
+  const targetHeight = cmToPx(5)
+  const maxWidth = cmToPx(7.5)
+  const COL = 4454 // twip，兩欄合計約等於版心寬
+
+  const photoCell = (asset?: ImageAsset) => {
+    let children: Paragraph[] = [new Paragraph({})]
+    if (asset) {
+      // 統一縮放到目標高度（不像其他匯出區塊只縮小不放大），讓表格裡的照片高度一致。
+      const ratio = Math.min(targetHeight / asset.height, maxWidth / asset.width)
+      const width = Math.max(1, Math.round(asset.width * ratio))
+      const height = Math.max(1, Math.round(asset.height * ratio))
+      children = [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new ImageRun({ type: asset.docxType, data: asset.data, transformation: { width, height } })],
+        }),
+      ]
     }
-    return new TableCell({
-      borders: PHOTO_CELL_BORDERS,
-      width: { size: 50, type: WidthType.PERCENTAGE },
+    return new TableCell({ width: { size: COL, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, children })
+  }
+  const captionCell = (text?: string) =>
+    new TableCell({
+      width: { size: COL, type: WidthType.DXA },
+      verticalAlign: VerticalAlign.CENTER,
       children: [
         new Paragraph({
-          children: [new ImageRun({ type: asset.docxType, data: asset.data, transformation: { width, height } })],
           alignment: AlignmentType.CENTER,
-        }),
-        new Paragraph({
-          text: captions[i] || '（未填圖說）',
-          alignment: AlignmentType.CENTER,
-          border: { top: PHOTO_CELL_BORDER },
-          spacing: { before: 60 },
+          children: [new TextRun({ text: text ?? '', font: REPORT_FONT, size: 24, bold: true })],
         }),
       ],
     })
-  })
 
   const rows: TableRow[] = []
-  for (let i = 0; i < cells.length; i += 2) {
-    const rowCells = cells.slice(i, i + 2)
-    if (rowCells.length === 1) {
-      rowCells.push(new TableCell({ borders: PHOTO_CELL_BORDERS, width: { size: 50, type: WidthType.PERCENTAGE }, children: [] }))
-    }
-    rows.push(new TableRow({ children: rowCells }))
+  for (let i = 0; i < photos.length; i += 2) {
+    const pair = [i, i + 1].map((idx) => (idx < photos.length ? idx : -1))
+    rows.push(new TableRow({ children: pair.map((idx) => photoCell(idx >= 0 ? photos[idx] : undefined)) }))
+    rows.push(
+      new TableRow({
+        children: pair.map((idx) => captionCell(idx >= 0 ? captions[idx] || '（未填圖說）' : undefined)),
+      }),
+    )
   }
 
-  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: PHOTO_TABLE_BORDERS, rows })
+  return new Table({
+    width: { size: COL * 2, type: WidthType.DXA },
+    columnWidths: [COL, COL],
+    indent: { size: 720, type: WidthType.DXA }, // 範本的照片表格往右縮排 1.27cm
+    borders: PHOTO_TABLE_BORDERS,
+    rows,
+  })
 }
 
 export type LedgerPhotoSize = 'small' | 'medium' | 'large'
@@ -693,13 +705,75 @@ export async function buildLedgerXlsx(
   return new Blob([buffer], { type: XLSX_MIME })
 }
 
-/** 單場活動的內容區塊：活動內容／照片／簽到表／日期／地點／參加對象及人數／效益。
- * 內政部結案報告（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
-async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
-  const children: (Paragraph | Table)[] = []
+/** 主辦單位全銜（成果報告書封面「主辦單位」） */
+export const ORGANIZER_NAME = '社團法人臺灣合作社照顧聯盟'
 
-  children.push(new Paragraph({ text: '二、活動內容', spacing: { before: 100 } }))
-  children.push(new Paragraph({ text: a.summary || '（活動內容待補）' }))
+const CHINESE_DIGITS = '〇一二三四五六七八九'
+const LEGAL_DIGITS = ['', '壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖', '拾']
+
+/** 1→一、12→十二、20→二十（成果報告書的活動編號最多就到幾十場） */
+function toChineseNumber(n: number): string {
+  if (n < 10) return CHINESE_DIGITS[n]
+  const tens = Math.floor(n / 10)
+  const ones = n % 10
+  return `${tens === 1 ? '' : CHINESE_DIGITS[tens]}十${ones ? CHINESE_DIGITS[ones] : ''}`
+}
+
+/** 1→壹、11→拾壹、23→貳拾參 */
+function toLegalNumber(n: number): string {
+  if (n <= 10) return LEGAL_DIGITS[n]
+  const tens = Math.floor(n / 10)
+  const ones = n % 10
+  return `${tens === 1 ? '' : LEGAL_DIGITS[tens]}拾${ones ? LEGAL_DIGITS[ones] : ''}`
+}
+
+/** 成果報告書日期：112年9月5日，星期二，11：00-16：00 */
+function formatReportDate(a: ActivityRecord): string {
+  const roc = formatRocChinese(a.date)
+  if (!roc) return '（日期待補）'
+  const weekday = WEEKDAYS[new Date(`${a.date}T00:00:00`).getDay()]
+  const fw = (t: string) => t.replace(':', '：')
+  const end = a.timeEnd && a.timeEnd !== a.time ? `-${fw(a.timeEnd)}` : ''
+  const time = a.time ? `，${fw(a.time)}${end}` : ''
+  return `${roc}，星期${weekday}${time}`
+}
+
+function reportText(text: string, extra: { bold?: boolean; size?: number } = {}): TextRun {
+  return new TextRun({ text, font: REPORT_FONT, size: (extra.size ?? 12) * 2, bold: extra.bold })
+}
+
+/** 「一、活動名稱：…」這類條列項目，換行後對齊在「、」後面 */
+function reportItem(no: number, text: string, pageBreakBefore = false): Paragraph {
+  return new Paragraph({
+    pageBreakBefore,
+    alignment: AlignmentType.JUSTIFIED,
+    indent: { left: 991, hanging: 567 },
+    children: [reportText(`${toChineseNumber(no)}、${text}`)],
+  })
+}
+
+/** 條列項目底下的內文段落（對齊項目文字） */
+function reportBody(text: string): Paragraph {
+  return new Paragraph({ alignment: AlignmentType.JUSTIFIED, indent: { left: 991 }, children: [reportText(text)] })
+}
+
+/** 單場活動的內容區塊（比照《成果報告書範本》）：
+ * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片。
+ * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
+async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
+  const hc = a.headcount
+  const children: (Paragraph | Table)[] = [
+    reportItem(1, `活動名稱：${a.name}`),
+    reportItem(2, `活動日期：${formatReportDate(a)}。`),
+    reportItem(3, `活動地點：${a.place || '（地點待補）'}。`),
+    reportItem(4, `參與人數：男${hc.male}人、女${hc.female}人，合計${hc.total}人。`),
+    reportItem(5, '活動內容：'),
+    reportBody(a.summary || '（活動內容待補）'),
+    reportItem(6, '活動效益：'),
+    ...(a.kpis.length
+      ? a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`))
+      : [reportBody('（尚未填寫效益指標）')]),
+  ]
 
   const photos = pickPhotosForExport(a.files.photo ?? [], 6)
   const photoAssets: ImageAsset[] = []
@@ -710,88 +784,122 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     photoAssets.push(asset)
     photoCaptions.push(photo.caption || '')
   }
-  if (photoAssets.length) {
-    children.push(buildPhotoTable(photoAssets, photoCaptions))
-  }
-
-  const signInFiles = a.files.signIn ?? []
-  children.push(
-    new Paragraph({
-      text: `簽到表：${signInFiles.length ? `${signInFiles.map((f) => f.name).join('、')}（詳附件）` : '未附'}`,
-      spacing: { before: 120 },
-    }),
-  )
-
-  children.push(
-    new Paragraph({
-      text: `三、活動日期：${formatRocChinese(a.date)}${formatTimeRange(a.time, a.timeEnd)}`,
-      spacing: { before: 120 },
-    }),
-  )
-  children.push(new Paragraph({ text: `四、活動地點：${a.place}` }))
-  children.push(
-    new Paragraph({
-      text: `五、參加對象及人數：${a.participantDesc || '—'}；男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`,
-    }),
-  )
-
-  children.push(new Paragraph({ text: '六、活動效益', spacing: { before: 100 } }))
-  if (a.kpis.length) {
-    const headerRow = new TableRow({
-      children: ['指標', '數值'].map(
-        (t) => new TableCell({ children: [new Paragraph({ text: t, alignment: AlignmentType.CENTER })] }),
-      ),
-    })
-    const rows = a.kpis.map(
-      (k) =>
-        new TableRow({
-          children: [
-            new TableCell({ children: [new Paragraph(k.k)] }),
-            new TableCell({ children: [new Paragraph(`${k.v} ${k.u}`)] }),
-          ],
-        }),
-    )
-    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [headerRow, ...rows] }))
-  } else {
-    children.push(new Paragraph({ text: '（尚未填寫效益指標）' }))
-  }
-  if (a.remark) children.push(new Paragraph({ text: `備註：${a.remark}` }))
-
+  // 範本的活動照片都從新的一頁開始，照片表格才不會被切到兩頁
+  children.push(reportItem(7, '活動照片：', photoAssets.length > 0))
+  children.push(photoAssets.length ? buildPhotoTable(photoAssets, photoCaptions) : reportBody('（尚未上傳活動照片）'))
   return children
 }
 
-/** 內政部經常門結案報告 Word：計畫名稱／活動內容／活動日期／活動地點／參加對象及人數／活動效益 */
-export async function buildNeimuReportDocx(
-  activities: ActivityRecord[],
-  planScopeLabel: string,
-): Promise<Blob> {
-  const children: (Paragraph | Table)[] = [
-    new Paragraph({ text: '內政部經常門結案報告', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
-    new Paragraph({ text: `一、計畫名稱：${planScopeLabel}`, spacing: { after: 100 } }),
-    new Paragraph({ text: `共 ${activities.length} 場活動`, spacing: { after: 300 } }),
+/** 「壹、活動一」這類大標題；用 Heading 1 樣式，目錄才抓得到 */
+function reportHeading(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    pageBreakBefore: true,
+    indent: { left: 567, hanging: 567 },
+    children: [reportText(text, { bold: true })],
+  })
+}
+
+// 覆寫 docx 套件內建的 Heading 1（預設是藍色 16pt），改成範本的黑色 12pt 粗體、段前段後各 9pt
+const REPORT_STYLES = {
+  default: {
+    document: { run: { font: REPORT_FONT, size: 24 } },
+    heading1: {
+      run: { font: REPORT_FONT, size: 24, bold: true, color: '000000' },
+      paragraph: { keepNext: true, spacing: { before: 180, after: 180, line: 240 } },
+    },
+  },
+}
+
+const A4_PAGE = {
+  size: { width: 11906, height: 16838 },
+  margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
+}
+
+function todayRocChinese(): string {
+  const d = new Date()
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return formatRocChinese(iso)
+}
+
+/** 內政部成果報告書 Word（比照《成果報告書範本》）：封面（計畫名稱／活動成果報告書／指導單位／
+ * 主辦單位／日期）→ 目錄 → 每場活動一章（壹、活動一…）→ 計畫整體效益，內文頁尾有頁碼。
+ * 目錄是 Word 欄位，開檔時 Word 會詢問是否更新欄位，按「是」就會帶出頁碼。 */
+export async function buildNeimuReportDocx(activities: ActivityRecord[], planScopeLabel: string): Promise<Blob> {
+  // 封面各段之間的留白，比照範本用空白行撐開的高度（範本：標題前 2 行、兩標題間 1 行、
+  // 指導單位前 8 行、日期前 5 行，一行約 18.5pt）
+  const cover: Paragraph[] = [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 740, after: 530 },
+      children: [reportText(planScopeLabel, { bold: true, size: 24 })],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 2960 },
+      children: [reportText('活動成果報告書', { bold: true, size: 24 })],
+    }),
+    new Paragraph({ children: [reportText('指導單位：內政部', { bold: true, size: 16 })] }),
+    new Paragraph({
+      spacing: { after: 1900 },
+      children: [reportText(`主辦單位：${ORGANIZER_NAME}`, { bold: true, size: 16 })],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [reportText(`中華民國${todayRocChinese()}`, { bold: true, size: 16 })],
+    }),
   ]
 
+  const body: (Paragraph | Table | TableOfContents)[] = [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 240, after: 240 },
+      children: [reportText('目　　錄', { size: 20 })],
+    }),
+    new TableOfContents('目錄', { hyperlink: true, headingStyleRange: '1-1' }),
+  ]
   for (let i = 0; i < activities.length; i++) {
-    const a = activities[i]
-    children.push(new Paragraph({ text: `${i + 1}. ${a.name}`, heading: HeadingLevel.HEADING_2 }))
-    children.push(...(await buildActivityReportBlock(a)))
-    children.push(new Paragraph({ text: '', spacing: { after: 400 } }))
+    body.push(reportHeading(`${toLegalNumber(i + 1)}、活動${toChineseNumber(i + 1)}`))
+    body.push(...(await buildActivityReportBlock(activities[i])))
   }
+  body.push(reportHeading(`${toLegalNumber(activities.length + 1)}、計畫整體效益`))
+  body.push(reportBody('（請填寫計畫整體效益）'))
 
-  const doc = new Document({ sections: [{ children }] })
+  const pageNumberFooter = new Footer({
+    children: [
+      new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ children: [PageNumber.CURRENT] })] }),
+    ],
+  })
+
+  const doc = new Document({
+    features: { updateFields: true },
+    styles: REPORT_STYLES,
+    sections: [
+      { properties: { page: A4_PAGE }, children: cover },
+      {
+        properties: { page: { ...A4_PAGE, pageNumbers: { start: 1 } } },
+        footers: { default: pageNumberFooter },
+        children: body,
+      },
+    ],
+  })
   return Packer.toBlob(doc)
 }
 
-/** 成果報告 Word：單場活動版，資料完全來自使用者手動填寫的欄位（摘要／KPI／照片圖說），
- * 不經過 AI 生成，跟活動詳情頁的「儲存成果」表單資料一一對應。 */
+/** 成果報告 Word：單場活動版，內容格式同成果報告書的一章，資料完全來自使用者手動填寫的欄位
+ * （摘要／KPI／照片圖說），不經過 AI 生成，跟活動詳情頁的「儲存成果」表單資料一一對應。 */
 export async function buildResultReportDocx(a: ActivityRecord, planNames: string): Promise<Blob> {
   const children: (Paragraph | Table)[] = [
-    new Paragraph({ text: '成果報告', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
-    new Paragraph({ text: `活動名稱：${a.name}`, spacing: { after: 60 } }),
-    new Paragraph({ text: `一、對應計畫：${planNames || '—'}`, spacing: { after: 200 } }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 120 },
+      children: [reportText('活動成果報告', { bold: true, size: 20 })],
+    }),
+    ...(planNames
+      ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 240 }, children: [reportText(planNames)] })]
+      : []),
+    ...(await buildActivityReportBlock(a)),
   ]
-  children.push(...(await buildActivityReportBlock(a)))
-
-  const doc = new Document({ sections: [{ children }] })
+  const doc = new Document({ styles: REPORT_STYLES, sections: [{ properties: { page: A4_PAGE }, children }] })
   return Packer.toBlob(doc)
 }

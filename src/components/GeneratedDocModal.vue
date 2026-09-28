@@ -8,6 +8,7 @@ import {
   buildSignInSheetDocx,
   downloadBlob,
   generatedFormExtension,
+  ORGANIZER_NAME,
   SIGN_IN_LAYOUTS,
 } from '../utils/download'
 import type { GeneratedFormKind, OfficialLetterPurpose, SignInLayout } from '../utils/download'
@@ -33,7 +34,7 @@ function readIssuer(): string {
     return ''
   }
 }
-const letterIssuer = ref(readIssuer())
+const letterIssuer = ref(readIssuer() || ORGANIZER_NAME)
 const letterRecipient = ref('')
 const letterPurpose = ref<OfficialLetterPurpose>('邀請參加')
 // 公文「依據」、簽到表標題要列哪些專案：活動上掛的專案不一定都是計畫
