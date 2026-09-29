@@ -1,8 +1,9 @@
 /// <reference types="google.maps" />
 
-// Places Autocomplete 只需要瀏覽器端的 Maps JavaScript API（referrer 限制的金鑰吃這個），
-// 不要走 Places API (New) 的 REST 端點——那個 API 目前沒有啟用，而且 referrer 限制的金鑰
-// 本來就不能用在直接呼叫的 REST Web Service 上（Google 官方限制），只有瀏覽器端 JS API 可用。
+// 地點建議走瀏覽器端 Maps JavaScript API 裡的 places.AutocompleteSuggestion（Places API (New)），
+// Google Cloud 專案要啟用「Places API (New)」，金鑰若有 API 限制也要勾它。
+// 不要改成直接呼叫 Places 的 REST 端點——referrer 限制的金鑰本來就不能用在 REST Web Service 上
+// （Google 官方限制），只有瀏覽器端 JS API 可用。
 let loadPromise: Promise<typeof google> | null = null
 
 /** 動態載入 Google Maps JavaScript API（含 places library），全站只載入一次。

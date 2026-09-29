@@ -33,3 +33,6 @@ __pycache__
 
 # 帳號清單（含初始密碼），見 scripts/setup-users.mjs
 scripts/users.local.json
+
+# Firebase CLI 快取
+.firebase/

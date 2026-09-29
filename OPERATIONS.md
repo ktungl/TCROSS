@@ -40,6 +40,28 @@ gcloud logging read \
   --freshness=1d --format="value(timestamp,textPayload)"
 ```
 
+## 部署前端（Firebase Hosting）
+
+前端是純靜態 SPA，部署到 GCP 專案 `project-80ac5e1a-2ea4-4000-9ff` 的 Firebase Hosting（設定見 `firebase.json`／`.firebaserc`，所有路徑改寫回 `/index.html`）。
+
+`VITE_*` 環境變數是**建置當下**寫進 bundle 的，所以一定要在有完整 `.env`（含 `VITE_GOOGLE_MAPS_API_KEY`）的機器上建置。部署會把本機 `dist/` 原樣上傳，**請先確認工作目錄是要上線的 commit、沒有未提交的半成品**。
+
+```bash
+# 第一次：Firebase CLI 要用有該 GCP 專案權限的帳號登入
+firebase login
+
+npm run build
+firebase deploy --only hosting   # 本機若登入多個帳號，加 --account <有專案權限的帳號>
+```
+
+### 回滾前端
+
+Firebase Console → Hosting → 版本記錄 → 選上一個好的版本「復原」，不用重新建置。
+
+### 換網域時
+
+新網域要同步加進 Cloud Run `ALLOWED_ORIGIN`（見下方，要帶 `--update-env-vars`，值含逗號時用 `^;^` 換分隔符）與 Google Maps 金鑰的網站限制白名單。
+
 ## 部署一支新版 Cloud Run 中介層
 
 ```bash
@@ -105,7 +127,7 @@ node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一
 - **沒有自動化測試**：`server/` 沒有 CI/測試套件，每次部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
 - **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻（細節見 [ROADMAP.md](ROADMAP.md#資安檢視依-iso-27001-annex-a-對照2026-09-04)）
 - **備份機制尚未訂定**：Back4App／GCS 目前都沒有明確的備份/還原流程，ROADMAP 8 月工作項目仍列為待訂，需要團隊決定備份頻率與還原演練方式
-- **正式網域未定**：`ALLOWED_ORIGIN` 目前只設 `http://localhost:5173`，前端還沒有正式部署網域
+- **正式網域用 Firebase 預設網域**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，尚未綁自訂網域；`ALLOWED_ORIGIN` 目前含 localhost、Firebase 兩個網域與過渡中的 Netlify 網域
 
 ## 範本修改流程
 

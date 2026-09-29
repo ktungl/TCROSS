@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { confirm } from '../composables/useConfirm'
 import type { ActivityCategory, ActivityRecord } from '../types'
-import { loadGoogleMapsPlaces } from '../lib/googleMaps'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
+import PlaceAutocompleteInput from './PlaceAutocompleteInput.vue'
 
 const props = defineProps<{ activity?: ActivityRecord }>()
 const emit = defineEmits<{ close: [] }>()
@@ -81,34 +81,6 @@ watch(selectedPlans, () => {
 
 watch([male, female], ([m, f]) => {
   total.value = (Number(m) || 0) + (Number(f) || 0)
-})
-
-// 地點欄位的 Google 地址自動建議；沒設 VITE_GOOGLE_MAPS_API_KEY 時 loadGoogleMapsPlaces()
-// 回傳 null，這裡就靜默略過，不影響地點欄位原本手動輸入的功能。
-const placeInput = ref<HTMLInputElement | null>(null)
-let placeAutocomplete: google.maps.places.Autocomplete | null = null
-
-onMounted(async () => {
-  const loading = loadGoogleMapsPlaces()
-  if (!loading || !placeInput.value) return
-  try {
-    const g = await loading
-    placeAutocomplete = new g.maps.places.Autocomplete(placeInput.value, {
-      fields: ['formatted_address', 'name'],
-      componentRestrictions: { country: 'tw' },
-    })
-    placeAutocomplete.addListener('place_changed', () => {
-      const selected = placeAutocomplete!.getPlace()
-      const address = selected.formatted_address || selected.name
-      if (address) place.value = address
-    })
-  } catch {
-    // 地址自動建議載入失敗時不影響手動輸入地點，靜默略過即可。
-  }
-})
-
-onBeforeUnmount(() => {
-  if (placeAutocomplete) google.maps.event.clearInstanceListeners(placeAutocomplete)
 })
 
 const submitting = ref(false)
@@ -192,7 +164,7 @@ async function submit() {
 
       <div style="margin-top:12px">
         <label>地點</label>
-        <input ref="placeInput" v-model="place" placeholder="輸入地址，會自動帶出建議" autocomplete="off">
+        <PlaceAutocompleteInput v-model="place" placeholder="輸入地址，會自動帶出建議" />
       </div>
 
       <div class="grid2" style="margin-top:12px">

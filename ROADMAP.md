@@ -9,8 +9,8 @@
 ## 目前狀態
 
 - **程式碼**：`main`、`Donna`、`origin/main` 同一個 commit（`33e4057`，09-28），`Ching` 分支已合併。
-- **前端（Netlify）**：`https://luminous-moxie-07a76c.netlify.app`，已是最新版（含操作紀錄頁、登入者顯示、AI 生成「重新觸發」）。
-- **後端（Cloud Run）**：`tcross-middleware` revision `00012-6nc`，`/status` 200。
+- **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，09-29 從 Netlify 搬過來（含地址自動建議）。舊 Netlify 網站 `https://luminous-moxie-07a76c.netlify.app` 過渡期保留，新網址驗證完成後關閉。
+- **後端（Cloud Run）**：`tcross-middleware` revision `00013-p4g`，`/status` 200。
 - **資料庫（Back4App）**：`cloud/main.js` 最後一次貼回為 09-27。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
 
@@ -18,9 +18,9 @@
 
 | # | 項目 | 說明 |
 | --- | --- | --- |
-| 1 | 🔴 Netlify 缺 Google Maps 金鑰 | 線上 bundle 沒有地址自動建議的程式碼，表示 Netlify 建置時沒有 `VITE_GOOGLE_MAPS_API_KEY`。到 Netlify → Site settings → Environment variables 加上後重新部署。本機 `.env` 已有。 |
+| 1 | 🟡 前端搬到 Firebase Hosting | ✅ 09-29 已部署（本機 `.env` 建置，已含 Maps 金鑰）、Cloud Run CORS 已加新網域。⬜ Google Maps 金鑰網站限制加上 `https://project-80ac5e1a-2ea4-4000-9ff.web.app/*`。⬜ 新網址實測登入／上傳／AI 生成／地址建議。⬜ 驗證後關閉 Netlify、從 `ALLOWED_ORIGIN` 移除 Netlify 網域。 |
 | 2 | ⬜ `Autocomplete` 舊版警告 | 09-29 本機實測：輸入「台北車站」會正常出現 5 筆建議，目前**可用**。主控台仍警告 `google.maps.places.Autocomplete` 是舊版（Google 表示停用前至少提前 12 個月通知），之後有空再換成 `PlaceAutocompleteElement`，不急。 |
-| 3 | 🟡 npm 漏洞 | ✅ 09-29 `npm audit fix`：`parse` 8.6.0→8.6.2、`ws` 8.20.0→8.21.3，**高風險已解**；建置通過，本機實測登入與讀取活動／計畫／操作紀錄正常。⬜ 要 commit 並推上去讓 Netlify 重新部署。剩 `uuid`（中，經 `exceljs`）：官方修法是降到 `exceljs@3.4.0`，不建議，先接受風險。 |
+| 3 | 🟡 npm 漏洞 | ✅ 09-29 `npm audit fix`：`parse` 8.6.0→8.6.2、`ws` 8.20.0→8.21.3，**高風險已解**；建置通過，本機實測登入與讀取活動／計畫／操作紀錄正常。✅ 09-29 已隨 Firebase Hosting 首次部署上線；⬜ 還要 commit 推上 git。剩 `uuid`（中，經 `exceljs`）：官方修法是降到 `exceljs@3.4.0`，不建議，先接受風險。 |
 | 4 | ✅ 預算警示 | 09-29 已在 Console 設定（帳單帳戶 `015911-92E019-179E03`）。只寄信通知、不會自動停用服務。`gcloud` 帳號 `tainanjade@gmail.com` 沒有帳單權限，無法用指令查看。 |
 | 5 | 🟠 初始密碼 | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
 | 6 | ⬜ 備份機制 | 訂 Back4App 資料備份頻率與還原演練（10/15 場域測試前）。 |
@@ -44,7 +44,7 @@
 ## 系統架構
 
 ```
-瀏覽器（Vue，Netlify）
+瀏覽器（Vue，Firebase Hosting）
  ├─ 一般資料與附件 → Back4App（Parse，含 Parse Files）
  └─ AI 生成素材   → Cloud Run 取 Signed URL → 直傳 GCS
                    → POST /generate/{jobId} → Gemini 分析 → 產 .docx 存 GCS → 寫回 GenerationJob
@@ -74,7 +74,8 @@
 | `00007`／`00008` | 09-04 | Python 套件漏洞、稽核 log、rate limit、非 root |
 | `00010-d9z` | 09-17 | `ALLOWED_ORIGIN` 加入 Netlify 網域 |
 | `00011-hdv` | 09-17 | Phase 3b：`/generate`、Gemini |
-| **`00012-6nc`**（線上） | 09-28 | 省費用：同步生成、按請求計費、`max-instances` 2、`timeout` 900、Gemini 改 `asia-northeast1` |
+| `00012-6nc` | 09-28 | 省費用：同步生成、按請求計費、`max-instances` 2、`timeout` 900、Gemini 改 `asia-northeast1` |
+| **`00013-p4g`**（線上） | 09-29 | `ALLOWED_ORIGIN` 加入 Firebase Hosting 網域（`web.app`／`firebaseapp.com`） |
 
 09-29 用 `gcloud` 確認：`00012-6nc` 接 100% 流量，`maxScale=2`、`cpu-throttling=true`、`timeoutSeconds=900`、`GCP_LOCATION=asia-northeast1`、`ALLOWED_ORIGIN` 含 Netlify 網域。此版由 09-28 原始碼建置，`requirements.txt` 已是 `fastapi==0.141.1`，因此 Python 套件升級已在線上。
 
