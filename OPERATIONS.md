@@ -54,6 +54,16 @@ npm run build
 firebase deploy --only hosting   # 本機若登入多個帳號，加 --account <有專案權限的帳號>
 ```
 
+### 前端自動部署（GitHub Actions）
+
+`main` 有新 commit（且改到 `server/`、`cloud/`、`*.md` 以外的檔案）時，`.github/workflows/deploy-hosting.yml` 會自動 `npm run build` 並部署；也可在 GitHub → Actions 手動觸發。GitHub 用 Workload Identity Federation 換短效憑證扮演 `github-deployer` 服務帳戶（只有 `roles/firebasehosting.admin`），只有 `ktungl/TCROSS` 的 `main` 換得到，沒有 JSON 金鑰。一次性設定見 `scripts/setup-github-deploy.sh`。
+
+建置用的 `VITE_*` 放在 GitHub repo secrets（名稱同 `.env.example`），改 `.env` 時要同步更新：
+
+```bash
+gh secret set VITE_GOOGLE_MAPS_API_KEY -R ktungl/TCROSS   # 會提示輸入值
+```
+
 ### 回滾前端
 
 Firebase Console → Hosting → 版本記錄 → 選上一個好的版本「復原」，不用重新建置。
@@ -127,7 +137,7 @@ node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一
 - **沒有自動化測試**：`server/` 沒有 CI/測試套件，每次部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
 - **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻（細節見 [ROADMAP.md](ROADMAP.md#資安檢視依-iso-27001-annex-a-對照2026-09-04)）
 - **備份機制尚未訂定**：Back4App／GCS 目前都沒有明確的備份/還原流程，ROADMAP 8 月工作項目仍列為待訂，需要團隊決定備份頻率與還原演練方式
-- **正式網域用 Firebase 預設網域**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，尚未綁自訂網域；`ALLOWED_ORIGIN` 目前含 localhost、Firebase 兩個網域與過渡中的 Netlify 網域
+- **正式網域用 Firebase 預設網域**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，尚未綁自訂網域；`ALLOWED_ORIGIN` 目前含 localhost與 Firebase 兩個網域（Netlify 已於 09-29 停用並移除）
 
 ## 範本修改流程
 

@@ -1,0 +1,49 @@
+# main 有新 commit 時自動建置並部署前端到 Firebase Hosting。
+# 用 Workload Identity Federation 換短效憑證，不存 JSON 金鑰（設定見 OPERATIONS.md「前端自動部署」）。
+name: Deploy frontend to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'server/**'
+      - 'cloud/**'
+      - '**.md'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hosting
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_PARSE_APP_ID: ${{ secrets.VITE_PARSE_APP_ID }}
+          VITE_PARSE_JS_KEY: ${{ secrets.VITE_PARSE_JS_KEY }}
+          VITE_PARSE_SERVER_URL: ${{ secrets.VITE_PARSE_SERVER_URL }}
+          VITE_MIDDLEWARE_URL: ${{ secrets.VITE_MIDDLEWARE_URL }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/502746951565/locations/global/workloadIdentityPools/github/providers/tcross-main
+          service_account: github-deployer@project-80ac5e1a-2ea4-4000-9ff.iam.gserviceaccount.com
+
+      - name: Deploy
+        run: npx --yes firebase-tools@15 deploy --only hosting --non-interactive
