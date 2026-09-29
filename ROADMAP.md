@@ -18,7 +18,7 @@
 
 | # | 項目 | 說明 |
 | --- | --- | --- |
-| 1 | 🟡 前端搬到 Firebase Hosting | ✅ 09-29 已部署（本機 `.env` 建置，已含 Maps 金鑰）、Cloud Run CORS 已加新網域。✅ Google Maps 金鑰網站限制已加 `web.app`／`firebaseapp.com`（API 限制 35 項未動）。✅ 09-29 瀏覽器實測：活動列表／詳細頁／照片載入、地址建議、子頁重新整理、從新網域呼叫 Cloud Run（CORS＋session 驗證）皆正常，主控台無錯誤。⬜ 實際上傳與 AI 生成（會寫資料、花 Gemini 費用）留待場域測試時一併跑。✅ `ALLOWED_ORIGIN`／Maps 金鑰已移除 Netlify 網域。⬜ 到 Netlify 刪除網站（避免 push 後還在建置）。⬜ push 到 main 自動部署：workflow 已寫好，待執行 `scripts/setup-github-deploy.sh` 並設 GitHub secrets（見 OPERATIONS.md）。 |
+| 1 | 🟡 前端搬到 Firebase Hosting | ✅ 09-29 已部署（本機 `.env` 建置，已含 Maps 金鑰）、Cloud Run CORS 已加新網域。✅ Google Maps 金鑰網站限制已加 `web.app`／`firebaseapp.com`（API 限制 35 項未動）。✅ 09-29 瀏覽器實測：活動列表／詳細頁／照片載入、地址建議、子頁重新整理、從新網域呼叫 Cloud Run（CORS＋session 驗證）皆正常，主控台無錯誤。⬜ 實際上傳與 AI 生成（會寫資料、花 Gemini 費用）留待場域測試時一併跑。✅ `ALLOWED_ORIGIN`／Maps 金鑰已移除 Netlify 網域。⬜ 到 Netlify 刪除網站（避免 push 後還在建置）。✅ push 到 main 自動部署（GitHub Actions＋WIF），09-29 首次執行成功（run 36527531851，43 秒）。 |
 | 2 | ⬜ `Autocomplete` 舊版警告 | 09-29 本機實測：輸入「台北車站」會正常出現 5 筆建議，目前**可用**。主控台仍警告 `google.maps.places.Autocomplete` 是舊版（Google 表示停用前至少提前 12 個月通知），之後有空再換成 `PlaceAutocompleteElement`，不急。 |
 | 3 | 🟡 npm 漏洞 | ✅ 09-29 `npm audit fix`：`parse` 8.6.0→8.6.2、`ws` 8.20.0→8.21.3，**高風險已解**；建置通過，本機實測登入與讀取活動／計畫／操作紀錄正常。✅ 09-29 已隨 Firebase Hosting 首次部署上線；⬜ 還要 commit 推上 git。剩 `uuid`（中，經 `exceljs`）：官方修法是降到 `exceljs@3.4.0`，不建議，先接受風險。 |
 | 4 | ✅ 預算警示 | 09-29 已在 Console 設定（帳單帳戶 `015911-92E019-179E03`）。只寄信通知、不會自動停用服務。`gcloud` 帳號 `tainanjade@gmail.com` 沒有帳單權限，無法用指令查看。 |
