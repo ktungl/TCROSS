@@ -167,9 +167,9 @@ async function submit() {
         <PlaceAutocompleteInput v-model="place" placeholder="輸入地址，會自動帶出建議" />
       </div>
 
-      <div class="grid2" style="margin-top:12px">
-        <div><label>負責人</label><input v-model="owner"></div>
-        <div><label>與會單位或成員</label><input v-model="attendees" placeholder="例如：○○里辦公室、○○協會"></div>
+      <div style="margin-top:12px">
+        <label>與會單位或成員</label>
+        <input v-model="attendees" placeholder="例如：○○里辦公室、○○協會">
       </div>
 
       <label style="margin-top:14px">參加對象說明</label>
