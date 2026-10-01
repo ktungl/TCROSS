@@ -12,6 +12,7 @@ const auth = useAuthStore()
 
 const username = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const submitting = ref(false)
 const welcomed = ref(false)
 let enterTimer: ReturnType<typeof setTimeout> | undefined
@@ -54,7 +55,22 @@ onBeforeUnmount(() => clearTimeout(enterTimer))
         <label>帳號</label>
         <input v-model="username" autocomplete="username" autofocus>
         <label style="margin-top:12px">密碼</label>
-        <input v-model="password" type="password" autocomplete="current-password">
+        <div class="password-field">
+          <input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password">
+          <button
+            class="toggle-eye"
+            type="button"
+            :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
+            :title="showPassword ? '隱藏密碼' : '顯示密碼'"
+            @click="showPassword = !showPassword"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+              <line v-if="showPassword" x1="3" y1="3" x2="21" y2="21" />
+            </svg>
+          </button>
+        </div>
         <div class="row" style="margin-top:20px">
           <button class="btn" type="submit" :disabled="submitting">{{ submitting ? '登入中…' : '登入' }}</button>
         </div>
@@ -73,6 +89,28 @@ onBeforeUnmount(() => clearTimeout(enterTimer))
 .login-card {
   width: 100%;
   max-width: 360px;
+}
+.password-field {
+  position: relative;
+}
+.password-field input {
+  padding-right: 38px;
+}
+.toggle-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.toggle-eye:hover {
+  color: var(--ink);
 }
 .welcome-card {
   text-align: center;
