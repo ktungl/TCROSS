@@ -107,6 +107,7 @@
 | Python 套件漏洞 | ✅ 已上線（見部署紀錄） |
 | npm 套件漏洞 | 🟡 高風險 `ws` 已修；剩 `uuid`（中）接受風險，見待辦 3 |
 | 初始密碼可猜 | ⬜ 見待辦 5 |
+| HTTP 安全標頭 | 🟡 10-01 `firebase.json` 加 `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy`（HSTS 由 Firebase 預設提供）；CSP 先用 `Report-Only` 觀察，主控台沒有違規再改成正式 `Content-Security-Policy`。⬜ 尚未部署 |
 
 已符合：Master Key 存 Secret Manager；Signed URL 15 分鐘效期；`.env` 未進 git；`objectPath` 防路徑穿越；前端無 `v-html`。
 
