@@ -1,20 +1,30 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
-import { averageScore, gaps, monthlyCounts } from '../utils/activity'
+import { gaps, monthlyCounts } from '../utils/activity'
+import { UNRECORDED } from '../utils/actor'
 
 const db = useDbStore()
+const router = useRouter()
 
 const totalActivities = computed(() => db.activities.length)
 const gapCount = computed(() => db.activities.filter((a) => gaps(a).length).length)
-const gapRate = computed(() =>
-  totalActivities.value ? Math.round((gapCount.value / totalActivities.value) * 100) : 0,
-)
 const totalPlans = computed(() => db.plans.length)
-const avgScore = computed(() => averageScore(db.activities))
+
+const gapActivities = computed(() =>
+  db.activities
+    .filter((a) => gaps(a).length)
+    .slice()
+    .sort((x, y) => (y.date || '').localeCompare(x.date || '')),
+)
 
 const months = computed(() => monthlyCounts(db.activities, 6))
 const maxCount = computed(() => Math.max(1, ...months.value.map((m) => m.count)))
+
+function openActivity(id: string) {
+  router.push({ name: 'detail', params: { id } })
+}
 </script>
 
 <template>
@@ -27,10 +37,8 @@ const maxCount = computed(() => Math.max(1, ...months.value.map((m) => m.count))
       <div class="mono" style="font-size:28px;font-weight:700">{{ totalActivities }}</div>
     </div>
     <div class="card">
-      <label style="margin-bottom:8px">有缺漏場次</label>
-      <div class="mono" style="font-size:28px;font-weight:700">
-        {{ gapCount }}<span style="font-size:14px;font-weight:400;color:var(--ink-soft)"> ／ {{ gapRate }}%</span>
-      </div>
+      <label style="margin-bottom:8px">有缺漏活動</label>
+      <div class="mono" style="font-size:28px;font-weight:700">{{ gapCount }}</div>
     </div>
     <div class="card">
       <label style="margin-bottom:8px">計畫總數</label>
@@ -38,9 +46,21 @@ const maxCount = computed(() => Math.max(1, ...months.value.map((m) => m.count))
     </div>
   </div>
 
+  <h2>各活動缺漏項目</h2>
   <div class="card" style="margin-bottom:20px">
-    <label style="margin-bottom:8px">平均完整度</label>
-    <div class="mono" style="font-size:28px;font-weight:700">{{ avgScore }}%</div>
+    <p v-if="!gapActivities.length" class="empty" style="padding:0">目前沒有活動有缺漏。</p>
+    <div v-else class="gap-list">
+      <button v-for="a in gapActivities" :key="a.id" class="gap-row" @click="openActivity(a.id)">
+        <span class="gap-row-head">
+          <span class="date mono">{{ a.date || '未定日期' }}</span>
+          <span class="gap-row-name">{{ a.name }}</span>
+          <span class="actor-stamp" style="margin-left:auto">建立者：{{ a.createdByName || UNRECORDED }}</span>
+        </span>
+        <span class="gap-row-items">
+          <span v-for="g in gaps(a)" :key="g" class="tag">{{ g }}</span>
+        </span>
+      </button>
+    </div>
   </div>
 
   <h2>近 6 個月活動量</h2>
