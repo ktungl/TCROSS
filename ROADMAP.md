@@ -11,7 +11,7 @@
 - **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
 - **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`。push 到 main 自動部署（GitHub Actions＋WIF），10-05 最近一次成功。Netlify 09-29 起停用。
 - **後端（Cloud Run）**：`tcross-middleware` revision `00014-jjh`，`/status` 200。
-- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 09-27。
+- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 09-27。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
 - **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
 
@@ -23,14 +23,15 @@
 | --- | --- | --- | --- |
 | 1 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 2 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在 Firebase Hosting 正式網址上跑一次，排在場域測試時。 |
-| 3 | ⬜ 確認 Back4App 內建備份 | 10/15 | 正式站是 Free 方案，到後台確認有無內建自動備份；沒有的話，每日 GCS 備份就是唯一一份。 |
+| 11 | 🟠 Back4App 檔案空間 | 10/15 前決定 | Free 方案檔案上限 1 GB，10-05 已用 275 MB（27%）。照片一張約 3 MB，再約 250 張就滿；場域測試照片多，滿了會無法上傳。選項：升級 MVP（US$25／月，50 GB，含每日備份），或上傳前壓縮照片。 |
 | 4 | ⬜ 刪除 Netlify 網站 | 10/15 | Netlify 已停用，到後台刪除網站，避免 push 後還在建置。 |
-| 5 | ⬜ CSP 改正式 | 觀察後 | 目前是 `Content-Security-Policy-Report-Only`；瀏覽各頁（活動列表／詳細頁／地址建議／上傳）主控台沒有違規，就把 `firebase.json` 改成正式 `Content-Security-Policy`。 |
+| 5 | 🟡 CSP 改正式 | 待辦 2 之後 | ✅ 10-05 正式站瀏覽 6 個主要頁面、活動詳細頁（13 張照片全部載入）、地址建議（5 筆），0 個違規（偵測方式以故意送出的白名單外請求驗證過有效）。⬜ 還沒測上傳與 AI 生成／下載，等待辦 2 跑過也沒違規，再把 `firebase.json` 改成正式 `Content-Security-Policy`。 |
 | 6 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
 | 7 | 🟠 初始密碼可猜 | — | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
 | 8 | ⬜ PDF／Excel 輸出 | — | AI 報告目前只產 `.docx`。 |
 | 9 | ⬜ `Autocomplete` 換新版 | — | 目前可用；主控台警告 `google.maps.places.Autocomplete` 是舊版（Google 停用前至少提前 12 個月通知），之後換成 `PlaceAutocompleteElement`。 |
 | 10 | ⬜ 刪除 `B4aVehicle` | — | Back4App 建 app 時附的範例 class（1 筆），與本專案無關，可在後台刪除。 |
+| 12 | ⬜ Back4App 擁有者帳號開 MFA | — | Back4App 後台安全建議：擁有者帳號未啟用兩步驟驗證。 |
 
 **接受風險**：npm `uuid`（中，經 `exceljs`），官方修法是降到 `exceljs@3.4.0`，不建議。
 
@@ -39,6 +40,7 @@
 | 日期 | 項目 | 重點 |
 | --- | --- | --- |
 | 10-05 | 備份機制 | `scripts/backup-parse.mjs` 匯出全部 class／schema／角色成員／附件；GitHub Actions 每天 02:00 上傳 `gs://…-backup/parse/`（Nearline、90 天、`github-backup` 只能新增不能刪）。 |
+| 10-05 | 確認 Back4App 內建備份 | Free 方案沒有自動備份（MVP 以上才有每日備份），目前每日 GCS 備份是唯一一份。 |
 | 10-05 | 還原演練 | `scripts/restore-parse.mjs` 還原到測試 app `TCROSS-restore-test`：筆數與角色成員一致、2058 個欄位 0 差異、86 個附件全部可開啟。步驟見 OPERATIONS.md「資料備份」。 |
 | 10-01 | HTTP 安全標頭 | `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy` 上線，CSP 先 Report-Only（待辦 5）。 |
 | 09-29 | 前端搬到 Firebase Hosting | 瀏覽器實測活動列表／詳細頁／照片、地址建議、子頁重新整理、呼叫 Cloud Run 皆正常；CORS 與 Maps 金鑰已換成新網域、移除 Netlify；push 到 main 自動部署。 |
@@ -51,7 +53,7 @@
 | --- | --- | --- |
 | 8/31 需求與欄位凍結 | 架構圖、GCP 部署、欄位對照表 | ✅ |
 | 9/30 Demo | Excel／Word 匯出模組、API 規格、Gemini 呼叫規格 | ✅（匯出格式細節見待辦 1） |
-| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；待辦 1～4 |
+| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；待辦 1、2、4、11 |
 | 10/31 驗收交付 | 部署維運說明、範本修改流程 | 🟡 技術面完成（OPERATIONS.md）；組織面見待辦 6 |
 
 **分工**：鍾雅婷（Donna）——架構、部署、匯出引擎、API 規格；劉冠彤——前端表單與介面；陳怡靜——資料模型、後端 CRUD、帳號權限。
