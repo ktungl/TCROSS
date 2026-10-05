@@ -547,6 +547,10 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       ) {
         fail(`${field} 陣列項目格式不正確（需要 { name, size, url }）`);
       }
+      // url 會直接當成連結渲染（歷史檔案頁的「開啟」），只接受 http(s)，擋掉 javascript: 之類
+      if (!/^https?:\/\//i.test(file.url)) {
+        fail(`${field} 的 url 必須是 http(s) 網址`);
+      }
       if (file.caption !== undefined && typeof file.caption !== 'string') {
         fail(`${field} 的 caption 必須是字串`);
       }
@@ -556,7 +560,8 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         fail(`${field} 的「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
       }
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      // 先去掉結尾的點與空白：Windows 存檔時會自動拿掉，「evil.exe.」下載後就是 evil.exe
+      const ext = (file.name.replace(/[.\s]+$/, '').split('.').pop() || '').toLowerCase();
       if (BLOCKED_EXTENSIONS.includes(ext)) {
         fail(`${field} 的「${file.name}」檔案類型不允許上傳`);
       }
@@ -575,24 +580,59 @@ Parse.Cloud.beforeSave('Activity', (request) => {
 // （手動刪除、或任何其他寫入路徑），存檔後統一比對前後差異，把消失的檔案一併刪掉。
 // Parse.File.destroy() 需要 Master Key，前端沒有也不該有，所以放在這裡而不是 db.ts。
 // 每個 class 只能註冊一個 afterSave，所以稽核紀錄跟孤兒檔清理寫在同一個 handler。
+/** 這個物件所有附件欄位裡還引用到的檔案網址。 */
+function referencedUrls(object) {
+  const urls = new Set();
+  for (const field of FOLDER_FIELDS) {
+    for (const f of object.get(field) || []) {
+      if (f && typeof f.url === 'string') urls.add(f.url);
+    }
+  }
+  return urls;
+}
+
 Parse.Cloud.afterSave('Activity', async (request) => {
   await auditSave('Activity', request);
   if (!request.original) return; // 新建的活動沒有舊檔案可比對
 
-  for (const field of FOLDER_FIELDS) {
-    const before = request.original.get(field) || [];
-    const after = request.object.get(field) || [];
-    const afterUrls = new Set(after.map((f) => f && f.url));
-    const removed = before.filter((f) => f && f.url && !afterUrls.has(f.url));
+  // 同一個檔案網址可能同時掛在別的分類或別的活動（「歷史檔案」挑選會重用既有網址），
+  // 只有整個系統都不再引用時才真的刪掉底層檔案，不然會把別處還在用的檔案一起刪掉。
+  const stillHere = referencedUrls(request.object);
+  const candidates = new Set();
+  for (const url of referencedUrls(request.original)) {
+    if (!stillHere.has(url)) candidates.add(url);
+  }
+  if (!candidates.size) return;
 
-    for (const f of removed) {
-      const filename = decodeURIComponent(f.url.split('/').pop() || '');
-      if (!filename) continue;
-      try {
-        await new Parse.File(filename).destroy({ useMasterKey: true });
-      } catch (err) {
-        console.error(`刪除檔案失敗：${filename}`, err);
-      }
+  try {
+    await new Parse.Query('Activity')
+      .notEqualTo('objectId', request.object.id)
+      .select(...FOLDER_FIELDS)
+      .each(
+        (other) => {
+          for (const url of referencedUrls(other)) candidates.delete(url);
+        },
+        { useMasterKey: true },
+      );
+  } catch (err) {
+    // 查不到其他活動的引用狀況就不刪，寧可留孤兒檔也不能誤刪別人還在用的檔案
+    console.error('查詢附件引用失敗，略過清檔', err);
+    return;
+  }
+
+  for (const url of candidates) {
+    let filename = '';
+    try {
+      filename = decodeURIComponent(url.split('/').pop() || '');
+    } catch (err) {
+      console.error(`檔案網址格式錯誤：${url}`, err);
+      continue;
+    }
+    if (!filename) continue;
+    try {
+      await new Parse.File(filename).destroy({ useMasterKey: true });
+    } catch (err) {
+      console.error(`刪除檔案失敗：${filename}`, err);
     }
   }
 });

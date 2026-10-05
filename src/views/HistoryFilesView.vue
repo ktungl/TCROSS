@@ -90,8 +90,10 @@ interface FileRow {
   deletedByName?: string
 }
 
+/** 選取狀態用 url 當 key，不用 index：單筆刪除／復原後陣列會位移，用 index 的話
+ * 原本勾選的 key 會改指向別的檔案，批次動作就會作用在使用者沒選的檔案上。 */
 function fileRowKey(r: FileRow): string {
-  return `${r.activityId}:${r.type}:${r.index}`
+  return `${r.activityId}:${r.type}:${r.url}`
 }
 
 /** source 決定要撈 files（現存）還是 trash（垃圾桶），兩邊欄位結構一樣。 */
@@ -418,7 +420,7 @@ async function batchHardDeleteJobs() {
         <tr><th></th><th>活動</th><th>對應計畫</th><th>類型</th><th>檔案名稱</th><th>大小</th><th>上傳者</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="r in uploadedRows" :key="fileRowKey(r)">
+        <tr v-for="r in uploadedRows" :key="`${fileRowKey(r)}:${r.index}`">
           <td><input type="checkbox" :checked="uploadedSel.isSelected(fileRowKey(r))" @change="uploadedSel.toggle(fileRowKey(r))"></td>
           <td><button class="link" @click="openDetail(r.activityId)">{{ r.activityName || '（未命名活動）' }}</button></td>
           <td>
@@ -442,7 +444,7 @@ async function batchHardDeleteJobs() {
     </table>
 
     <div class="file-grid" v-else-if="uploadedRows.length && uView === 'grid'">
-      <div v-for="r in visibleUploadedRows" :key="fileRowKey(r)" class="file-cell">
+      <div v-for="r in visibleUploadedRows" :key="`${fileRowKey(r)}:${r.index}`" class="file-cell">
         <span class="thumb-wrap file-thumb-wrap">
           <input
             type="checkbox"
@@ -583,7 +585,7 @@ async function batchHardDeleteJobs() {
         <tr><th></th><th>活動</th><th>對應計畫</th><th>類型</th><th>檔案名稱</th><th>移入垃圾桶時間</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="r in trashedFileRows" :key="fileRowKey(r)">
+        <tr v-for="r in trashedFileRows" :key="`${fileRowKey(r)}:${r.index}`">
           <td><input type="checkbox" :checked="trashedFileSel.isSelected(fileRowKey(r))" @change="trashedFileSel.toggle(fileRowKey(r))"></td>
           <td>{{ r.activityName || '（未命名活動）' }}</td>
           <td>
@@ -609,7 +611,7 @@ async function batchHardDeleteJobs() {
     </table>
 
     <div class="file-grid" v-else-if="trashedFileRows.length && tView === 'grid'">
-      <div v-for="r in visibleTrashedFileRows" :key="fileRowKey(r)" class="file-cell">
+      <div v-for="r in visibleTrashedFileRows" :key="`${fileRowKey(r)}:${r.index}`" class="file-cell">
         <span class="thumb-wrap file-thumb-wrap">
           <input
             type="checkbox"

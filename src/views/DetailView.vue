@@ -129,7 +129,7 @@ async function onFeaturedToggle(folder: AttachmentKey, i: number, e: Event) {
 
 async function deleteActivity() {
   if (!activity.value) return
-  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，所有附件與資料都會一併刪除。`))) return
+  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，活動會從系統中移除；已上傳的附件檔案與 AI 生成紀錄不會一併刪除。`))) return
   try {
     await db.deleteActivity(activity.value.id)
     pushToast('已刪除活動')

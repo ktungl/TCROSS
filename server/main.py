@@ -217,6 +217,15 @@ def trigger_generation(job_id: str, user: dict = Depends(enforce_rate_limit)):
         raise HTTPException(409, f"這筆工作目前狀態是「{job['status']}」，無法重複觸發")
     if len(job["sourceFiles"]) > MAX_SOURCE_FILES:
         raise HTTPException(400, f"素材檔案最多 {MAX_SOURCE_FILES} 個")
+    # sourceFiles 是使用者自己寫進 GenerationJob 的字串，Cloud Code 只檢查型別；這裡要確認
+    # 每個路徑都在這筆工作所屬活動底下，否則 Gemini 會用服務帳號讀到桶裡任意物件並寫進報告。
+    source_prefix = f"activities/{job['activityId']}/"
+    if any(
+        not isinstance(p, str) or not is_valid_object_path(p) or not p.startswith(source_prefix)
+        for p in job["sourceFiles"]
+    ):
+        audit_log.warning("rejected: invalid sourceFiles user=%s jobId=%s", user.get("username"), job_id)
+        raise HTTPException(400, "素材檔案路徑不合法")
 
     activity = get_activity(user["sessionToken"], job["activityId"])
     activity_name = (activity or {}).get("name", "")

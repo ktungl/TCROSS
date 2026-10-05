@@ -119,7 +119,8 @@ export function fileUploadRejectionReason(file: { name: string; size: number }):
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return `「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`
   }
-  const ext = file.name.toLowerCase().split('.').pop() ?? ''
+  // 先去掉結尾的點與空白：Windows 存檔時會自動拿掉，「evil.exe.」下載後就是 evil.exe
+  const ext = file.name.toLowerCase().replace(/[.\s]+$/, '').split('.').pop() ?? ''
   if (BLOCKED_EXTENSIONS.includes(ext)) {
     return `「${file.name}」的檔案類型不允許上傳`
   }

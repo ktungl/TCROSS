@@ -168,9 +168,13 @@ async function startGeneration() {
     }
   }
   try {
-    await Promise.all(
+    // 用 allSettled 等所有 worker 都停下來：Promise.all 在第一個失敗就 reject，其他還在傳的
+    // 檔案稍後才完成，下面 catch 清孤兒檔時就會漏掉它們，留在 GCS 持續計費。
+    const results = await Promise.allSettled(
       Array.from({ length: Math.min(UPLOAD_CONCURRENCY, allFiles.length) }, worker),
     )
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (failed) throw failed.reason
     const job = await db.createGenerationJob(props.activity.id, '成果報告', objectPaths as string[])
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))

@@ -73,10 +73,11 @@ export const useDbStore = defineStore('db', () => {
     loading.value = true
     error.value = ''
     try {
+      // find() 預設只回 100 筆，超過就會靜默少資料；findAll() 自動分批撈完。
       const [planObjs, categoryObjs, activityObjs] = await Promise.all([
-        new Parse.Query(PlanObject).find(),
-        new Parse.Query(CategoryObject).find(),
-        new Parse.Query(ActivityObject).find(),
+        new Parse.Query(PlanObject).findAll(),
+        new Parse.Query(CategoryObject).findAll(),
+        new Parse.Query(ActivityObject).findAll(),
       ])
       plans.value = planObjs.map(planToRecord)
       categories.value = categoryObjs.length
@@ -407,12 +408,16 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
+  /** findAll() 不能搭配排序（分批靠 objectId），撈完再自己依建立時間由新到舊排。 */
+  function newestFirst(records: GenerationJobRecord[]): GenerationJobRecord[] {
+    return records.sort((x, y) => (y.createdAt || '').localeCompare(x.createdAt || ''))
+  }
+
   async function fetchGenerationJobs(activityId: string): Promise<void> {
     const objs = await new Parse.Query(GenerationJobObject)
       .equalTo('activity', ActivityObject.createWithoutData(activityId))
-      .descending('createdAt')
-      .find()
-    const records = objs.map(generationJobToRecord)
+      .findAll()
+    const records = newestFirst(objs.map(generationJobToRecord))
     generationJobs.value = [
       ...generationJobs.value.filter((j) => j.activityId !== activityId),
       ...records,
@@ -421,8 +426,8 @@ export const useDbStore = defineStore('db', () => {
 
   /** 「歷史檔案」頁用：撈全部活動的生成工作，不像 fetchGenerationJobs 只查單一活動。 */
   async function fetchAllGenerationJobs(): Promise<void> {
-    const objs = await new Parse.Query(GenerationJobObject).descending('createdAt').find()
-    generationJobs.value = objs.map(generationJobToRecord)
+    const objs = await new Parse.Query(GenerationJobObject).findAll()
+    generationJobs.value = newestFirst(objs.map(generationJobToRecord))
   }
 
   async function createGenerationJob(
