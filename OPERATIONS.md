@@ -124,11 +124,22 @@ node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一
 
 沒有 CLI 流程，只能手動貼到 Dashboard：步驟見 [cloud/README.md](cloud/README.md#部署步驟back4app-dashboard沒有額外工具需要裝)。**這步無法自動化**，改完 `cloud/main.js` 後要記得手動部署，否則正式環境還是跑舊邏輯。
 
+## 資料備份（Back4App）
+
+GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00 跑 `scripts/backup-parse.mjs --files`，把所有 class、schema、角色成員與 Back4App 附件打包成 `parse-<時間>.tar.gz`，上傳到 `gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/`。
+
+- **保存**：90 天後自動刪除；Nearline 儲存類別（存放便宜，還原下載時才有少量讀取費）。
+- **權限**：`github-backup` 服務帳號只有該桶的 `storage.objectCreator`，只能新增備份、不能讀取／覆蓋／刪除既有備份。用 Workload Identity Federation，不存 JSON 金鑰；GCP 端一次性設定見 `scripts/setup-github-backup.sh`。
+- **不含密碼**：`_User` 匯出不含密碼雜湊（Parse 不會回傳），還原後帳號需要重設密碼。也不含 GCS 主桶的 AI 生成素材（另有 30 天保存規則）。
+- **確認有在跑**：GitHub → Actions → 「Backup Back4App to GCS」，或 `gh run list --workflow backup-parse.yml`。失敗時 GitHub 會寄信給觸發者。
+- **手動備一份**：Actions 頁按「Run workflow」；或本機 `node scripts/backup-parse.mjs --files`（存在 `backups/`，已列入 `.gitignore`）。
+- **下載備份**：`gcloud storage ls gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/` 找檔名，再 `gcloud storage cp` 下載後 `tar -xzf` 解開。下載需要專案 Owner／Storage 管理權限的帳號。
+
 ## 密鑰與憑證
 
 | 密鑰 | 存放位置 | 輪替方式 |
 | --- | --- | --- |
-| `PARSE_MASTER_KEY` | GCP Secret Manager（`parse-master-key`），Cloud Run 以環境變數方式掛載（`secretKeyRef`，非 volume mount） | 去 Back4App Dashboard 重新產生後，`gcloud secrets versions add parse-master-key --data-file=-` 更新一版。**這裡是環境變數形式的 secret，只在 revision 建立當下解析一次，改了新版本不會自動生效**——即使綁的是 `:latest`，也要重新部署一次（跑一次「部署一支新版 Cloud Run 中介層」）讓新 revision 重新解析才會撿到新金鑰 |
+| `PARSE_MASTER_KEY` | GCP Secret Manager（`parse-master-key`），Cloud Run 以環境變數方式掛載（`secretKeyRef`，非 volume mount） | 去 Back4App Dashboard 重新產生後，`gcloud secrets versions add parse-master-key --data-file=-` 更新一版。**這裡是環境變數形式的 secret，只在 revision 建立當下解析一次，改了新版本不會自動生效**——即使綁的是 `:latest`，也要重新部署一次（跑一次「部署一支新版 Cloud Run 中介層」）讓新 revision 重新解析才會撿到新金鑰。**另外 GitHub repo secret `PARSE_MASTER_KEY`（每日備份用）也要同步更新**：`gh secret set PARSE_MASTER_KEY` |
 | `PARSE_APP_ID`／`PARSE_JS_KEY` | Cloud Run 環境變數（明文，設計上本來就是公開資訊）＋前端 `.env`（`.gitignore` 已排除） | 這兩把本來就假設公開，不是機密；真要換要同時改前端 `.env` 與 Cloud Run 環境變數 |
 | `tcross-middleware-sa` 服務帳戶 | GCP IAM，無 JSON 金鑰檔（用 IAM 自我模擬簽 URL，見 [server/README.md](server/README.md)） | 沒有金鑰檔案可外洩，不需要輪替；如需撤銷存取直接在 IAM 移除該服務帳戶權限 |
 
@@ -136,7 +147,7 @@ node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一
 
 - **沒有自動化測試**：`server/` 沒有 CI/測試套件，每次部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
 - **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻（細節見 [ROADMAP.md](ROADMAP.md#資安檢視依-iso-27001-annex-a-對照2026-09-04)）
-- **備份機制尚未訂定**：Back4App／GCS 目前都沒有明確的備份/還原流程，ROADMAP 8 月工作項目仍列為待訂，需要團隊決定備份頻率與還原演練方式
+- **還原流程尚未演練**：Back4App 已每日自動備份（見「資料備份」），但還沒有還原腳本與演練紀錄；GCS 主桶的 AI 生成素材不在備份範圍
 - **正式網域用 Firebase 預設網域**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，尚未綁自訂網域；`ALLOWED_ORIGIN` 目前含 localhost與 Firebase 兩個網域（Netlify 已於 09-29 停用並移除）
 
 ## 範本修改流程

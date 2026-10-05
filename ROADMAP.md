@@ -2,14 +2,14 @@
 
 合照盟計畫資料整合平台的進度、待辦與部署紀錄。目標架構見 [README.md](README.md#架構擴充導入-gcpgoogle-cloud-platform)，部署維運步驟見 [OPERATIONS.md](OPERATIONS.md)。
 
-> 最後查核：2026-09-29（對照程式碼、git、Netlify 線上 bundle、`gcloud` 線上設定）
+> 最後查核：2026-10-05（對照 git、GitHub Actions 部署紀錄、線上回應標頭）
 
 ---
 
 ## 目前狀態
 
-- **程式碼**：`main`、`Donna`、`origin/main` 同一個 commit（`33e4057`，09-28），`Ching` 分支已合併。
-- **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，09-29 從 Netlify 搬過來（含地址自動建議）。Netlify 已停用（09-29 起不再使用，網域已從 CORS 與 Maps 金鑰移除）。
+- **程式碼**：`main`、`Donna`、`origin/main` 同一個 commit（`b81cefc`，10-01），`Ching` 分支已合併。
+- **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，09-29 從 Netlify 搬過來（含地址自動建議）；push 到 main 自動部署，最近一次 10-01（run 36901647443）。Netlify 已停用（09-29 起不再使用，網域已從 CORS 與 Maps 金鑰移除）。
 - **後端（Cloud Run）**：`tcross-middleware` revision `00014-jjh`，`/status` 200。
 - **資料庫（Back4App）**：`cloud/main.js` 最後一次貼回為 09-27。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
@@ -20,10 +20,10 @@
 | --- | --- | --- |
 | 1 | 🟡 前端搬到 Firebase Hosting | ✅ 09-29 已部署（本機 `.env` 建置，已含 Maps 金鑰）、Cloud Run CORS 已加新網域。✅ Google Maps 金鑰網站限制已加 `web.app`／`firebaseapp.com`（API 限制 35 項未動）。✅ 09-29 瀏覽器實測：活動列表／詳細頁／照片載入、地址建議、子頁重新整理、從新網域呼叫 Cloud Run（CORS＋session 驗證）皆正常，主控台無錯誤。⬜ 實際上傳與 AI 生成（會寫資料、花 Gemini 費用）留待場域測試時一併跑。✅ `ALLOWED_ORIGIN`／Maps 金鑰已移除 Netlify 網域。⬜ 到 Netlify 刪除網站（避免 push 後還在建置）。✅ push 到 main 自動部署（GitHub Actions＋WIF），09-29 首次執行成功（run 36527531851，43 秒）。 |
 | 2 | ⬜ `Autocomplete` 舊版警告 | 09-29 本機實測：輸入「台北車站」會正常出現 5 筆建議，目前**可用**。主控台仍警告 `google.maps.places.Autocomplete` 是舊版（Google 表示停用前至少提前 12 個月通知），之後有空再換成 `PlaceAutocompleteElement`，不急。 |
-| 3 | 🟡 npm 漏洞 | ✅ 09-29 `npm audit fix`：`parse` 8.6.0→8.6.2、`ws` 8.20.0→8.21.3，**高風險已解**；建置通過，本機實測登入與讀取活動／計畫／操作紀錄正常。✅ 09-29 已隨 Firebase Hosting 首次部署上線；⬜ 還要 commit 推上 git。剩 `uuid`（中，經 `exceljs`）：官方修法是降到 `exceljs@3.4.0`，不建議，先接受風險。 |
+| 3 | 🟡 npm 漏洞 | ✅ 09-29 `npm audit fix`：`parse` 8.6.0→8.6.2、`ws` 8.20.0→8.21.3，**高風險已解**；建置通過，本機實測登入與讀取活動／計畫／操作紀錄正常。✅ 09-29 已隨 Firebase Hosting 首次部署上線，並已 commit 推上 git（`201fc0a`）。剩 `uuid`（中，經 `exceljs`）：官方修法是降到 `exceljs@3.4.0`，不建議，先接受風險。 |
 | 4 | ✅ 預算警示 | 09-29 已在 Console 設定（帳單帳戶 `015911-92E019-179E03`）。只寄信通知、不會自動停用服務。`gcloud` 帳號 `tainanjade@gmail.com` 沒有帳單權限，無法用指令查看。 |
 | 5 | 🟠 初始密碼 | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
-| 6 | ⬜ 備份機制 | 訂 Back4App 資料備份頻率與還原演練（10/15 場域測試前）。 |
+| 6 | 🟡 備份機制 | ✅ 10-05 新增 `scripts/backup-parse.mjs`（唯讀，匯出 schema／全部 class／角色成員，`--files` 連附件一起下載），首次實測：8 個 class、附件 86 個全數下載，共 219 MB，存在 `backups/`（已列入 `.gitignore`）。✅ 10-05 每日排程：GitHub Actions 每天 02:00 打包上傳 `gs://…-backup/parse/`（Nearline、保留 90 天、`github-backup` 只能新增不能刪），見 OPERATIONS.md「資料備份」。⬜ 確認 Back4App 方案本身有無自動備份。⬜ 還原演練（還原到另一個測試用 Back4App app）。10/15 場域測試前完成。 |
 | 7 | ⬜ 匯出格式細節 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 8 | ⬜ OPERATIONS.md 組織面 | 值班窗口、備份排程、通報流程，待團隊補上。 |
 | 9 | ⬜ PDF／Excel 輸出 | AI 報告目前只產 `.docx`。 |
@@ -78,7 +78,7 @@
 | `00013-p4g` | 09-29 | `ALLOWED_ORIGIN` 加入 Firebase Hosting 網域（`web.app`／`firebaseapp.com`） |
 | **`00014-jjh`**（線上） | 09-29 | `ALLOWED_ORIGIN` 移除 Netlify 網域 |
 
-09-29 用 `gcloud` 確認：`00012-6nc` 接 100% 流量，`maxScale=2`、`cpu-throttling=true`、`timeoutSeconds=900`、`GCP_LOCATION=asia-northeast1`、`ALLOWED_ORIGIN` 含 Netlify 網域。此版由 09-28 原始碼建置，`requirements.txt` 已是 `fastapi==0.141.1`，因此 Python 套件升級已在線上。
+`00013`／`00014` 只改 `ALLOWED_ORIGIN`，其餘設定沿用 `00012-6nc`：`maxScale=2`、`cpu-throttling=true`、`timeoutSeconds=900`、`GCP_LOCATION=asia-northeast1`。映像檔由 09-28 原始碼建置，`requirements.txt` 已是 `fastapi==0.141.1`，因此 Python 套件升級已在線上。
 
 ### `cloud/main.js`（需手動貼到 Back4App Cloud Code Dashboard）
 
@@ -107,7 +107,7 @@
 | Python 套件漏洞 | ✅ 已上線（見部署紀錄） |
 | npm 套件漏洞 | 🟡 高風險 `ws` 已修；剩 `uuid`（中）接受風險，見待辦 3 |
 | 初始密碼可猜 | ⬜ 見待辦 5 |
-| HTTP 安全標頭 | 🟡 10-01 `firebase.json` 加 `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy`（HSTS 由 Firebase 預設提供）；CSP 先用 `Report-Only` 觀察，主控台沒有違規再改成正式 `Content-Security-Policy`。⬜ 尚未部署 |
+| HTTP 安全標頭 | 🟡 10-01 `firebase.json` 加 `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy`（HSTS 由 Firebase 預設提供）；CSP 先用 `Report-Only` 觀察，主控台沒有違規再改成正式 `Content-Security-Policy`。✅ 10-01 已自動部署（run 36862331938），10-05 線上回應標頭確認生效。⬜ 觀察後改正式 CSP |
 
 已符合：Master Key 存 Secret Manager；Signed URL 15 分鐘效期；`.env` 未進 git；`objectPath` 防路徑穿越；前端無 `v-html`。
 

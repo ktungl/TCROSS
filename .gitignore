@@ -36,3 +36,6 @@ scripts/users.local.json
 
 # Firebase CLI 快取
 .firebase/
+
+# 資料備份（含個資），見 scripts/backup-parse.mjs
+backups/

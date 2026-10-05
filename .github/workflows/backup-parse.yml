@@ -1,0 +1,52 @@
+# 每天備份 Back4App 資料與附件，打包成 tar.gz 上傳到 GCS 備份桶。
+# 用 Workload Identity Federation 換短效憑證，github-backup 只有「建立物件」權限，
+# 不能讀、改、刪既有備份（設定見 scripts/setup-github-backup.sh、OPERATIONS.md「資料備份」）。
+name: Backup Back4App to GCS
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 每天台灣時間 02:00
+  workflow_dispatch:
+
+concurrency:
+  group: backup-parse
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Export
+        run: node scripts/backup-parse.mjs --files --out backup
+        env:
+          VITE_PARSE_APP_ID: ${{ secrets.VITE_PARSE_APP_ID }}
+          VITE_PARSE_SERVER_URL: ${{ secrets.VITE_PARSE_SERVER_URL }}
+          PARSE_MASTER_KEY: ${{ secrets.PARSE_MASTER_KEY }}
+
+      - name: Pack
+        run: |
+          STAMP=$(TZ=Asia/Taipei date +%Y-%m-%dT%H-%M)
+          tar -czf "parse-$STAMP.tar.gz" -C backup .
+          echo "ARCHIVE=parse-$STAMP.tar.gz" >> "$GITHUB_ENV"
+          ls -lh "parse-$STAMP.tar.gz"
+          cat backup/manifest.json
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/502746951565/locations/global/workloadIdentityPools/github/providers/tcross-main
+          service_account: github-backup@project-80ac5e1a-2ea4-4000-9ff.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload
+        run: gcloud storage cp "$ARCHIVE" "gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/$ARCHIVE"
