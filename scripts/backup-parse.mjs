@@ -4,7 +4,8 @@
 //   schema.json        所有 class 的欄位定義與 CLP（還原時先建 schema）
 //   classes/<名稱>.json 每個 class 的全部資料（_Session 除外）
 //   roles.json         每個角色有哪些帳號（_Role 的 users relation 不會跟著物件回傳，要另外查）
-//   files/             加 --files 時，下載資料裡引用到的 Back4App 附件（照片、簽到表等）
+//   files/             加 --files 時，下載資料裡引用到的 Back4App 附件（舊附件；新附件在 GCS，
+//                      由 Storage Transfer 每日複製到備份桶 attachments/，見 scripts/setup-attachments-gcs.sh）
 //   manifest.json      匯出時間、各 class 筆數、附件數，用來核對備份是否完整
 //
 //   node scripts/backup-parse.mjs                  只匯出資料（快，幾 MB 內）

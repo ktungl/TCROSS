@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
+import { attachmentSrc } from '../lib/attachments'
 import { gaps, googleMapsUrl, kb } from '../utils/activity'
 import { actorLine } from '../utils/actor'
 import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
@@ -251,7 +252,7 @@ async function duplicateActivity() {
           <template v-for="(f, i) in activity.files[key]" :key="i">
             <li v-if="key === 'photo' && f.url" class="photo-item">
               <div class="thumb-wrap">
-                <img :src="f.url" class="thumb-lg" :alt="f.name">
+                <img :src="attachmentSrc(f.url, f.name)" class="thumb-lg" :alt="f.name">
                 <button class="x" title="刪除照片" @click="onRemoveFile(key, i)">×</button>
               </div>
               <div class="photo-body">

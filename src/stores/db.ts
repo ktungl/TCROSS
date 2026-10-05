@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import Parse from '../lib/parse'
 import { deleteObjects } from '../lib/middleware'
-import { uploadParseFile } from '../lib/uploadFile'
+import { deleteUnreferencedAttachments, putAttachment, requestAttachmentUploadUrls } from '../lib/attachments'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { CategoryObject, applyCategoryRecord, categoryToRecord } from '../models/Category'
 import {
@@ -186,8 +186,15 @@ export const useDbStore = defineStore('db', () => {
   }
 
   async function deleteActivity(id: string): Promise<void> {
+    const existing = activities.value.find((a) => a.id === id)
     await ActivityObject.createWithoutData(id).destroy()
     activities.value = activities.value.filter((a) => a.id !== id)
+    // 活動刪掉後，它的 GCS 附件如果沒有別的活動在用（歷史檔案可以跨活動引用）就一併清掉。
+    // 清不掉只是留下孤兒檔案，不影響刪除結果，所以不往外丟錯。
+    if (existing) {
+      const urls = [existing.files, existing.trash].flatMap((g) => Object.values(g).flat().map((f) => f.url))
+      deleteUnreferencedAttachments(urls).catch(() => {})
+    }
   }
 
   /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。
@@ -265,17 +272,6 @@ export const useDbStore = defineStore('db', () => {
   /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
   const UPLOAD_CONCURRENCY = 4
 
-  /** Parse Server 的檔案名稱只接受 ASCII 且必須以英數字開頭（正規表示式
-   * `^[a-zA-Z0-9][a-zA-Z0-9@. ~_-]*`），中文/日文等非 ASCII 字元會被拒絕並回傳
-   * 400「Filename contains invalid characters」。Windows 螢幕截圖預設就是中文檔名，
-   * 清成安全字元後常常整段中文被換成單一底線，導致檔名變成「_xxx.png」這種不合法
-   * 的開頭，所以額外加上數字時間戳記當前綴，保證一定以數字開頭。展示用的原始檔名
-   * （FileMeta.name）維持不變。 */
-  function safeUploadFilename(name: string): string {
-    const cleaned = name.replace(/[^A-Za-z0-9 @.~_-]+/g, '_') || 'file'
-    return `${Date.now()}_${cleaned}`
-  }
-
   async function uploadFiles(
     id: string,
     folder: AttachmentKey,
@@ -288,16 +284,17 @@ export const useDbStore = defineStore('db', () => {
       const reason = fileUploadRejectionReason(file)
       if (reason) throw new Error(reason)
     }
+    // 附件直接傳到 GCS：先跟 Cloud Run 換一批上傳網址，再由瀏覽器直接 PUT。
+    // GCS 上的物件名稱由 Cloud Run 清成安全字元，原始檔名（可含中文）留在 FileMeta.name。
+    const targets = await requestAttachmentUploadUrls(id, folder, files)
     const uploaded: FileMeta[] = new Array(files.length)
     let cursor = 0
     async function worker() {
       while (cursor < files.length) {
         const i = cursor++
         const file = files[i]
-        const result = await uploadParseFile(safeUploadFilename(file.name), file, (fraction) =>
-          onProgress?.(file, fraction),
-        )
-        uploaded[i] = { name: file.name, size: file.size, url: result.url }
+        await putAttachment(targets[i].uploadUrl, file, (fraction) => onProgress?.(file, fraction))
+        uploaded[i] = { name: file.name, size: file.size, url: targets[i].url }
       }
     }
     await Promise.all(
@@ -316,7 +313,7 @@ export const useDbStore = defineStore('db', () => {
   }
 
   /** 把「歷史檔案」挑選頁選到的既有檔案掛到這個活動的這個分類——重用同一個已上傳
-   * 好的 Parse File URL，不用重新上傳一次。只留 name/size/url，caption／featured
+   * 好的檔案（GCS 或舊的 Back4App 網址），不用重新上傳一次。只留 name/size/url，caption／featured
    * 是每個活動自己的，不沿用來源活動的值。 */
   async function attachExistingFiles(
     id: string,
@@ -373,10 +370,12 @@ export const useDbStore = defineStore('db', () => {
   }
 
   /** 永久刪除：只能對垃圾桶裡的項目做，做了就真的從 Back4App 的陣列裡拿掉，無法復原。
-   * index 是在 trash[folder] 陣列裡的位置。 */
+   * index 是在 trash[folder] 陣列裡的位置。GCS 附件在沒有其他活動引用時才會刪掉實體檔
+   * （舊的 Back4App 附件由 Cloud Code afterSave 處理）。 */
   async function hardDeleteFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
-    if (!existing || !existing.trash[folder][index]) return
+    const target = existing?.trash[folder][index]
+    if (!existing || !target) return
     const remainingTrash = existing.trash[folder].filter((_, i) => i !== index)
     const nextFull = [...existing.files[folder], ...remainingTrash]
     await patchActivity(
@@ -386,6 +385,8 @@ export const useDbStore = defineStore('db', () => {
         existing.trash[folder] = remainingTrash
       },
     )
+    // 紀錄已經拿掉了，實體檔清不掉只是留下孤兒檔案，不讓整個操作顯示失敗
+    await deleteUnreferencedAttachments([target.url]).catch(() => {})
   }
 
   async function updateFileMeta(

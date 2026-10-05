@@ -1,8 +1,12 @@
 [
   {
-    "origin": ["http://localhost:5173", "https://your-production-domain.example"],
-    "method": ["PUT"],
-    "responseHeader": ["Content-Type"],
+    "origin": [
+      "http://localhost:5173",
+      "https://project-80ac5e1a-2ea4-4000-9ff.web.app",
+      "https://project-80ac5e1a-2ea4-4000-9ff.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD", "PUT"],
+    "responseHeader": ["Content-Type", "Content-Disposition", "x-goog-content-length-range"],
     "maxAgeSeconds": 3600
   }
 ]

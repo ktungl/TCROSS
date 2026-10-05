@@ -21,6 +21,7 @@ import {
 } from 'docx'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
+import { resolveAttachmentUrl } from '../lib/attachments'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -469,7 +470,7 @@ interface ImageAsset {
 async function loadImageAsset(file: FileMeta): Promise<ImageAsset | null> {
   if (!file.url) return null
   try {
-    const res = await fetch(file.url)
+    const res = await fetch(await resolveAttachmentUrl(file.url, file.name))
     if (!res.ok) return null
     const originalBlob = await res.blob()
     const kind = fileKindFromName(file.name)

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from parse_auth import (
+    activities_referencing,
     activity_exists,
     find_generation_jobs_for_object_paths,
     get_activity,
@@ -19,7 +20,13 @@ from parse_auth import (
 )
 from report import analyze_sources, build_report_docx
 from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
-from utils import is_extension_blocked, is_valid_object_path, sanitize_filename
+from utils import (
+    ATTACHMENT_FOLDERS,
+    is_extension_blocked,
+    is_valid_object_path,
+    parse_attachment_path,
+    sanitize_filename,
+)
 
 # 應用層稽核紀錄（ISO 27001 A.8.15／A.8.16）：誰、對什麼物件、做了什麼敏感操作。
 # 用 logging 印到 stdout，Cloud Run 會自動收進 Cloud Logging，不用額外接資料庫。
@@ -78,6 +85,40 @@ class DeleteObjectsRequest(BaseModel):
     # 改成跟 /signed-url 一樣「能讀到這個 activity」，不要求 objectPath 已經
     # 掛在某個 GenerationJob 上——反正這批路徑本來就是同一個 activityId 剛簽出來的。
     activityId: str | None = None
+
+
+# 活動附件（/attachments/*）：前端 FileMeta.url 存成 "gcs:" + GCS 路徑，跟舊的 Back4App
+# 網址區分。上限與 src/types.ts MAX_FILE_SIZE_BYTES、cloud/main.js 一致。
+ATTACHMENT_URL_PREFIX = "gcs:"
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+MAX_ATTACHMENT_UPLOADS_PER_REQUEST = 50
+MAX_ATTACHMENT_VIEWS_PER_REQUEST = 300
+
+
+class AttachmentUploadFile(BaseModel):
+    filename: str
+    contentType: str
+    size: int
+
+
+class AttachmentUploadRequest(BaseModel):
+    activityId: str
+    folder: str
+    files: list[AttachmentUploadFile]
+
+
+class AttachmentViewItem(BaseModel):
+    path: str
+    # 原始檔名（可含中文），讓瀏覽器開啟／另存時顯示原名，而不是 GCS 上清過的物件名稱
+    name: str | None = None
+
+
+class AttachmentViewRequest(BaseModel):
+    items: list[AttachmentViewItem]
+
+
+class AttachmentDeleteRequest(BaseModel):
+    paths: list[str]
 
 
 def require_user(authorization: str = Header(...)) -> dict:
@@ -190,6 +231,102 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
         delete_object(path)
     audit_log.info("objects deleted user=%s count=%d objectPaths=%s", user.get("username"), len(body.objectPaths), body.objectPaths)
     return {"deleted": len(body.objectPaths)}
+
+
+@app.post("/attachments/upload-urls")
+def attachment_upload_urls(body: AttachmentUploadRequest, user: dict = Depends(enforce_rate_limit)):
+    """Signed PUT URLs for activity attachments. Same checks as /signed-url (session,
+    activity readable, blocked extensions), plus a GCS-enforced 50MB cap."""
+    if body.folder not in ATTACHMENT_FOLDERS:
+        raise HTTPException(400, f"folder 必須是 {sorted(ATTACHMENT_FOLDERS)} 其中之一")
+    if not body.files:
+        raise HTTPException(400, "files 不能為空")
+    if len(body.files) > MAX_ATTACHMENT_UPLOADS_PER_REQUEST:
+        raise HTTPException(400, f"一次最多只能上傳 {MAX_ATTACHMENT_UPLOADS_PER_REQUEST} 個檔案")
+    for f in body.files:
+        if is_extension_blocked(f.filename):
+            raise HTTPException(400, f"「{f.filename}」的檔案類型不允許上傳")
+        if f.size > MAX_ATTACHMENT_BYTES:
+            raise HTTPException(400, f"「{f.filename}」超過上傳大小上限（50MB）")
+    if not activity_exists(user["sessionToken"], body.activityId):
+        audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
+        raise HTTPException(403, "activityId 不存在或無權存取")
+
+    results = []
+    for f in body.files:
+        object_path = f"attachments/{body.activityId}/{body.folder}/{uuid.uuid4().hex[:8]}_{sanitize_filename(f.filename)}"
+        results.append({
+            "uploadUrl": generate_signed_upload_url(object_path, f.contentType, MAX_ATTACHMENT_BYTES),
+            "url": ATTACHMENT_URL_PREFIX + object_path,
+        })
+    audit_log.info(
+        "attachment upload-urls issued user=%s activityId=%s folder=%s urls=%s",
+        user.get("username"), body.activityId, body.folder, [r["url"] for r in results],
+    )
+    return {"files": results}
+
+
+@app.post("/attachments/view-urls")
+def attachment_view_urls(body: AttachmentViewRequest, user: dict = Depends(enforce_rate_limit)):
+    """Batch of 15-minute signed GET URLs for displaying/downloading attachments.
+
+    Authorization: the caller must be able to read the activity the object was
+    uploaded under, or — for a file reused via「歷史檔案」whose original activity is
+    gone — some activity that still references it."""
+    if len(body.items) > MAX_ATTACHMENT_VIEWS_PER_REQUEST:
+        raise HTTPException(400, f"一次最多 {MAX_ATTACHMENT_VIEWS_PER_REQUEST} 個檔案")
+    parsed = {}
+    for item in body.items:
+        info = parse_attachment_path(item.path)
+        if not info:
+            raise HTTPException(400, "path 不合法")
+        parsed[item.path] = info
+
+    readable: dict[str, bool] = {}
+
+    def can_read(activity_id: str) -> bool:
+        if activity_id not in readable:
+            readable[activity_id] = activity_exists(user["sessionToken"], activity_id)
+        return readable[activity_id]
+
+    denied = [p for p, (activity_id, _) in parsed.items() if not can_read(activity_id)]
+    if denied:
+        refs = activities_referencing({ATTACHMENT_URL_PREFIX + p for p in denied})
+        still_denied = [
+            p for p in denied
+            if not any(can_read(a) for a in refs.get(ATTACHMENT_URL_PREFIX + p, ()))
+        ]
+        if still_denied:
+            audit_log.warning("rejected: unauthorized attachment paths user=%s paths=%s", user.get("username"), still_denied)
+            raise HTTPException(403, "部分附件不存在或無權存取")
+
+    urls = {item.path: generate_signed_download_url(item.path, item.name) for item in body.items}
+    audit_log.info("attachment view-urls issued user=%s count=%d", user.get("username"), len(urls))
+    return {"urls": urls}
+
+
+@app.post("/attachments/delete")
+def attachment_delete(body: AttachmentDeleteRequest, user: dict = Depends(enforce_rate_limit)):
+    """Delete attachment objects that no activity references any more. Called by the
+    frontend after it has removed the item from the activity (「永久刪除」, or deleting
+    the whole activity). Anything still referenced — e.g. the same file attached to
+    another activity via「歷史檔案」, or still in some activity's trash — is kept."""
+    parsed = {}
+    for path in body.paths:
+        info = parse_attachment_path(path)
+        if not info:
+            raise HTTPException(400, "path 不合法")
+        parsed[path] = info
+    refs = activities_referencing({ATTACHMENT_URL_PREFIX + p for p in parsed})
+    deleted, kept = [], []
+    for path in parsed:
+        if refs.get(ATTACHMENT_URL_PREFIX + path):
+            kept.append(path)
+        else:
+            delete_object(path)
+            deleted.append(path)
+    audit_log.info("attachments deleted user=%s deleted=%s kept=%s", user.get("username"), deleted, kept)
+    return {"deleted": deleted, "kept": kept}
 
 
 def _is_stale_processing(job: dict) -> bool:

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { requestDownloadUrl } from '../lib/middleware'
+import { attachmentSrc } from '../lib/attachments'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { kb } from '../utils/activity'
@@ -433,7 +434,7 @@ async function batchHardDeleteJobs() {
           <td><span class="actor-stamp">{{ actorLine(r.uploadedByName, r.uploadedAt) }}</span></td>
           <td>
             <div class="row" style="gap:10px;flex-wrap:nowrap">
-              <a :href="r.url" target="_blank" rel="noopener">開啟</a>
+              <a :href="attachmentSrc(r.url, r.name)" target="_blank" rel="noopener">開啟</a>
               <button class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
             </div>
           </td>
@@ -451,8 +452,8 @@ async function batchHardDeleteJobs() {
             @click.stop
             @change="uploadedSel.toggle(fileRowKey(r))"
           >
-          <a class="file-thumb" :href="r.url" target="_blank" rel="noopener" :title="r.name">
-            <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy" decoding="async">
+          <a class="file-thumb" :href="attachmentSrc(r.url, r.name)" target="_blank" rel="noopener" :title="r.name">
+            <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy" decoding="async">
             <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
           </a>
           <button class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
@@ -618,8 +619,8 @@ async function batchHardDeleteJobs() {
             @click.stop
             @change="trashedFileSel.toggle(fileRowKey(r))"
           >
-          <a class="file-thumb" :href="r.url" target="_blank" rel="noopener" :title="r.name">
-            <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy" decoding="async">
+          <a class="file-thumb" :href="attachmentSrc(r.url, r.name)" target="_blank" rel="noopener" :title="r.name">
+            <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy" decoding="async">
             <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
           </a>
         </span>

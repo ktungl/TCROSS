@@ -1,5 +1,6 @@
 import datetime
 import os
+from urllib.parse import quote
 
 import google.auth
 from google.api_core.exceptions import NotFound
@@ -40,7 +41,7 @@ def _impersonated_credentials(scope: str) -> impersonated_credentials.Credential
     )
 
 
-def generate_signed_upload_url(object_path: str, content_type: str) -> str:
+def generate_signed_upload_url(object_path: str, content_type: str, max_bytes: int | None = None) -> str:
     """
     Mint a v4 signed URL for a direct browser PUT upload to GCS.
 
@@ -48,6 +49,10 @@ def generate_signed_upload_url(object_path: str, content_type: str) -> str:
     locally, so signing is delegated to the IAM signBlob API via self-impersonation.
     This requires the runtime service account to hold roles/iam.serviceAccountTokenCreator
     on itself — see server/README.md.
+
+    With max_bytes, the URL also signs an x-goog-content-length-range header: the
+    browser must send that exact header, and GCS itself rejects a body over the cap
+    (a plain signed PUT can't limit size otherwise).
     """
     signing_credentials = _impersonated_credentials("https://www.googleapis.com/auth/devstorage.read_write")
     blob = _client().bucket(GCS_BUCKET).blob(object_path)
@@ -56,19 +61,23 @@ def generate_signed_upload_url(object_path: str, content_type: str) -> str:
         expiration=datetime.timedelta(minutes=SIGNED_URL_TTL_MINUTES),
         method="PUT",
         content_type=content_type,
+        headers={"x-goog-content-length-range": f"0,{max_bytes}"} if max_bytes else None,
         credentials=signing_credentials,
     )
 
 
-def generate_signed_download_url(object_path: str) -> str:
+def generate_signed_download_url(object_path: str, filename: str | None = None) -> str:
     """Mint a v4 signed URL for a direct browser GET download from GCS. See
-    generate_signed_upload_url() for why signing is delegated via self-impersonation."""
+    generate_signed_upload_url() for why signing is delegated via self-impersonation.
+    filename (the original, possibly non-ASCII name) becomes the name the browser
+    shows/saves instead of the sanitized object name."""
     signing_credentials = _impersonated_credentials("https://www.googleapis.com/auth/devstorage.read_only")
     blob = _client().bucket(GCS_BUCKET).blob(object_path)
     return blob.generate_signed_url(
         version="v4",
         expiration=datetime.timedelta(minutes=SIGNED_URL_TTL_MINUTES),
         method="GET",
+        response_disposition=f"inline; filename*=UTF-8''{quote(filename)}" if filename else None,
         credentials=signing_credentials,
     )
 

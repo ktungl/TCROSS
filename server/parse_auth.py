@@ -150,3 +150,47 @@ def write_with_master_key(class_name: str, object_id: str, fields: dict) -> dict
     )
     resp.raise_for_status()
     return resp.json()
+
+
+# Activity 上存附件的欄位，對應 cloud/main.js 的 FOLDER_FIELDS（含舊版 3 個欄位）。
+ATTACHMENT_FIELDS = (
+    "photoFiles", "audioFiles", "videoFiles", "docFiles", "signInFiles", "recordFiles",
+    "agendaFiles", "documentFiles", "receiptFiles", "socialFiles", "mediaFiles",
+)
+
+
+def activities_referencing(urls: set[str]) -> dict[str, set[str]]:
+    """Return {url: {activityId, ...}} for every url (among urls) that some Activity
+    lists in one of its attachment arrays — including items sitting in the trash
+    (deletedAt set), since those can still be restored.
+
+    Uses the Master Key so it sees every activity regardless of the caller's ACL:
+    the answer must be "is this object still referenced anywhere", not "anywhere I
+    can read". Scans all activities (only the attachment fields) instead of querying
+    by array-of-object subfield, which Parse REST doesn't support reliably; with a
+    few hundred activities this is one or two requests."""
+    if not urls:
+        return {}
+    if not PARSE_MASTER_KEY:
+        raise RuntimeError("PARSE_MASTER_KEY 未設定")
+    headers = {"X-Parse-Application-Id": PARSE_APP_ID, "X-Parse-Master-Key": PARSE_MASTER_KEY}
+    found: dict[str, set[str]] = {}
+    last_id = ""
+    while True:
+        where = json.dumps({"objectId": {"$gt": last_id}} if last_id else {})
+        resp = _client.get(
+            f"{PARSE_SERVER_URL}/classes/Activity",
+            headers=headers,
+            params={"where": where, "order": "objectId", "limit": 1000, "keys": ",".join(ATTACHMENT_FIELDS)},
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        for activity in results:
+            for field in ATTACHMENT_FIELDS:
+                for item in activity.get(field) or []:
+                    url = item.get("url") if isinstance(item, dict) else None
+                    if url in urls:
+                        found.setdefault(url, set()).add(activity["objectId"])
+        if len(results) < 1000:
+            return found
+        last_id = results[-1]["objectId"]

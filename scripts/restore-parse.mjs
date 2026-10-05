@@ -16,6 +16,8 @@
 //   只存在目標 app），要登入得重設密碼。正式站帳號密碼不受影響。
 // - createdAt／updatedAt 會變成還原當下的時間（Parse 不允許指定），原始時間只留在備份檔。
 // - Cloud Code（cloud/main.js）不在備份裡，從 git 手動貼到目標 app。
+// - GCS 附件（url 為 gcs:attachments/…）不在這份備份裡，也不用重新上傳：還原後網址照舊指向 GCS 主桶。
+//   主桶的檔案本身若遺失，從備份桶 attachments/（每日 Storage Transfer）複製回來。
 import { randomBytes } from 'crypto'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { extname, join } from 'path'

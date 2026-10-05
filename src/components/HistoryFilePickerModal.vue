@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useDbStore } from '../stores/db'
+import { attachmentSrc } from '../lib/attachments'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { kb } from '../utils/activity'
 import { ATTACHMENT_TYPES } from '../types'
@@ -141,7 +142,7 @@ async function attach() {
             <span class="thumb-wrap file-thumb-wrap">
               <input type="checkbox" class="select-check" :checked="selected.has(rowKey(r))" @click.stop @change="toggle(rowKey(r))">
               <span class="file-thumb">
-                <img v-if="isImageFile(r.name)" :src="r.url" :alt="r.name" loading="lazy">
+                <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy">
                 <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
               </span>
             </span>

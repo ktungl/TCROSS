@@ -566,33 +566,77 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     }
   }
 
+  // 附件從 Back4App 搬到 GCS（scripts/migrate-attachments-to-gcs.mjs）只是換網址，
+  // 不是誰新增了檔案：保留腳本帶過來的原上傳者／刪除者與最後修改者，不重新蓋章。
+  if (isAttachmentMigration(request)) return;
   const actor = stampActor(request, 'Activity');
   stampAttachments(request, actor);
 });
+
+/** 只有 Master Key 才能帶這個 context，前端（JS Key＋session）帶了也不算數。 */
+function isAttachmentMigration(request) {
+  return !!(request.master && request.context && request.context.attachmentMigration);
+}
+
+/** 所有活動（含垃圾桶項目）目前引用中的附件網址。歷史檔案可以把同一個檔案掛到
+ * 多個活動，刪實體檔前要確認已經沒有任何活動在用。 */
+async function referencedAttachmentUrls() {
+  const urls = new Set();
+  const query = new Parse.Query('Activity').select(...FOLDER_FIELDS);
+  await query.each(
+    (activity) => {
+      for (const field of FOLDER_FIELDS) {
+        for (const f of activity.get(field) || []) if (f && f.url) urls.add(f.url);
+      }
+    },
+    { useMasterKey: true },
+  );
+  return urls;
+}
 
 // 前端刪檔（removeFile()）只把項目從陣列拿掉再存回去，實際的 Parse.File blob
 // 從來沒被刪過，會在 Back4App 檔案儲存裡一直堆孤兒檔案。這裡改成不管陣列是怎麼變小的
 // （手動刪除、或任何其他寫入路徑），存檔後統一比對前後差異，把消失的檔案一併刪掉。
 // Parse.File.destroy() 需要 Master Key，前端沒有也不該有，所以放在這裡而不是 db.ts。
 // 每個 class 只能註冊一個 afterSave，所以稽核紀錄跟孤兒檔清理寫在同一個 handler。
+// GCS 附件（gcs: 開頭）不在這裡刪，由前端呼叫 Cloud Run /attachments/delete 處理。
 Parse.Cloud.afterSave('Activity', async (request) => {
+  if (isAttachmentMigration(request)) {
+    // 搬遷期間 Back4App 原檔先保留（場域測試後確認無誤再清），稽核只記一筆摘要
+    const moved = request.context.attachmentMigration.moved || 0;
+    await writeAudit({
+      action: 'update',
+      targetClass: 'Activity',
+      targetId: request.object.id,
+      targetName: request.object.get('name') || '',
+      activityId: request.object.id,
+      actorId: '',
+      actorName: '系統（附件搬移）',
+      changes: [],
+      summary: `附件搬移到 GCS：${moved} 個檔案（內容不變，只換存放位置）`,
+    });
+    return;
+  }
   await auditSave('Activity', request);
   if (!request.original) return; // 新建的活動沒有舊檔案可比對
 
+  const removed = [];
   for (const field of FOLDER_FIELDS) {
     const before = request.original.get(field) || [];
     const after = request.object.get(field) || [];
     const afterUrls = new Set(after.map((f) => f && f.url));
-    const removed = before.filter((f) => f && f.url && !afterUrls.has(f.url));
-
-    for (const f of removed) {
-      const filename = decodeURIComponent(f.url.split('/').pop() || '');
-      if (!filename) continue;
-      try {
-        await new Parse.File(filename).destroy({ useMasterKey: true });
-      } catch (err) {
-        console.error(`刪除檔案失敗：${filename}`, err);
-      }
+    removed.push(...before.filter((f) => f && f.url && !f.url.startsWith('gcs:') && !afterUrls.has(f.url)));
+  }
+  if (!removed.length) return;
+  const stillUsed = await referencedAttachmentUrls();
+  for (const f of removed) {
+    if (stillUsed.has(f.url)) continue; // 別的活動還在用（歷史檔案跨活動引用）
+    const filename = decodeURIComponent(f.url.split('/').pop() || '');
+    if (!filename) continue;
+    try {
+      await new Parse.File(filename).destroy({ useMasterKey: true });
+    } catch (err) {
+      console.error(`刪除檔案失敗：${filename}`, err);
     }
   }
 });
