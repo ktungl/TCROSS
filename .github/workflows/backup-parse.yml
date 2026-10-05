@@ -48,5 +48,13 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      # 不用 gcloud storage cp：它上傳前會先讀目標物件，需要 objects.get，而 github-backup 刻意只有 objectCreator。
+      # 直接打 JSON API 上傳；ifGenerationMatch=0 代表「同名物件已存在就拒絕」，不會覆蓋舊備份。
       - name: Upload
-        run: gcloud storage cp "$ARCHIVE" "gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/$ARCHIVE"
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            -H "Content-Type: application/gzip" \
+            --data-binary "@$ARCHIVE" \
+            "https://storage.googleapis.com/upload/storage/v1/b/project-80ac5e1a-2ea4-4000-9ff-backup/o?uploadType=media&ifGenerationMatch=0&name=parse/$ARCHIVE" \
+            -o /dev/null -w "HTTP %{http_code}\n"
