@@ -122,7 +122,7 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 
 - GCS＋Cloud Run 中介層（`server/`）已部署到正式環境，前端上傳/下載/刪除檔案都經過這層簽發 signed URL，不直接握 GCP 憑證
 - `GenerationJob` 資料模型與前端的上傳/建立任務/輪詢/下載/刪除流程（`AiGenerationModal.vue`）已完成並上線
-- **Cloud Run 端呼叫 Vertex AI Gemini、組裝文件這段（上圖流程第 6–9 步）已完成、部署上線並通過端到端測試**（`server/report.py`／`/generate/{job_id}` 端點，2026-09-17），目前只組裝 `.docx`（Word），還沒做 PDF/Excel；細節見 [ROADMAP.md](ROADMAP.md#gcp-整合進度)
+- **Cloud Run 端呼叫 Vertex AI Gemini、組裝文件這段（上圖流程第 6–9 步）已完成、部署上線並通過端到端測試**（`server/report.py`／`/generate/{job_id}` 端點，2026-09-17），目前只組裝 `.docx`（Word），還沒做 PDF/Excel；細節見 [ROADMAP.md](ROADMAP.md#待辦)
 
 落差盤點、資料模型異動與分階段實作計畫見 [ROADMAP.md](ROADMAP.md)；部署、健康檢查、密鑰輪替、範本修改流程等維運操作見 [OPERATIONS.md](OPERATIONS.md)。
 

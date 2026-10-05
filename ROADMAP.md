@@ -2,40 +2,57 @@
 
 合照盟計畫資料整合平台的進度、待辦與部署紀錄。目標架構見 [README.md](README.md#架構擴充導入-gcpgoogle-cloud-platform)，部署維運步驟見 [OPERATIONS.md](OPERATIONS.md)。
 
-> 最後查核：2026-10-05（對照 git、GitHub Actions 部署紀錄、線上回應標頭）
+> 最後查核：2026-10-05（對照 git、GitHub Actions 執行紀錄、線上回應標頭、`gcloud`）
 
 ---
 
 ## 目前狀態
 
-- **程式碼**：`main`、`Donna`、`origin/main` 同一個 commit（`b81cefc`，10-01），`Ching` 分支已合併。
-- **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，09-29 從 Netlify 搬過來（含地址自動建議）；push 到 main 自動部署，最近一次 10-01（run 36901647443）。Netlify 已停用（09-29 起不再使用，網域已從 CORS 與 Maps 金鑰移除）。
+- **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
+- **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`。push 到 main 自動部署（GitHub Actions＋WIF），10-05 最近一次成功。Netlify 09-29 起停用。
 - **後端（Cloud Run）**：`tcross-middleware` revision `00014-jjh`，`/status` 200。
-- **資料庫（Back4App）**：`cloud/main.js` 最後一次貼回為 09-27。
+- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 09-27。
+- **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
 
 ## 待辦
 
-| # | 項目 | 說明 |
+依截止時間排序。
+
+| # | 項目 | 期限 | 說明 |
+| --- | --- | --- | --- |
+| 1 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
+| 2 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在 Firebase Hosting 正式網址上跑一次，排在場域測試時。 |
+| 3 | ⬜ 確認 Back4App 內建備份 | 10/15 | 正式站是 Free 方案，到後台確認有無內建自動備份；沒有的話，每日 GCS 備份就是唯一一份。 |
+| 4 | ⬜ 刪除 Netlify 網站 | 10/15 | Netlify 已停用，到後台刪除網站，避免 push 後還在建置。 |
+| 5 | ⬜ CSP 改正式 | 觀察後 | 目前是 `Content-Security-Policy-Report-Only`；瀏覽各頁（活動列表／詳細頁／地址建議／上傳）主控台沒有違規，就把 `firebase.json` 改成正式 `Content-Security-Policy`。 |
+| 6 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
+| 7 | 🟠 初始密碼可猜 | — | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
+| 8 | ⬜ PDF／Excel 輸出 | — | AI 報告目前只產 `.docx`。 |
+| 9 | ⬜ `Autocomplete` 換新版 | — | 目前可用；主控台警告 `google.maps.places.Autocomplete` 是舊版（Google 停用前至少提前 12 個月通知），之後換成 `PlaceAutocompleteElement`。 |
+| 10 | ⬜ 刪除 `B4aVehicle` | — | Back4App 建 app 時附的範例 class（1 筆），與本專案無關，可在後台刪除。 |
+
+**接受風險**：npm `uuid`（中，經 `exceljs`），官方修法是降到 `exceljs@3.4.0`，不建議。
+
+## 已完成（近期）
+
+| 日期 | 項目 | 重點 |
 | --- | --- | --- |
-| 1 | 🟡 前端搬到 Firebase Hosting | ✅ 09-29 已部署（本機 `.env` 建置，已含 Maps 金鑰）、Cloud Run CORS 已加新網域。✅ Google Maps 金鑰網站限制已加 `web.app`／`firebaseapp.com`（API 限制 35 項未動）。✅ 09-29 瀏覽器實測：活動列表／詳細頁／照片載入、地址建議、子頁重新整理、從新網域呼叫 Cloud Run（CORS＋session 驗證）皆正常，主控台無錯誤。⬜ 實際上傳與 AI 生成（會寫資料、花 Gemini 費用）留待場域測試時一併跑。✅ `ALLOWED_ORIGIN`／Maps 金鑰已移除 Netlify 網域。⬜ 到 Netlify 刪除網站（避免 push 後還在建置）。✅ push 到 main 自動部署（GitHub Actions＋WIF），09-29 首次執行成功（run 36527531851，43 秒）。 |
-| 2 | ⬜ `Autocomplete` 舊版警告 | 09-29 本機實測：輸入「台北車站」會正常出現 5 筆建議，目前**可用**。主控台仍警告 `google.maps.places.Autocomplete` 是舊版（Google 表示停用前至少提前 12 個月通知），之後有空再換成 `PlaceAutocompleteElement`，不急。 |
-| 3 | 🟡 npm 漏洞 | ✅ 09-29 `npm audit fix`：`parse` 8.6.0→8.6.2、`ws` 8.20.0→8.21.3，**高風險已解**；建置通過，本機實測登入與讀取活動／計畫／操作紀錄正常。✅ 09-29 已隨 Firebase Hosting 首次部署上線，並已 commit 推上 git（`201fc0a`）。剩 `uuid`（中，經 `exceljs`）：官方修法是降到 `exceljs@3.4.0`，不建議，先接受風險。 |
-| 4 | ✅ 預算警示 | 09-29 已在 Console 設定（帳單帳戶 `015911-92E019-179E03`）。只寄信通知、不會自動停用服務。`gcloud` 帳號 `tainanjade@gmail.com` 沒有帳單權限，無法用指令查看。 |
-| 5 | 🟠 初始密碼 | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
-| 6 | 🟡 備份機制 | ✅ 10-05 `scripts/backup-parse.mjs`（唯讀，匯出 schema／全部 class／角色成員，`--files` 連附件下載）。✅ 10-05 每日排程：GitHub Actions 每天 02:00 打包上傳 `gs://…-backup/parse/`（Nearline、保留 90 天、`github-backup` 只能新增不能刪），見 OPERATIONS.md「資料備份」。✅ 10-05 還原演練：`scripts/restore-parse.mjs` 把備份還原到測試 app `TCROSS-restore-test`，8 個 class 筆數、角色成員全部一致，2058 個欄位逐一比對 0 差異，86 個附件重新上傳後全部可開啟、資料裡沒有殘留指向正式站的網址。⬜ 確認 Back4App 方案本身有無自動備份（正式站目前是 Free 方案）。 |
-| 7 | ⬜ 匯出格式細節 | 拿實際範本核對抬頭／頁碼／編號。 |
-| 8 | ⬜ OPERATIONS.md 組織面 | 值班窗口、備份排程、通報流程，待團隊補上。 |
-| 9 | ⬜ PDF／Excel 輸出 | AI 報告目前只產 `.docx`。 |
+| 10-05 | 備份機制 | `scripts/backup-parse.mjs` 匯出全部 class／schema／角色成員／附件；GitHub Actions 每天 02:00 上傳 `gs://…-backup/parse/`（Nearline、90 天、`github-backup` 只能新增不能刪）。 |
+| 10-05 | 還原演練 | `scripts/restore-parse.mjs` 還原到測試 app `TCROSS-restore-test`：筆數與角色成員一致、2058 個欄位 0 差異、86 個附件全部可開啟。步驟見 OPERATIONS.md「資料備份」。 |
+| 10-01 | HTTP 安全標頭 | `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy` 上線，CSP 先 Report-Only（待辦 5）。 |
+| 09-29 | 前端搬到 Firebase Hosting | 瀏覽器實測活動列表／詳細頁／照片、地址建議、子頁重新整理、呼叫 Cloud Run 皆正常；CORS 與 Maps 金鑰已換成新網域、移除 Netlify；push 到 main 自動部署。 |
+| 09-29 | npm 高風險漏洞 | `parse` 8.6.2、`ws` 8.21.3，已上線並 commit（`201fc0a`）。 |
+| 09-29 | 預算警示 | Console 設定（帳單帳戶 `015911-92E019-179E03`），只寄信、不會自動停用服務。`gcloud` 帳號 `tainanjade@gmail.com` 沒有帳單權限。 |
 
 ## 時程（鍾雅婷負責項目）
 
 | 里程碑 | 工作項目 | 狀態 |
 | --- | --- | --- |
 | 8/31 需求與欄位凍結 | 架構圖、GCP 部署、欄位對照表 | ✅ |
-| 9/30 Demo | Excel／Word 匯出模組、API 規格、Gemini 呼叫規格 | ✅（匯出格式細節見待辦 7） |
-| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；格式待辦 |
-| 10/31 驗收交付 | 部署維運說明、範本修改流程 | 🟡 技術面完成（OPERATIONS.md）；組織面待補 |
+| 9/30 Demo | Excel／Word 匯出模組、API 規格、Gemini 呼叫規格 | ✅（匯出格式細節見待辦 1） |
+| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；待辦 1～4 |
+| 10/31 驗收交付 | 部署維運說明、範本修改流程 | 🟡 技術面完成（OPERATIONS.md）；組織面見待辦 6 |
 
 **分工**：鍾雅婷（Donna）——架構、部署、匯出引擎、API 規格；劉冠彤——前端表單與介面；陳怡靜——資料模型、後端 CRUD、帳號權限。
 
@@ -55,6 +72,7 @@
 | Cloud Run `tcross-middleware` | `asia-east1` | FastAPI；唯一持有 GCP 憑證與 Parse Master Key（Secret Manager）的地方 |
 | Gemini | Vertex AI `asia-northeast1`，`gemini-2.5-flash` | 素材以 `gs://` 直接餵入；`response_schema` 回傳摘要／重點／KPI |
 | GCS 主桶 | `tcross-2026-…` | 只放 AI 生成素材與產出（路徑 `activities/{id}/…`）；一般附件在 Back4App |
+| GCS 備份桶 | `project-80ac5e1a-2ea4-4000-9ff-backup` | Back4App 每日備份（`parse/*.tar.gz`），GitHub Actions 上傳 |
 | `GenerationJob`（Parse class） | Back4App | `status`：pending → processing → done／error |
 
 **設計決策**
@@ -105,9 +123,10 @@
 | 容器 root | ✅ `USER appuser` |
 | 速率限制 | ✅ 每人每分鐘 30 次（記憶體內，多 instance 非精確上限） |
 | Python 套件漏洞 | ✅ 已上線（見部署紀錄） |
-| npm 套件漏洞 | 🟡 高風險 `ws` 已修；剩 `uuid`（中）接受風險，見待辦 3 |
-| 初始密碼可猜 | ⬜ 見待辦 5 |
-| HTTP 安全標頭 | 🟡 10-01 `firebase.json` 加 `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy`（HSTS 由 Firebase 預設提供）；CSP 先用 `Report-Only` 觀察，主控台沒有違規再改成正式 `Content-Security-Policy`。✅ 10-01 已自動部署（run 36862331938），10-05 線上回應標頭確認生效。⬜ 觀察後改正式 CSP |
+| npm 套件漏洞 | 🟡 高風險 `ws` 已修；剩 `uuid`（中）接受風險 |
+| 初始密碼可猜 | ⬜ 見待辦 7 |
+| HTTP 安全標頭 | 🟡 10-01 上線 `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy`（HSTS 由 Firebase 預設提供），10-05 確認線上生效；CSP 仍是 Report-Only，見待辦 5 |
+| 資料備份 | ✅ 每日備份到獨立 GCS 桶，上傳帳號不能刪改既有備份；10-05 還原演練通過 |
 
 已符合：Master Key 存 Secret Manager；Signed URL 15 分鐘效期；`.env` 未進 git；`objectPath` 防路徑穿越；前端無 `v-html`。
 
@@ -122,6 +141,7 @@
 - Gemini 媒體解析度 `LOW`（token 約 1/4，09-29 實測辨識正常）；每筆工作最多 20 個素材。
 - Session 驗證快取 60 秒（登出後 token 最多仍可用 60 秒）。
 - Artifact Registry 只保留最新 3 份 image，其餘 7 天後刪除。
+- 備份桶 Nearline、90 天刪除：一份約 216 MB，滿 90 份約 20 GB，每月約 US$0.2（附件變多會跟著增加）。
 - GCS：建置用桶 30 天刪除；主桶 `activities/` 下的照片／影音等素材 30 天刪除，`.docx` 保留。一般附件在 Back4App，不受影響；但 30 天後舊的生成工作無法再「重新觸發」。
 
 ---
