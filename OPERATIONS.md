@@ -135,6 +135,20 @@ GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00
 - **手動備一份**：Actions 頁按「Run workflow」；或本機 `node scripts/backup-parse.mjs --files`（存在 `backups/`，已列入 `.gitignore`）。
 - **下載備份**：`gcloud storage ls gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/` 找檔名，再 `gcloud storage cp` 下載後 `tar -xzf` 解開。下載需要專案 Owner／Storage 管理權限的帳號。
 
+### 還原
+
+`scripts/restore-parse.mjs` 把解開的備份資料夾還原到**另一個空的** Back4App app（目標 App ID 與正式站相同會拒絕執行；目標已有資料也會拒絕）。目標寫在 `.env` 的 `RESTORE_PARSE_APP_ID`／`RESTORE_PARSE_MASTER_KEY`。
+
+```
+node scripts/restore-parse.mjs <備份資料夾>           # 唯讀檢查
+node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最後自動核對筆數與角色成員
+```
+
+- Back4App 不能指定 objectId，還原後全部換新 id，Pointer／ACL／角色成員／`createdById` 等 id 字串會自動對應；附件重新上傳並換成新網址。對照表存在 `<備份資料夾>/restore-result.json`。
+- 帳號是隨機臨時密碼（同一個檔案），要登入得重設；`createdAt`／`updatedAt` 變成還原當下時間；Cloud Code 要從 git 另外貼上。
+- 真的要以還原的 app 取代正式站時：貼 Cloud Code → 前端 `.env`／GitHub secrets 的 `VITE_PARSE_*` 換成新 app → Cloud Run 的 `PARSE_APP_ID`／`PARSE_JS_KEY` 與 Secret Manager `parse-master-key` 換成新 app 後重新部署 → 通知成員重設密碼。
+- **演練紀錄**：10-05 還原到 `TCROSS-restore-test`，筆數、角色成員全部一致，2058 個欄位比對 0 差異，86 個附件全部可開啟。
+
 ## 密鑰與憑證
 
 | 密鑰 | 存放位置 | 輪替方式 |
@@ -147,7 +161,7 @@ GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00
 
 - **沒有自動化測試**：`server/` 沒有 CI/測試套件，每次部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
 - **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻（細節見 [ROADMAP.md](ROADMAP.md#資安檢視依-iso-27001-annex-a-對照2026-09-04)）
-- **還原流程尚未演練**：Back4App 已每日自動備份（見「資料備份」），但還沒有還原腳本與演練紀錄；GCS 主桶的 AI 生成素材不在備份範圍
+- **備份不含 GCS 主桶**：AI 生成素材與 `.docx` 產出不在每日備份範圍（素材本來就 30 天刪除）；還原後帳號需重設密碼、`createdAt` 會變成還原時間（見「資料備份」）
 - **正式網域用 Firebase 預設網域**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，尚未綁自訂網域；`ALLOWED_ORIGIN` 目前含 localhost與 Firebase 兩個網域（Netlify 已於 09-29 停用並移除）
 
 ## 範本修改流程
@@ -168,5 +182,5 @@ GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00
 以下需要團隊自行補上，不是能從程式碼推導出來的：
 
 - 事件通報流程／值班聯絡窗口
-- 備份頻率與還原演練排程
+- 還原演練的定期排程（10-05 已演練一次；建議每季一次）
 - 正式網域決定後，`ALLOWED_ORIGIN`／CORS／DNS 的變更負責人與流程
