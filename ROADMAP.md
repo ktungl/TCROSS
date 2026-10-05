@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | 1 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 2 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在 Firebase Hosting 正式網址上跑一次，排在場域測試時。 |
-| 11 | 🟠 Back4App 檔案空間 | 10/15 前決定 | Free 方案檔案上限 1 GB，10-05 已用 275 MB（27%）。照片一張約 3 MB，再約 250 張就滿；場域測試照片多，滿了會無法上傳。選項：升級 MVP（US$25／月，50 GB，含每日備份），或上傳前壓縮照片。 |
+| 11 | 🟠 附件搬到 GCS | 10/9 上線 | Back4App Free 檔案上限 1 GB，10-05 已用 275 MB（27%），對方要照片原檔不能壓縮，再約 250 張就滿。決定把附件搬到 GCS（資料庫仍在 Back4App），解決空間問題、不必升級 MVP。方案見下方「附件搬到 GCS」。 |
 | 4 | ⬜ 刪除 Netlify 網站 | 10/15 | Netlify 已停用，到後台刪除網站，避免 push 後還在建置。 |
 | 5 | 🟡 CSP 改正式 | 待辦 2 之後 | ✅ 10-05 正式站瀏覽 6 個主要頁面、活動詳細頁（13 張照片全部載入）、地址建議（5 筆），0 個違規（偵測方式以故意送出的白名單外請求驗證過有效）。⬜ 還沒測上傳與 AI 生成／下載，等待辦 2 跑過也沒違規，再把 `firebase.json` 改成正式 `Content-Security-Policy`。 |
 | 6 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
@@ -53,10 +53,39 @@
 | --- | --- | --- |
 | 8/31 需求與欄位凍結 | 架構圖、GCP 部署、欄位對照表 | ✅ |
 | 9/30 Demo | Excel／Word 匯出模組、API 規格、Gemini 呼叫規格 | ✅（匯出格式細節見待辦 1） |
-| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；待辦 1、2、4、11 |
+| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；待辦 1、2、4、11（附件搬到 GCS） |
 | 10/31 驗收交付 | 部署維運說明、範本修改流程 | 🟡 技術面完成（OPERATIONS.md）；組織面見待辦 6 |
 
 **分工**：鍾雅婷（Donna）——架構、部署、匯出引擎、API 規格；劉冠彤——前端表單與介面；陳怡靜——資料模型、後端 CRUD、帳號權限。
+
+---
+
+## 附件搬到 GCS（10-05 規劃，待開工）
+
+**現況**：活動附件（8 類，10-05 共 86 個、219 MB，其中照片 70）用 Parse 上傳到 Back4App，`FileMeta.url` 是 `parsefiles.back4app.com` 的公開網址（不用登入、知道網址就能看）。GCS 目前只放 AI 生成素材。
+
+**做法**
+- **存放**：GCS 主桶 `attachments/{activityId}/{附件分類}/{8 碼亂數}_{檔名}`。刻意不用 `activities/`（該路徑照片／影音 30 天自動刪除）。
+- **欄位**：`FileMeta.url` 改存 `gcs:attachments/...`。Cloud Code 的欄位驗證、上傳者／刪除者標記、稽核比對都以 url 字串為識別，邏輯不用改；舊的 Back4App 網址照常顯示，新舊並存。
+- **Cloud Run 新端點**：
+  - 附件上傳網址：簽 PUT 網址，加 `x-goog-content-length-range` 由 GCS 實際擋 50 MB（目前大小只靠前端與 Cloud Code 檢查宣告值）。
+  - 批次檢視網址：一次換多張的 15 分鐘 GET 網址，需登入且具 `member`／`developer` 角色。照片從公開網址改成需登入，較安全。
+- **前端**：上傳改走 GCS；`DetailView`、`HistoryFilesView`、`HistoryFilePickerModal`、匯出（`download.ts` 嵌入照片）先換臨時網址再用，前端快取約 12 分鐘。
+- **永久刪除**：刪 GCS 物件前先確認沒有其他活動還引用同一檔案。順帶修正既有問題：「歷史檔案」可把同一檔案掛到多個活動，目前從其中一個永久刪除時 Cloud Code `afterSave` 會刪掉實體檔，另一個活動的檔案跟著失效。
+- **Cloud Code**：`afterSave` 跳過 `gcs:` 開頭的網址；搬遷用 Master Key 加 `context` 旗標寫入時，保留原上傳者／時間、不刪 Back4App 原檔、稽核只記一筆摘要。
+- **搬遷既有檔案**：腳本把 86 個檔案複製到 GCS 並改寫 url。**Back4App 原檔先保留**，場域測試結束確認無誤再清除；搬遷前先跑一次完整備份。
+- **備份**：Storage Transfer Service 每日把 `attachments/` 增量複製到備份桶（不同步刪除）；備份桶 90 天刪除規則改為只套用 `parse/`。`restore-parse.mjs` 改為能處理 `gcs:` 附件。
+- **其他**：主桶 CORS 加 GET 與正式網域（匯出時用 `fetch` 讀照片；目前 `server/cors.json` 只有 PUT 與 localhost／範例網域，要核對線上設定）；CSP 已含 `storage.googleapis.com`，不用改。
+
+**時程**：工作量約 3～4 天。10/9 前上線並完成搬遷，10/10～10/14 團隊實測，趕在 10/15 場域測試前。
+
+**上線項目**：Cloud Run（`gcloud` 部署）、前端（push main 自動部署）、Cloud Code（手動貼到 Back4App Dashboard，記入下方部署紀錄）。
+
+**退路**：新舊網址並存、Back4App 原檔保留，GCS 出問題時退回前一版前端即可。
+
+**費用**：GCS 約 US$0.02／GB／月（50 GB 約 US$1）；Back4App 維持 Free。
+
+**之後（10/31 驗收後再評估）**：資料庫也搬到 GCP——Cloud Run 自架 Parse Server＋MongoDB（Atlas 可經 GCP Marketplace 計費；或試 Firestore MongoDB 相容模式），前端與 `cloud/main.js` 幾乎不用改，估 7～9 個工作天。注意 Back4App Free 不會給密碼雜湊，除非客服能匯出完整資料庫，否則帳號要重設密碼。
 
 ---
 
