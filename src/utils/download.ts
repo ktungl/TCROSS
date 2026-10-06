@@ -21,6 +21,7 @@ import {
 } from 'docx'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
+import type { Participant } from './registration'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -93,11 +94,13 @@ function formatSignInDate(a: ActivityRecord): string {
  * 活動名稱＋簽到表）、時間地點條列，表格標題列灰底、全部置中。人數多時每頁重複標題與表頭。 */
 export async function buildSignInSheetDocx(
   a: ActivityRecord,
-  opts: { titlePlans: string[]; layout: SignInLayout },
+  opts: { titlePlans: string[]; layout: SignInLayout; participants?: Participant[] },
 ): Promise<Blob> {
   const FONT = '微軟正黑體'
   const { perPage } = SIGN_IN_LAYOUTS[opts.layout]
-  const total = Math.max(a.headcount.total || 0, 1)
+  const participants = opts.participants ?? []
+  // 名單以外仍照活動人數留空白列，給現場報到的人
+  const total = Math.max(a.headcount.total || 0, participants.length, 1)
   const pages = Math.ceil(total / perPage)
 
   const run = (text: string, extra: { bold?: boolean; size?: number } = {}) =>
@@ -152,10 +155,12 @@ export async function buildSignInSheetDocx(
       }),
     ]
     for (let r = 0; r < rowsOnPage; r++) {
+      const left = participants[first + r]
+      const right = participants[first + rowsOnPage + r]
       const values =
         opts.layout === 'detailed'
-          ? [String(first + r + 1), '', '', '', '']
-          : [String(first + r + 1), '', '', String(first + rowsOnPage + r + 1), '', '']
+          ? [String(first + r + 1), left?.unit ?? '', left?.title ?? '', left?.name ?? '', '']
+          : [String(first + r + 1), left?.name ?? '', '', String(first + rowsOnPage + r + 1), right?.name ?? '', '']
       rows.push(
         new TableRow({
           height: { value: ROW_HEIGHT, rule: HeightRule.ATLEAST },
