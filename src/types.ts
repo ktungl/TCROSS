@@ -149,6 +149,11 @@ export interface CategoryRecord extends ActorStamp {
  * 的 categories 欄位（那裡存的是分類名稱文字本身，不是參照 id）。 */
 export const DEFAULT_CATEGORY_NAMES = ['居場所', '會務', '合作教育', '社區關懷', '其他']
 
+export type PlaceMode = 'physical' | 'online'
+
+/** 線上活動存進 place 欄位的文字，匯出文件（大事紀、結案報告、公文）直接沿用 place。 */
+export const ONLINE_PLACE_LABEL = '線上'
+
 export interface HeadcountStat {
   male: number
   female: number
@@ -172,7 +177,12 @@ export interface ActivityRecord extends ActorStamp {
   time: string
   /** 活動結束時間（HH:MM，選填，同一時間可留空） */
   timeEnd: string
+  /** 實體或線上活動；舊資料沒有這個欄位，讀取時依 place 推斷 */
+  placeMode: PlaceMode
+  /** 實體活動的地址；線上活動固定為「線上」，供匯出文件沿用 */
   place: string
+  /** 線上活動的會議連結（http(s)），實體活動留空 */
+  meetingUrl: string
   /** 負責人（內部管理用） */
   owner: string
   /** 與會單位或成員 */

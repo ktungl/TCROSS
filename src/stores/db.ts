@@ -30,6 +30,7 @@ import type {
   GenerationJobRecord,
   HeadcountStat,
   Kpi,
+  PlaceMode,
   PlanRecord,
 } from '../types'
 
@@ -39,7 +40,9 @@ export interface ActivityFormInput {
   date: string
   time: string
   timeEnd: string
+  placeMode: PlaceMode
   place: string
+  meetingUrl: string
   owner: string
   attendees: string
   participantDesc: string
@@ -176,7 +179,9 @@ export const useDbStore = defineStore('db', () => {
       date: '',
       time: '',
       timeEnd: '',
+      placeMode: existing.placeMode,
       place: existing.place,
+      meetingUrl: existing.meetingUrl,
       owner: existing.owner,
       attendees: existing.attendees,
       participantDesc: existing.participantDesc,
@@ -233,7 +238,9 @@ export const useDbStore = defineStore('db', () => {
           date: existing.date,
           time: existing.time,
           timeEnd: existing.timeEnd,
+          placeMode: existing.placeMode,
           place: existing.place,
+          meetingUrl: existing.meetingUrl,
           owner: existing.owner,
           attendees: existing.attendees,
           participantDesc: existing.participantDesc,

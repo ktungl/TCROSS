@@ -1,13 +1,14 @@
 import Parse from '../lib/parse'
 import { PlanObject } from './Plan'
 import { actorStampOf } from './actorStamp'
-import { ATTACHMENT_TYPES } from '../types'
+import { ATTACHMENT_TYPES, ONLINE_PLACE_LABEL } from '../types'
 import type {
   ActivityCategory,
   ActivityRecord,
   ActivityFiles,
   ActorStampKey,
   AttachmentKey,
+  PlaceMode,
   FileMeta,
   Kpi,
 } from '../types'
@@ -48,6 +49,13 @@ export function splitAttachments(
   return { files: all.filter((f) => !f.deletedAt), trash: all.filter((f) => f.deletedAt) }
 }
 
+/** 舊資料沒有 placeMode：地點寫「線上」的視為線上活動，其餘當實體。 */
+function placeModeOf(obj: Parse.Object): PlaceMode {
+  const mode = obj.get('placeMode')
+  if (mode === 'physical' || mode === 'online') return mode
+  return (obj.get('place') ?? '').trim() === ONLINE_PLACE_LABEL ? 'online' : 'physical'
+}
+
 export function activityToRecord(obj: Parse.Object): ActivityRecord {
   const files = emptyFiles()
   const trash = emptyFiles()
@@ -70,7 +78,9 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     date: obj.get('date') ?? '',
     time: obj.get('time') ?? '',
     timeEnd: obj.get('timeEnd') ?? '',
+    placeMode: placeModeOf(obj),
     place: obj.get('place') ?? '',
+    meetingUrl: obj.get('meetingUrl') ?? '',
     owner: obj.get('owner') ?? '',
     attendees: obj.get('attendees') ?? '',
     participantDesc: obj.get('participantDesc') ?? '',
@@ -100,7 +110,9 @@ export function applyActivityRecord(
   obj.set('date', record.date)
   obj.set('time', record.time)
   obj.set('timeEnd', record.timeEnd)
+  obj.set('placeMode', record.placeMode)
   obj.set('place', record.place)
+  obj.set('meetingUrl', record.meetingUrl)
   obj.set('owner', record.owner)
   obj.set('attendees', record.attendees)
   obj.set('participantDesc', record.participantDesc)

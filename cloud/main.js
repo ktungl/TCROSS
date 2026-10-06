@@ -95,7 +95,9 @@ const FIELD_LABELS = {
   dateEnd: '結束日期（舊版欄位）',
   time: '開始時間',
   timeEnd: '結束時間',
+  placeMode: '實體／線上',
   place: '地點',
+  meetingUrl: '會議連結',
   owner: '負責人',
   attendees: '與會單位或成員',
   participantDesc: '參加對象說明',
@@ -504,6 +506,18 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     ) {
       fail(`categories 必須是陣列，且每個項目都是不超過 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字的非空字串`);
     }
+  }
+
+  const placeMode = object.get('placeMode');
+  if (placeMode !== undefined && placeMode !== null && placeMode !== 'physical' && placeMode !== 'online') {
+    fail('placeMode 必須是 physical 或 online');
+  }
+  checkOptionalString(object, 'place', 200);
+  // meetingUrl 會直接當成連結渲染（活動詳情頁），只接受 http(s)，擋掉 javascript: 之類
+  checkOptionalString(object, 'meetingUrl', 500);
+  const meetingUrl = object.get('meetingUrl');
+  if (typeof meetingUrl === 'string' && meetingUrl && !/^https?:\/\//i.test(meetingUrl)) {
+    fail('會議連結必須是 http(s) 網址');
   }
 
   checkOptionalString(object, 'attendees', 200);
