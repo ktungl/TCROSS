@@ -22,6 +22,7 @@ import {
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
 import type { Participant } from './registration'
+import { readAgenda } from './agenda'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -762,22 +763,52 @@ function reportBody(text: string): Paragraph {
   return new Paragraph({ alignment: AlignmentType.JUSTIFIED, indent: { left: 991 }, children: [reportText(text)] })
 }
 
+/** 活動流程裡的行程表，縮排對齊條列項目的內文；第一列當表頭加粗。 */
+function buildAgendaTable(rows: string[][]): Table {
+  const WIDTH = 8647 // A4 版心寬度扣掉內文縮排 991
+  const cols = Math.max(...rows.map((r) => r.length))
+  const colWidth = Math.floor(WIDTH / cols)
+  return new Table({
+    width: { size: colWidth * cols, type: WidthType.DXA },
+    columnWidths: Array(cols).fill(colWidth),
+    indent: { size: 991, type: WidthType.DXA },
+    rows: rows.map(
+      (r, ri) =>
+        new TableRow({
+          children: Array.from({ length: cols }, (_, ci) =>
+            new TableCell({
+              width: { size: colWidth, type: WidthType.DXA },
+              verticalAlign: VerticalAlign.CENTER,
+              children: (r[ci] ?? '').split('\n').map((line) => new Paragraph({ children: [reportText(line, { bold: ri === 0 })] })),
+            }),
+          ),
+        }),
+    ),
+  })
+}
+
 /** 單場活動的內容區塊（比照《成果報告書範本》）：
  * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片。
+ * 活動內容取自「活動流程」附件的文字與行程表；活動效益是成果摘要加上 KPI。
  * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
   const hc = a.headcount
+  const agenda = await readAgenda(a.files.agenda ?? [])
+  const benefits = [
+    ...(a.summary.trim() ? a.summary.trim().split(/\r?\n/).filter(Boolean).map(reportBody) : []),
+    ...a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`)),
+  ]
   const children: (Paragraph | Table)[] = [
     reportItem(1, `活動名稱：${a.name}`),
     reportItem(2, `活動日期：${formatReportDate(a)}。`),
     reportItem(3, `活動地點：${a.place || '（地點待補）'}。`),
     reportItem(4, `參與人數：男${hc.male}人、女${hc.female}人，合計${hc.total}人。`),
     reportItem(5, '活動內容：'),
-    reportBody(a.summary || '（活動內容待補）'),
+    ...(agenda.length
+      ? agenda.map((b) => (b.type === 'text' ? reportBody(b.text) : buildAgendaTable(b.rows)))
+      : [reportBody('（活動內容待補：請上傳 Word／Excel 格式的活動流程）')]),
     reportItem(6, '活動效益：'),
-    ...(a.kpis.length
-      ? a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`))
-      : [reportBody('（尚未填寫效益指標）')]),
+    ...(benefits.length ? benefits : [reportBody('（尚未填寫成果摘要與效益指標）')]),
   ]
 
   const photos = pickPhotosForExport(a.files.photo ?? [], 6)

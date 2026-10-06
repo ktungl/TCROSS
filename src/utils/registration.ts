@@ -19,7 +19,7 @@ const HEADER_MATCHERS: [keyof Participant, RegExp][] = [
   ['unit', /單位|機關|公司|組織|所屬|服務處/i],
 ]
 
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let field = ''

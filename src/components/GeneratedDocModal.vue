@@ -68,7 +68,7 @@ const summary = computed(() => {
     case '活動紀錄表':
       return `將產生活動紀錄表 Excel 檔（含執行情形、附件統計：${ATTACHMENT_TYPES.map(([k, l]) => `${l} ${props.activity.files[k]?.length ?? 0}`).join('、')}）`
     case '成果報告':
-      return '將產生一份 Word 成果報告，內容取自下方「儲存成果」填寫的摘要、KPI 與照片圖說（不經過 AI）'
+      return '將產生一份 Word 成果報告：活動內容取自「活動流程」附件的文字與行程表，活動效益取自下方「儲存成果」的成果摘要與 KPI，另附照片圖說（不經過 AI）'
     case '公文':
       return '將產生一份 Word 公文（函），主旨與說明由活動資料帶入；發文日期、字號等請於下載後填寫'
   }
