@@ -103,7 +103,7 @@ async function doExport() {
         photoSize: ledgerPhotoSize.value,
         photosPerRow: ledgerPhotosPerRow.value,
       })
-      downloadBlob('大紀事.xlsx', blob)
+      downloadBlob('大事紀.xlsx', blob)
     }
     if (wantNeimu.value) {
       const blob = await buildNeimuReportDocx(picked.value, pn)
@@ -119,7 +119,7 @@ async function doExport() {
 
 <template>
   <h1>匯出成果</h1>
-  <p class="sub">挑計畫、期間或分類，產出大紀事 Excel 與內政部結案 Word。</p>
+  <p class="sub">挑計畫、期間或分類，產出大事紀 Excel 與內政部結案 Word。</p>
   <div class="card">
     <div class="grid3">
       <div>
@@ -147,13 +147,13 @@ async function doExport() {
 
     <label style="margin-top:14px">匯出檔案類型</label>
     <div class="row">
-      <label class="chk"><input type="checkbox" v-model="wantLedger">大紀事 Excel</label>
+      <label class="chk"><input type="checkbox" v-model="wantLedger">大事紀 Excel</label>
       <label class="chk"><input type="checkbox" v-model="wantNeimu">內政部結案 Word</label>
     </div>
 
     <div v-if="wantLedger" class="grid3" style="margin-top:14px">
       <div>
-        <label>大紀事照片大小</label>
+        <label>大事紀照片大小</label>
         <select v-model="ledgerPhotoSize">
           <option v-for="(s, key) in LEDGER_PHOTO_SIZES" :key="key" :value="key">{{ s.label }}</option>
         </select>

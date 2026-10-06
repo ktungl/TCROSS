@@ -606,7 +606,7 @@ export async function buildLedgerXlsx(
 ): Promise<Blob> {
   const { photoSize = 'medium', photosPerRow = 1 } = options
   const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet('大紀事', { views: [{ state: 'frozen', ySplit: 1, zoomScale: 70 }] })
+  const sheet = workbook.addWorksheet('大事紀', { views: [{ state: 'frozen', ySplit: 1, zoomScale: 70 }] })
   const headers = ['專案名稱', '計畫項目', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', '精選照片']
   const CENTERED_COLS = new Set([3, 8])
 

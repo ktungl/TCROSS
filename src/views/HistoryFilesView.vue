@@ -480,7 +480,7 @@ async function batchHardDeleteJobs() {
   <div class="card">
     <p class="sub" style="margin:0 0 14px">
       這裡列出 AI 自動生成的成果報告（活動詳情頁「AI 自動生成成果報告」建立的工作）。
-      大紀事 Excel／內政部結案 Word／簽到表／領據等在「匯出成果」頁下載的檔案是即時產生、不會保存在伺服器，因此不會出現在這裡。
+      大事紀 Excel／內政部結案 Word／簽到表／領據等在「匯出成果」頁下載的檔案是即時產生、不會保存在伺服器，因此不會出現在這裡。
     </p>
     <div class="row" style="margin-bottom:14px">
       <select v-model="gPlan" style="width:190px">
