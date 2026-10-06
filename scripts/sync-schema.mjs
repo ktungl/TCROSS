@@ -61,6 +61,7 @@ const WANTED_BY_CLASS = {
     receiptFiles: 'Array',
     socialFiles: 'Array',
     mediaFiles: 'Array',
+    registrationFiles: 'Array',
     ...ACTOR_FIELDS,
   },
   // src/models/Category.ts —— plans 是分類所屬的計畫（Pointer<Plan> 陣列，可複選可留空）

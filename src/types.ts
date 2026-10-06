@@ -80,6 +80,7 @@ export const FOLDERS: [FolderKey, string][] = [
 
 /** 活動正式歸檔附件分類（需求訪談規格） */
 export type AttachmentKey =
+  | 'registration'
   | 'photo'
   | 'signIn'
   | 'record'
@@ -90,14 +91,15 @@ export type AttachmentKey =
   | 'media'
 
 export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
+  ['registration', '參與者名單（報名表）'],
+  ['agenda', '活動流程'],
   ['photo', '活動照片'],
   ['signIn', '簽到表'],
-  ['record', '成果紀錄'],
-  ['agenda', '活動流程'],
-  ['document', '公文'],
   ['receipt', '領據'],
+  ['record', '成果紀錄'],
   ['social', '社群貼文'],
   ['media', '影音檔'],
+  ['document', '公文'],
 ]
 
 export const PHOTO_MIN = 3
