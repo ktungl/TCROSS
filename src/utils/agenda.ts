@@ -8,7 +8,7 @@ export type AgendaBlock = { type: 'text'; text: string } | { type: 'table'; rows
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 
-function isAgendaReadable(file: FileMeta): boolean {
+export function isAgendaReadable(file: FileMeta): boolean {
   return /\.(docx|xlsx|csv|txt)$/i.test(file.name.trim())
 }
 

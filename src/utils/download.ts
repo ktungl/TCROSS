@@ -22,7 +22,8 @@ import {
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
 import type { Participant } from './registration'
-import { readAgenda } from './agenda'
+import { isAgendaReadable, readAgenda } from './agenda'
+import { renderPdfPages } from './pdfPages'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -788,7 +789,8 @@ function buildAgendaTable(rows: string[][]): Table {
 }
 
 /** 單場活動的內容區塊（比照《成果報告書範本》）：
- * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片。
+ * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片，
+ * 再附上 八、活動流程表 九、簽到表 的原始檔（PDF／圖片逐頁嵌入）。
  * 活動內容取自「活動流程」附件的文字與行程表；活動效益是成果摘要加上 KPI。
  * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
@@ -823,6 +825,87 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
   // 範本的活動照片都從新的一頁開始，照片表格才不會被切到兩頁
   children.push(reportItem(7, '活動照片：', photoAssets.length > 0))
   children.push(photoAssets.length ? buildPhotoTable(photoAssets, photoCaptions) : reportBody('（尚未上傳活動照片）'))
+
+  children.push(
+    ...(await buildAttachmentSection(8, '活動流程表', a.files.agenda ?? [], {
+      isInlined: isAgendaReadable,
+      inlinedNote: '內容已整理於「五、活動內容」',
+    })),
+    ...(await buildAttachmentSection(9, '簽到表', a.files.signIn ?? [])),
+  )
+  return children
+}
+
+/** 每份附件最多嵌入幾頁，避免一份很長的 PDF 把報告撐到幾百 MB */
+const MAX_ATTACHMENT_PAGES = 10
+/** 附件頁面在報告裡的最大尺寸：A4 版心 17cm 寬，高度留一點給項目標題 */
+const ATTACHMENT_MAX_WIDTH_CM = 16
+const ATTACHMENT_MAX_HEIGHT_CM = 22
+
+/** 把附件轉成可以嵌進 Word 的頁面圖片：圖片本身一張；PDF 每頁畫成一張。其他格式回傳 null。 */
+async function loadAttachmentPages(file: FileMeta): Promise<ImageAsset[] | null> {
+  const name = file.name.trim().toLowerCase()
+  if (name.endsWith('.pdf')) {
+    try {
+      const res = await fetch(file.url)
+      if (!res.ok) return []
+      const pages = await renderPdfPages(await res.arrayBuffer(), MAX_ATTACHMENT_PAGES)
+      return pages.map((p) => ({ dataUrl: '', data: p.data, docxType: 'jpg', xlsxExt: 'jpeg', width: p.width, height: p.height }))
+    } catch (err) {
+      console.error(`轉換 PDF 失敗：${file.name}`, err)
+      return []
+    }
+  }
+  if (/\.(jpe?g|png|gif|webp|bmp|heic|heif)$/.test(name)) {
+    const asset = await loadImageAsset(file)
+    return asset ? [asset] : []
+  }
+  return null
+}
+
+/** 「八、活動流程表」「九、簽到表」：把掃描檔／照片／PDF 逐頁嵌入，一頁一張、從新的一頁開始。
+ * Word／Excel 等嵌不進去的檔案列出檔名提醒另附；inlinedNote 是已經整理進報告其他段落的說明。 */
+async function buildAttachmentSection(
+  no: number,
+  label: string,
+  files: FileMeta[],
+  opts: { isInlined?: (f: FileMeta) => boolean; inlinedNote?: string } = {},
+): Promise<(Paragraph | Table)[]> {
+  const children: (Paragraph | Table)[] = [reportItem(no, `${label}：`, true)]
+  if (!files.length) {
+    children.push(reportBody(`（尚未上傳${label}）`))
+    return children
+  }
+  const maxW = cmToPx(ATTACHMENT_MAX_WIDTH_CM)
+  const maxH = cmToPx(ATTACHMENT_MAX_HEIGHT_CM)
+  const inlined: string[] = []
+  const skipped: string[] = []
+  let embedded = 0
+  for (const file of files) {
+    const pages = await loadAttachmentPages(file)
+    if (pages === null) {
+      ;(opts.isInlined?.(file) ? inlined : skipped).push(file.name)
+      continue
+    }
+    if (!pages.length) {
+      skipped.push(file.name)
+      continue
+    }
+    for (const page of pages) {
+      const { width, height } = scaleToBox(page.width, page.height, maxW, maxH)
+      children.push(
+        new Paragraph({
+          // 第一張接在項目標題底下，之後每張各自一頁
+          pageBreakBefore: embedded > 0,
+          alignment: AlignmentType.CENTER,
+          children: [new ImageRun({ type: page.docxType, data: page.data, transformation: { width, height } })],
+        }),
+      )
+      embedded++
+    }
+  }
+  if (inlined.length && opts.inlinedNote) children.push(reportBody(`（${inlined.join('、')}：${opts.inlinedNote}）`))
+  if (skipped.length) children.push(reportBody(`（以下檔案無法嵌入報告，請另行附上：${skipped.join('、')}）`))
   return children
 }
 
