@@ -42,8 +42,13 @@ export function downloadBlob(name: string, blob: Blob): void {
   const link = document.createElement('a')
   link.href = url
   link.download = name
+  // 沒掛進 DOM 的連結在部分瀏覽器會忽略 download 檔名
+  link.style.display = 'none'
+  document.body.appendChild(link)
   link.click()
-  URL.revokeObjectURL(url)
+  link.remove()
+  // 馬上 revoke 的話，部分瀏覽器（Safari／Firefox）在大檔案還沒開始存之前就會取消下載
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export function buildCsv(rows: (string | number)[][]): string {

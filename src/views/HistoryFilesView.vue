@@ -8,6 +8,7 @@ import { errorMessage, pushToast } from '../composables/useToast'
 import { kb } from '../utils/activity'
 import { UNRECORDED, actorLine } from '../utils/actor'
 import StampLine from '../components/StampLine.vue'
+import { downloadFiles, todayStamp } from '../utils/fileDownload'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityFiles, ActivityRecord, AttachmentKey, GenerationJobRecord, GenerationJobStatus } from '../types'
 
@@ -201,6 +202,32 @@ async function batchTrashUploaded() {
   }
   uploadedSel.clear()
   if (ok) pushToast(`已移到垃圾桶（${ok} 個）`)
+}
+
+/** 下載中的進度文字（例如「下載中 3/12…」），空字串代表沒在下載 */
+const downloadingSelected = ref('')
+
+/** 勾一個直接下載原檔；勾多個打包成 zip，依「活動名稱／類型」分資料夾。 */
+async function batchDownloadUploaded() {
+  const targets = uploadedRows.value.filter((r) => uploadedSel.isSelected(fileRowKey(r)))
+  if (!targets.length || downloadingSelected.value) return
+  downloadingSelected.value = '準備下載…'
+  try {
+    const { failed } = await downloadFiles(
+      targets.map((r) => ({
+        name: r.name,
+        url: r.url,
+        folder: `${r.activityName || '未命名活動'}/${attachmentLabel[r.type]}`,
+      })),
+      `歷史檔案_${todayStamp()}`,
+      (done, total) => (downloadingSelected.value = `下載中 ${done}/${total}…`),
+    )
+    if (failed.length) pushToast(`有 ${failed.length} 個檔案下載失敗：${failed.join('、')}`, 'error')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  } finally {
+    downloadingSelected.value = ''
+  }
 }
 
 async function batchRestoreFiles() {
@@ -410,6 +437,12 @@ async function batchHardDeleteJobs() {
       <span class="sub mono" style="margin:0">共 {{ uploadedRows.length }} 筆檔案</span>
       <template v-if="uploadedSel.selected.value.size">
         <span class="mono" style="font-size:12.5px">已選取 {{ uploadedSel.selected.value.size }} 項</span>
+        <button
+          class="btn sm"
+          style="margin:0;width:auto;letter-spacing:0"
+          :disabled="!!downloadingSelected"
+          @click="batchDownloadUploaded"
+        >{{ downloadingSelected || (uploadedSel.selected.value.size > 1 ? '下載（打包成 zip）' : '下載') }}</button>
         <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="batchTrashUploaded">移到垃圾桶</button>
         <button class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0" @click="uploadedSel.clear()">取消選取</button>
       </template>
