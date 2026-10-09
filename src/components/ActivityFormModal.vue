@@ -200,6 +200,12 @@ async function submit() {
       </div>
 
       <div class="field">
+        <label>負責人</label>
+        <input v-model="owner" maxlength="100" placeholder="例如：王小明">
+        <p class="hint">產生公文時會作為聯絡人。</p>
+      </div>
+
+      <div class="field">
         <label>與會單位或成員</label>
         <input v-model="attendees" placeholder="例如：○○里辦公室、○○協會">
       </div>

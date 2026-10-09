@@ -47,11 +47,11 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 
 - **Plan**：`name`
 - **Activity**（欄位依《需求訪談》規格，2026-09-03）
-  - 基本資料：`name`（活動名稱／事由）/ `category`（活動分類）/ `date`＋`dateEnd`（起訖日期，同一天時 `dateEnd` 留空）/ `place` / `owner`（負責人，內部管理用）/ `plans`（對應多個 Plan）
+  - 基本資料：`name`（活動名稱／事由）/ `categories`（活動分類，可複選）/ `date`（活動日期）/ `time`＋`timeEnd`（開始／結束時間，選填）/ `placeMode`（`physical` 實體／`online` 線上）/ `place`（地址；線上活動固定為「線上」）/ `meetingUrl`（線上活動的會議連結）/ `owner`（負責人，產生公文時作為聯絡人）/ `plans`（對應多個 Plan）
   - 與會資訊：`attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `maleCount`＋`femaleCount`＋`totalCount`（與會人數統計）
-  - 成果：`summary`（活動內容簡述與效益）/ `kpis` / `remark`（備註）
-  - 附件（9 分類，各存一個 `{name, size, url, caption?, featured?, deletedAt?, uploadedById?, uploadedByName?, uploadedAt?, deletedById?, deletedByName?}` 陣列；`uploaded*`／`deleted*` 是上傳者／移到垃圾桶的人，由 Cloud Code 以 url 比對前後陣列後寫入）：`registrationFiles`（參與者名單／報名表）/ `photoFiles`（照片，`caption` 為圖說、`featured` 為大事紀精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
-  - 舊版殘留：`headcount`（單一人數數字，已由 `maleCount`/`femaleCount`/`totalCount` 取代）/ `audioFiles`／`videoFiles`／`docFiles`（舊 4 分類附件）——前端不再讀寫，但舊資料可能還在，Cloud Code 仍會驗證與清孤兒檔
+  - 成果：`summary`（成果摘要）/ `kpis` / `remark`（備註）
+  - 附件（9 分類，各存一個 `{name, size, url, caption?, featured?, deletedAt?, uploadedById?, uploadedByName?, uploadedAt?, deletedById?, deletedByName?}` 陣列；`uploaded*`／`deleted*` 是上傳者／移到垃圾桶的人，由 Cloud Code 以 url 比對前後陣列後寫入）：`registrationFiles`（參與者名單／報名表）/ `photoFiles`（活動照片，`caption` 為圖說、`featured` 為大事紀精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
+  - 舊版殘留：`category`（單一分類字串，已由 `categories` 取代，存檔時仍同步寫入第一個分類）/ `dateEnd`（結束日期，已改用 `time`／`timeEnd`，前端不讀）/ `headcount`（單一人數數字，已由 `maleCount`/`femaleCount`/`totalCount` 取代）/ `audioFiles`／`videoFiles`／`docFiles`（舊 4 分類附件）——前端不再讀寫，但舊資料可能還在，Cloud Code 仍會驗證與清孤兒檔
 - **Category**：`name` / `plans`（所屬計畫，可留空）
 - **AuditLog**（稽核紀錄，2026-09-27）：`action`（create/update/delete/login/logout）/ `targetClass` / `targetId` / `targetName` / `activityId` / `actorId` / `actorName` / `changes`（`[{field, label, before, after}]`）/ `summary`（中文摘要）——由 Cloud Code 的 afterSave/afterDelete/afterLogin/afterLogout 用 Master Key 寫入，CLP 不開放任何人新增／修改／刪除；前端「操作紀錄」頁與活動詳情頁底部可查
 - **_User**：多了 `displayName`（顯示名稱，登入歡迎畫面與操作紀錄用），只能由 `scripts/setup-users.mjs`（Master Key）修改，使用者自己改會被 Cloud Code 擋下

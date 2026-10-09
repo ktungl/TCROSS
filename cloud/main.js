@@ -43,11 +43,12 @@ function isNonNegativeNumber(v) {
 function checkOptionalString(object, field, maxLength) {
   const value = object.get(field);
   if (value === undefined || value === null) return;
+  const label = FIELD_LABELS[field] || field;
   if (typeof value !== 'string') {
-    fail(`${field} 必須是字串`);
+    fail(`${label}必須是文字`);
   }
   if (value.length > maxLength) {
-    fail(`${field} 過長（上限 ${maxLength} 字）`);
+    fail(`${label}過長（上限 ${maxLength} 字）`);
   }
 }
 
@@ -529,6 +530,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     fail('會議連結必須是 http(s) 網址');
   }
 
+  checkOptionalString(object, 'owner', 100);
   checkOptionalString(object, 'attendees', 200);
   checkOptionalString(object, 'participantDesc', 200);
   checkOptionalString(object, 'remark', 500);
@@ -572,9 +574,10 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       ) {
         fail(`${field} 陣列項目格式不正確（需要 { name, size, url }）`);
       }
-      // url 會直接當成連結渲染（歷史檔案頁的「開啟」），只接受 http(s)，擋掉 javascript: 之類
-      if (!/^https?:\/\//i.test(file.url)) {
-        fail(`${field} 的 url 必須是 http(s) 網址`);
+      // url 會直接當成連結渲染（歷史檔案頁的「開啟」），只接受 http(s)，擋掉 javascript: 之類；
+      // gcs:attachments/… 是存在 GCS 的附件，畫面上一律先換成 Cloud Run 簽的臨時網址
+      if (!/^https?:\/\//i.test(file.url) && !file.url.startsWith('gcs:attachments/')) {
+        fail(`${field} 的 url 必須是 http(s) 網址或 gcs:attachments/ 路徑`);
       }
       if (file.caption !== undefined && typeof file.caption !== 'string') {
         fail(`${field} 的 caption 必須是字串`);

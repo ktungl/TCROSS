@@ -66,19 +66,27 @@ function doPreview() {
 
 function doCsv() {
   const rows = [
-    ['日期', '活動名稱', '分類', '地點', '負責人', '男性人數', '女性人數', '合計人數', '對應計畫', '成果摘要', 'KPI', '檔案數', '缺漏'],
+    [
+      '日期', '時間', '活動名稱', '分類', '地點', '會議連結', '負責人', '與會單位或成員', '參加對象說明',
+      '男性人數', '女性人數', '合計人數', '對應計畫', '成果摘要', 'KPI', '備註', '檔案數', '缺漏',
+    ],
     ...picked.value.map((a) => [
       a.date,
+      a.time ? (a.timeEnd && a.timeEnd !== a.time ? `${a.time}～${a.timeEnd}` : a.time) : '',
       a.name,
       a.categories.join('、'),
       a.place,
+      a.meetingUrl,
       a.owner,
+      a.attendees,
+      a.participantDesc,
       a.headcount.male,
       a.headcount.female,
       a.headcount.total,
       a.plans.map(planName).join('；'),
       a.summary,
       a.kpis.map((k) => `${k.k} ${k.v}${k.u}`).join('；'),
+      a.remark,
       nFiles(a),
       gaps(a).join('；'),
     ]),

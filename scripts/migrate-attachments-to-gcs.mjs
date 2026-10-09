@@ -39,6 +39,7 @@ if (!APP_ID || !MASTER_KEY) {
 
 /** Activity 附件欄位 → GCS 路徑裡的分類（對應 server/utils.py ATTACHMENT_FOLDERS）。舊版 3 個欄位併到相近分類。 */
 const FIELD_FOLDER = {
+  registrationFiles: 'registration',
   photoFiles: 'photo',
   signInFiles: 'signIn',
   recordFiles: 'record',

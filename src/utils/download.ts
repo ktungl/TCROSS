@@ -324,24 +324,29 @@ export async function buildOfficialLetterDocx(a: ActivityRecord, opts: OfficialL
   const when = `${formatRocChinese(a.date) || '（日期）'}${formatTimeRange(a.time, a.timeEnd)}`
   const headcount = a.headcount.total ? `，參加人數計 ${a.headcount.total} 人` : ''
   const basis = opts.basisPlans.length ? `依據${opts.basisPlans.map((n) => `「${n}」`).join('、')}辦理。` : ''
+  // 線上活動不能寫「假線上辦理」（「假」是借用場地），改成「以線上方式辦理」並附會議連結
+  const online = a.placeMode === 'online'
+  const venue = online ? '以線上方式' : `假${a.place || '（地點）'}`
 
   const subject =
     opts.purpose === '邀請參加'
-      ? `本會訂於${when}假${a.place || '（地點）'}辦理「${a.name}」，敬邀　貴單位派員參加，請　查照。`
+      ? `本會訂於${when}${venue}辦理「${a.name}」，敬邀　貴單位派員參加，請　查照。`
       : `檢送本會辦理「${a.name}」活動成果資料 1 份，請　查照。`
   const explanations =
     opts.purpose === '邀請參加'
       ? [
           basis,
           `活動時間：${when}。`,
-          `活動地點：${a.place || '（地點）'}。`,
+          online
+            ? `活動方式：線上辦理${a.meetingUrl ? `，會議連結：${a.meetingUrl}` : '（會議連結另行通知）'}。`
+            : `活動地點：${a.place || '（地點）'}。`,
           a.participantDesc ? `參加對象：${a.participantDesc}。` : '',
           a.summary ? `活動內容：${a.summary}` : '',
           `聯絡人：${a.owner || '（聯絡人）'}。`,
         ]
       : [
           basis,
-          `本會已於${when}假${a.place || '（地點）'}辦理旨揭活動${headcount}。`,
+          `本會已於${when}${venue}辦理旨揭活動${headcount}。`,
           a.summary ? `活動內容與效益：${a.summary}` : '',
           '檢附活動成果資料（含活動照片、簽到表）如附件。',
         ]
