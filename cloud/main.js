@@ -18,6 +18,7 @@ const FOLDER_FIELDS = [
   'receiptFiles',
   'socialFiles',
   'mediaFiles',
+  'registrationFiles',
 ];
 // 分類已改成使用者可在「分類管理」頁面自訂（見 Category class），不再是寫死的
 // 5 個選項，這裡只驗證格式（非空字串、長度上限），不再檢查是否落在某個固定清單。
@@ -80,6 +81,7 @@ const FOLDER_LABELS = {
   receiptFiles: '領據',
   socialFiles: '社群貼文',
   mediaFiles: '影音檔',
+  registrationFiles: '參與者名單（報名表）',
   audioFiles: '錄音（舊版）',
   videoFiles: '影片（舊版）',
   docFiles: '文件（舊版）',
@@ -93,7 +95,9 @@ const FIELD_LABELS = {
   dateEnd: '結束日期（舊版欄位）',
   time: '開始時間',
   timeEnd: '結束時間',
+  placeMode: '實體／線上',
   place: '地點',
+  meetingUrl: '會議連結',
   owner: '負責人',
   attendees: '與會單位或成員',
   participantDesc: '參加對象說明',
@@ -504,6 +508,18 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     }
   }
 
+  const placeMode = object.get('placeMode');
+  if (placeMode !== undefined && placeMode !== null && placeMode !== 'physical' && placeMode !== 'online') {
+    fail('placeMode 必須是 physical 或 online');
+  }
+  checkOptionalString(object, 'place', 200);
+  // meetingUrl 會直接當成連結渲染（活動詳情頁），只接受 http(s)，擋掉 javascript: 之類
+  checkOptionalString(object, 'meetingUrl', 500);
+  const meetingUrl = object.get('meetingUrl');
+  if (typeof meetingUrl === 'string' && meetingUrl && !/^https?:\/\//i.test(meetingUrl)) {
+    fail('會議連結必須是 http(s) 網址');
+  }
+
   checkOptionalString(object, 'attendees', 200);
   checkOptionalString(object, 'participantDesc', 200);
   checkOptionalString(object, 'remark', 500);
@@ -547,6 +563,10 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       ) {
         fail(`${field} 陣列項目格式不正確（需要 { name, size, url }）`);
       }
+      // url 會直接當成連結渲染（歷史檔案頁的「開啟」），只接受 http(s)，擋掉 javascript: 之類
+      if (!/^https?:\/\//i.test(file.url)) {
+        fail(`${field} 的 url 必須是 http(s) 網址`);
+      }
       if (file.caption !== undefined && typeof file.caption !== 'string') {
         fail(`${field} 的 caption 必須是字串`);
       }
@@ -556,7 +576,8 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         fail(`${field} 的「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
       }
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      // 先去掉結尾的點與空白：Windows 存檔時會自動拿掉，「evil.exe.」下載後就是 evil.exe
+      const ext = (file.name.replace(/[.\s]+$/, '').split('.').pop() || '').toLowerCase();
       if (BLOCKED_EXTENSIONS.includes(ext)) {
         fail(`${field} 的「${file.name}」檔案類型不允許上傳`);
       }
@@ -578,19 +599,14 @@ function isAttachmentMigration(request) {
   return !!(request.master && request.context && request.context.attachmentMigration);
 }
 
-/** 所有活動（含垃圾桶項目）目前引用中的附件網址。歷史檔案可以把同一個檔案掛到
- * 多個活動，刪實體檔前要確認已經沒有任何活動在用。 */
-async function referencedAttachmentUrls() {
+/** 這個物件所有附件欄位裡還引用到的檔案網址。 */
+function referencedUrls(object) {
   const urls = new Set();
-  const query = new Parse.Query('Activity').select(...FOLDER_FIELDS);
-  await query.each(
-    (activity) => {
-      for (const field of FOLDER_FIELDS) {
-        for (const f of activity.get(field) || []) if (f && f.url) urls.add(f.url);
-      }
-    },
-    { useMasterKey: true },
-  );
+  for (const field of FOLDER_FIELDS) {
+    for (const f of object.get(field) || []) {
+      if (f && typeof f.url === 'string') urls.add(f.url);
+    }
+  }
   return urls;
 }
 
@@ -620,18 +636,39 @@ Parse.Cloud.afterSave('Activity', async (request) => {
   await auditSave('Activity', request);
   if (!request.original) return; // 新建的活動沒有舊檔案可比對
 
-  const removed = [];
-  for (const field of FOLDER_FIELDS) {
-    const before = request.original.get(field) || [];
-    const after = request.object.get(field) || [];
-    const afterUrls = new Set(after.map((f) => f && f.url));
-    removed.push(...before.filter((f) => f && f.url && !f.url.startsWith('gcs:') && !afterUrls.has(f.url)));
+  // 同一個檔案網址可能同時掛在別的分類或別的活動（「歷史檔案」挑選會重用既有網址），
+  // 只有整個系統都不再引用時才真的刪掉底層檔案，不然會把別處還在用的檔案一起刪掉。
+  const stillHere = referencedUrls(request.object);
+  const candidates = new Set();
+  for (const url of referencedUrls(request.original)) {
+    if (!url.startsWith('gcs:') && !stillHere.has(url)) candidates.add(url);
   }
-  if (!removed.length) return;
-  const stillUsed = await referencedAttachmentUrls();
-  for (const f of removed) {
-    if (stillUsed.has(f.url)) continue; // 別的活動還在用（歷史檔案跨活動引用）
-    const filename = decodeURIComponent(f.url.split('/').pop() || '');
+  if (!candidates.size) return;
+
+  try {
+    await new Parse.Query('Activity')
+      .notEqualTo('objectId', request.object.id)
+      .select(...FOLDER_FIELDS)
+      .each(
+        (other) => {
+          for (const url of referencedUrls(other)) candidates.delete(url);
+        },
+        { useMasterKey: true },
+      );
+  } catch (err) {
+    // 查不到其他活動的引用狀況就不刪，寧可留孤兒檔也不能誤刪別人還在用的檔案
+    console.error('查詢附件引用失敗，略過清檔', err);
+    return;
+  }
+
+  for (const url of candidates) {
+    let filename = '';
+    try {
+      filename = decodeURIComponent(url.split('/').pop() || '');
+    } catch (err) {
+      console.error(`檔案網址格式錯誤：${url}`, err);
+      continue;
+    }
     if (!filename) continue;
     try {
       await new Parse.File(filename).destroy({ useMasterKey: true });

@@ -28,8 +28,15 @@ def sanitize_filename(filename: str) -> str:
 
 
 def is_extension_blocked(filename: str) -> bool:
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return ext in BLOCKED_EXTENSIONS
+    # Check the name that will actually be stored: sanitize_filename() strips
+    # trailing dots, so "evil.exe." would otherwise slip past as an empty extension
+    # and land in GCS as "evil.exe". Also check the raw name with trailing
+    # dots/spaces removed (Windows drops them on save).
+    for name in (sanitize_filename(filename), filename.rstrip(". \t")):
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext in BLOCKED_EXTENSIONS:
+            return True
+    return False
 
 
 # 活動附件（照片、簽到表等 8 類）的 GCS 路徑：attachments/{activityId}/{分類}/{亂數}_{檔名}。

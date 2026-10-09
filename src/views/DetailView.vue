@@ -9,6 +9,7 @@ import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
 import type { AttachmentKey, AuditLogRecord, Kpi } from '../types'
 import type { GeneratedFormKind } from '../utils/download'
 import { confirm } from '../composables/useConfirm'
+import { downloadFiles } from '../utils/fileDownload'
 import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
@@ -79,7 +80,7 @@ async function saveResults() {
 }
 
 const uploadingFiles = reactive<Record<AttachmentKey, { name: string; progress: number }[]>>({
-  photo: [], signIn: [], record: [], agenda: [], document: [], receipt: [], social: [], media: [],
+  registration: [], photo: [], signIn: [], record: [], agenda: [], document: [], receipt: [], social: [], media: [],
 })
 
 async function upload(folder: AttachmentKey, files: File[]) {
@@ -128,9 +129,37 @@ async function onFeaturedToggle(folder: AttachmentKey, i: number, e: Event) {
   }
 }
 
+const downloadingAll = ref('')
+const totalAttachments = computed(() =>
+  activity.value ? ATTACHMENT_TYPES.reduce((n, [key]) => n + activity.value!.files[key].length, 0) : 0,
+)
+
+/** 一鍵下載這個活動所有附件（不含垃圾桶），依分類放進 zip 裡的資料夾。 */
+async function downloadAllAttachments() {
+  const a = activity.value
+  if (!a || downloadingAll.value) return
+  const items = ATTACHMENT_TYPES.flatMap(([key, label], i) =>
+    a.files[key].map((f) => ({ name: f.name, url: f.url, folder: `${String(i + 1).padStart(2, '0')}_${label}` })),
+  )
+  if (!items.length) return
+  downloadingAll.value = '準備下載…'
+  try {
+    const { failed } = await downloadFiles(
+      items,
+      `${a.date ? `${a.date}_` : ''}${a.name || '活動'}_附件`,
+      (done, total) => (downloadingAll.value = `下載中 ${done}/${total}…`),
+    )
+    if (failed.length) pushToast(`有 ${failed.length} 個檔案下載失敗：${failed.join('、')}`, 'error')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  } finally {
+    downloadingAll.value = ''
+  }
+}
+
 async function deleteActivity() {
   if (!activity.value) return
-  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，所有附件與資料都會一併刪除。`))) return
+  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，活動會從系統中移除；已上傳的附件檔案與 AI 生成紀錄不會一併刪除。`))) return
   try {
     await db.deleteActivity(activity.value.id)
     pushToast('已刪除活動')
@@ -187,7 +216,8 @@ async function duplicateActivity() {
     <h1>{{ activity.name }}</h1>
     <p class="sub mono">
       {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}<template v-if="activity.timeEnd && activity.timeEnd !== activity.time">～{{ activity.timeEnd }}</template></template>
-      　<a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template>
+      <template v-if="activity.placeMode === 'online'">　線上<template v-if="activity.meetingUrl">（<a :href="activity.meetingUrl" target="_blank" rel="noopener">會議連結</a>）</template></template>
+      <template v-else>　<a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template></template>
       　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '—' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
     </p>
@@ -230,7 +260,16 @@ async function duplicateActivity() {
       <span v-if="!db.plans.length" class="empty" style="padding:0">還沒有計畫，先到「計畫」頁新增。</span>
     </div>
 
-    <h2>活動資料</h2>
+    <div class="row" style="align-items:center;justify-content:space-between">
+      <h2>活動資料</h2>
+      <button
+        class="btn ghost sm"
+        style="margin:0;width:auto"
+        :disabled="!totalAttachments || !!downloadingAll"
+        :title="totalAttachments ? '依分類打包成 zip 下載（不含垃圾桶）' : '還沒有上傳任何檔案'"
+        @click="downloadAllAttachments"
+      >{{ downloadingAll || `一鍵下載所有附件（${totalAttachments}）` }}</button>
+    </div>
     <div>
       <FolderDropzone
         v-for="[key, label] in ATTACHMENT_TYPES"

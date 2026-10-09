@@ -10,7 +10,7 @@ export interface FileMeta {
   url: string
   /** 圖說（照片類型必填每張圖說） */
   caption?: string
-  /** 精選照片標記（作為大紀事精選照片） */
+  /** 精選照片標記（作為大事紀精選照片） */
   featured?: boolean
   /** 軟刪除時間戳記（ISO 字串）。有值代表在垃圾桶裡，正常畫面（含匯出、缺漏檢核）都會濾掉，
    * 只有「歷史檔案」頁的垃圾桶會列出，可以復原或從那裡永久刪除。 */
@@ -80,6 +80,7 @@ export const FOLDERS: [FolderKey, string][] = [
 
 /** 活動正式歸檔附件分類（需求訪談規格） */
 export type AttachmentKey =
+  | 'registration'
   | 'photo'
   | 'signIn'
   | 'record'
@@ -90,14 +91,15 @@ export type AttachmentKey =
   | 'media'
 
 export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
+  ['registration', '參與者名單（報名表）'],
+  ['agenda', '活動流程'],
   ['photo', '活動照片'],
   ['signIn', '簽到表'],
-  ['record', '成果紀錄'],
-  ['agenda', '活動流程'],
-  ['document', '公文'],
   ['receipt', '領據'],
+  ['record', '成果紀錄'],
   ['social', '社群貼文'],
   ['media', '影音檔'],
+  ['document', '公文'],
 ]
 
 export const PHOTO_MIN = 3
@@ -119,7 +121,8 @@ export function fileUploadRejectionReason(file: { name: string; size: number }):
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return `「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`
   }
-  const ext = file.name.toLowerCase().split('.').pop() ?? ''
+  // 先去掉結尾的點與空白：Windows 存檔時會自動拿掉，「evil.exe.」下載後就是 evil.exe
+  const ext = file.name.toLowerCase().replace(/[.\s]+$/, '').split('.').pop() ?? ''
   if (BLOCKED_EXTENSIONS.includes(ext)) {
     return `「${file.name}」的檔案類型不允許上傳`
   }
@@ -146,6 +149,11 @@ export interface CategoryRecord extends ActorStamp {
  * 的 categories 欄位（那裡存的是分類名稱文字本身，不是參照 id）。 */
 export const DEFAULT_CATEGORY_NAMES = ['居場所', '會務', '合作教育', '社區關懷', '其他']
 
+export type PlaceMode = 'physical' | 'online'
+
+/** 線上活動存進 place 欄位的文字，匯出文件（大事紀、結案報告、公文）直接沿用 place。 */
+export const ONLINE_PLACE_LABEL = '線上'
+
 export interface HeadcountStat {
   male: number
   female: number
@@ -169,7 +177,12 @@ export interface ActivityRecord extends ActorStamp {
   time: string
   /** 活動結束時間（HH:MM，選填，同一時間可留空） */
   timeEnd: string
+  /** 實體或線上活動；舊資料沒有這個欄位，讀取時依 place 推斷 */
+  placeMode: PlaceMode
+  /** 實體活動的地址；線上活動固定為「線上」，供匯出文件沿用 */
   place: string
+  /** 線上活動的會議連結（http(s)），實體活動留空 */
+  meetingUrl: string
   /** 負責人（內部管理用） */
   owner: string
   /** 與會單位或成員 */

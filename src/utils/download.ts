@@ -22,6 +22,9 @@ import {
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
 import { resolveAttachmentUrl } from '../lib/attachments'
+import type { Participant } from './registration'
+import { isAgendaReadable, readAgenda } from './agenda'
+import { renderPdfPages } from './pdfPages'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -40,8 +43,13 @@ export function downloadBlob(name: string, blob: Blob): void {
   const link = document.createElement('a')
   link.href = url
   link.download = name
+  // 沒掛進 DOM 的連結在部分瀏覽器會忽略 download 檔名
+  link.style.display = 'none'
+  document.body.appendChild(link)
   link.click()
-  URL.revokeObjectURL(url)
+  link.remove()
+  // 馬上 revoke 的話，部分瀏覽器（Safari／Firefox）在大檔案還沒開始存之前就會取消下載
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export function buildCsv(rows: (string | number)[][]): string {
@@ -94,11 +102,13 @@ function formatSignInDate(a: ActivityRecord): string {
  * 活動名稱＋簽到表）、時間地點條列，表格標題列灰底、全部置中。人數多時每頁重複標題與表頭。 */
 export async function buildSignInSheetDocx(
   a: ActivityRecord,
-  opts: { titlePlans: string[]; layout: SignInLayout },
+  opts: { titlePlans: string[]; layout: SignInLayout; participants?: Participant[] },
 ): Promise<Blob> {
   const FONT = '微軟正黑體'
   const { perPage } = SIGN_IN_LAYOUTS[opts.layout]
-  const total = Math.max(a.headcount.total || 0, 1)
+  const participants = opts.participants ?? []
+  // 名單以外仍照活動人數留空白列，給現場報到的人
+  const total = Math.max(a.headcount.total || 0, participants.length, 1)
   const pages = Math.ceil(total / perPage)
 
   const run = (text: string, extra: { bold?: boolean; size?: number } = {}) =>
@@ -153,10 +163,12 @@ export async function buildSignInSheetDocx(
       }),
     ]
     for (let r = 0; r < rowsOnPage; r++) {
+      const left = participants[first + r]
+      const right = participants[first + rowsOnPage + r]
       const values =
         opts.layout === 'detailed'
-          ? [String(first + r + 1), '', '', '', '']
-          : [String(first + r + 1), '', '', String(first + rowsOnPage + r + 1), '', '']
+          ? [String(first + r + 1), left?.unit ?? '', left?.title ?? '', left?.name ?? '', '']
+          : [String(first + r + 1), left?.name ?? '', '', String(first + rowsOnPage + r + 1), right?.name ?? '', '']
       rows.push(
         new TableRow({
           height: { value: ROW_HEIGHT, rule: HeightRule.ATLEAST },
@@ -607,7 +619,7 @@ export async function buildLedgerXlsx(
 ): Promise<Blob> {
   const { photoSize = 'medium', photosPerRow = 1 } = options
   const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet('大紀事', { views: [{ state: 'frozen', ySplit: 1, zoomScale: 70 }] })
+  const sheet = workbook.addWorksheet('大事紀', { views: [{ state: 'frozen', ySplit: 1, zoomScale: 70 }] })
   const headers = ['專案名稱', '計畫項目', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', '精選照片']
   const CENTERED_COLS = new Set([3, 8])
 
@@ -758,22 +770,53 @@ function reportBody(text: string): Paragraph {
   return new Paragraph({ alignment: AlignmentType.JUSTIFIED, indent: { left: 991 }, children: [reportText(text)] })
 }
 
+/** 活動流程裡的行程表，縮排對齊條列項目的內文；第一列當表頭加粗。 */
+function buildAgendaTable(rows: string[][]): Table {
+  const WIDTH = 8647 // A4 版心寬度扣掉內文縮排 991
+  const cols = Math.max(...rows.map((r) => r.length))
+  const colWidth = Math.floor(WIDTH / cols)
+  return new Table({
+    width: { size: colWidth * cols, type: WidthType.DXA },
+    columnWidths: Array(cols).fill(colWidth),
+    indent: { size: 991, type: WidthType.DXA },
+    rows: rows.map(
+      (r, ri) =>
+        new TableRow({
+          children: Array.from({ length: cols }, (_, ci) =>
+            new TableCell({
+              width: { size: colWidth, type: WidthType.DXA },
+              verticalAlign: VerticalAlign.CENTER,
+              children: (r[ci] ?? '').split('\n').map((line) => new Paragraph({ children: [reportText(line, { bold: ri === 0 })] })),
+            }),
+          ),
+        }),
+    ),
+  })
+}
+
 /** 單場活動的內容區塊（比照《成果報告書範本》）：
- * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片。
+ * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片，
+ * 再附上 八、活動流程表 九、簽到表 的原始檔（PDF／圖片逐頁嵌入）。
+ * 活動內容取自「活動流程」附件的文字與行程表；活動效益是成果摘要加上 KPI。
  * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
   const hc = a.headcount
+  const agenda = await readAgenda(a.files.agenda ?? [])
+  const benefits = [
+    ...(a.summary.trim() ? a.summary.trim().split(/\r?\n/).filter(Boolean).map(reportBody) : []),
+    ...a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`)),
+  ]
   const children: (Paragraph | Table)[] = [
     reportItem(1, `活動名稱：${a.name}`),
     reportItem(2, `活動日期：${formatReportDate(a)}。`),
     reportItem(3, `活動地點：${a.place || '（地點待補）'}。`),
     reportItem(4, `參與人數：男${hc.male}人、女${hc.female}人，合計${hc.total}人。`),
     reportItem(5, '活動內容：'),
-    reportBody(a.summary || '（活動內容待補）'),
+    ...(agenda.length
+      ? agenda.map((b) => (b.type === 'text' ? reportBody(b.text) : buildAgendaTable(b.rows)))
+      : [reportBody('（活動內容待補：請上傳 Word／Excel 格式的活動流程）')]),
     reportItem(6, '活動效益：'),
-    ...(a.kpis.length
-      ? a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`))
-      : [reportBody('（尚未填寫效益指標）')]),
+    ...(benefits.length ? benefits : [reportBody('（尚未填寫成果摘要與效益指標）')]),
   ]
 
   const photos = pickPhotosForExport(a.files.photo ?? [], 6)
@@ -788,6 +831,87 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
   // 範本的活動照片都從新的一頁開始，照片表格才不會被切到兩頁
   children.push(reportItem(7, '活動照片：', photoAssets.length > 0))
   children.push(photoAssets.length ? buildPhotoTable(photoAssets, photoCaptions) : reportBody('（尚未上傳活動照片）'))
+
+  children.push(
+    ...(await buildAttachmentSection(8, '活動流程表', a.files.agenda ?? [], {
+      isInlined: isAgendaReadable,
+      inlinedNote: '內容已整理於「五、活動內容」',
+    })),
+    ...(await buildAttachmentSection(9, '簽到表', a.files.signIn ?? [])),
+  )
+  return children
+}
+
+/** 每份附件最多嵌入幾頁，避免一份很長的 PDF 把報告撐到幾百 MB */
+const MAX_ATTACHMENT_PAGES = 10
+/** 附件頁面在報告裡的最大尺寸：A4 版心 17cm 寬，高度留一點給項目標題 */
+const ATTACHMENT_MAX_WIDTH_CM = 16
+const ATTACHMENT_MAX_HEIGHT_CM = 22
+
+/** 把附件轉成可以嵌進 Word 的頁面圖片：圖片本身一張；PDF 每頁畫成一張。其他格式回傳 null。 */
+async function loadAttachmentPages(file: FileMeta): Promise<ImageAsset[] | null> {
+  const name = file.name.trim().toLowerCase()
+  if (name.endsWith('.pdf')) {
+    try {
+      const res = await fetch(await resolveAttachmentUrl(file.url, file.name))
+      if (!res.ok) return []
+      const pages = await renderPdfPages(await res.arrayBuffer(), MAX_ATTACHMENT_PAGES)
+      return pages.map((p) => ({ dataUrl: '', data: p.data, docxType: 'jpg', xlsxExt: 'jpeg', width: p.width, height: p.height }))
+    } catch (err) {
+      console.error(`轉換 PDF 失敗：${file.name}`, err)
+      return []
+    }
+  }
+  if (/\.(jpe?g|png|gif|webp|bmp|heic|heif)$/.test(name)) {
+    const asset = await loadImageAsset(file)
+    return asset ? [asset] : []
+  }
+  return null
+}
+
+/** 「八、活動流程表」「九、簽到表」：把掃描檔／照片／PDF 逐頁嵌入，一頁一張、從新的一頁開始。
+ * Word／Excel 等嵌不進去的檔案列出檔名提醒另附；inlinedNote 是已經整理進報告其他段落的說明。 */
+async function buildAttachmentSection(
+  no: number,
+  label: string,
+  files: FileMeta[],
+  opts: { isInlined?: (f: FileMeta) => boolean; inlinedNote?: string } = {},
+): Promise<(Paragraph | Table)[]> {
+  const children: (Paragraph | Table)[] = [reportItem(no, `${label}：`, true)]
+  if (!files.length) {
+    children.push(reportBody(`（尚未上傳${label}）`))
+    return children
+  }
+  const maxW = cmToPx(ATTACHMENT_MAX_WIDTH_CM)
+  const maxH = cmToPx(ATTACHMENT_MAX_HEIGHT_CM)
+  const inlined: string[] = []
+  const skipped: string[] = []
+  let embedded = 0
+  for (const file of files) {
+    const pages = await loadAttachmentPages(file)
+    if (pages === null) {
+      ;(opts.isInlined?.(file) ? inlined : skipped).push(file.name)
+      continue
+    }
+    if (!pages.length) {
+      skipped.push(file.name)
+      continue
+    }
+    for (const page of pages) {
+      const { width, height } = scaleToBox(page.width, page.height, maxW, maxH)
+      children.push(
+        new Paragraph({
+          // 第一張接在項目標題底下，之後每張各自一頁
+          pageBreakBefore: embedded > 0,
+          alignment: AlignmentType.CENTER,
+          children: [new ImageRun({ type: page.docxType, data: page.data, transformation: { width, height } })],
+        }),
+      )
+      embedded++
+    }
+  }
+  if (inlined.length && opts.inlinedNote) children.push(reportBody(`（${inlined.join('、')}：${opts.inlinedNote}）`))
+  if (skipped.length) children.push(reportBody(`（以下檔案無法嵌入報告，請另行附上：${skipped.join('、')}）`))
   return children
 }
 

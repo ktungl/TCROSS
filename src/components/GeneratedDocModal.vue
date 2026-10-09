@@ -13,6 +13,7 @@ import {
 } from '../utils/download'
 import type { GeneratedFormKind, OfficialLetterPurpose, SignInLayout } from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { isParsableRegistration, readParticipants } from '../utils/registration'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord } from '../types'
 
@@ -45,6 +46,11 @@ const pickedPlansInOrder = () => planOptions.value.filter((n) => pickedPlans.val
 
 const signInLayout = ref<SignInLayout>('detailed')
 
+// 簽到表可以從「參與者名單（報名表）」帶入單位／職稱／姓名；只有試算表格式讀得出欄位
+const registrationFiles = computed(() => props.activity.files.registration ?? [])
+const parsableRegistrations = computed(() => registrationFiles.value.filter(isParsableRegistration))
+const registrationUrl = ref(parsableRegistrations.value[0]?.url ?? '')
+
 const planNames = computed(() => props.activity.plans.map(props.planName).join('、'))
 
 const summary = computed(() => {
@@ -52,6 +58,9 @@ const summary = computed(() => {
     case '簽到表': {
       const { perPage } = SIGN_IN_LAYOUTS[signInLayout.value]
       const pages = Math.ceil(Math.max(props.activity.headcount.total || 0, 1) / perPage)
+      if (registrationUrl.value) {
+        return `將產生 Word 簽到表，帶入報名表名單；頁數依名單人數與活動人數（${props.activity.headcount.total || 0} 人）較多者計算`
+      }
       return `將產生 Word 簽到表，依活動人數（${props.activity.headcount.total || 0} 人）共 ${pages} 頁、${pages * perPage} 個簽到欄位`
     }
     case '領據':
@@ -59,7 +68,7 @@ const summary = computed(() => {
     case '活動紀錄表':
       return `將產生活動紀錄表 Excel 檔（含執行情形、附件統計：${ATTACHMENT_TYPES.map(([k, l]) => `${l} ${props.activity.files[k]?.length ?? 0}`).join('、')}）`
     case '成果報告':
-      return '將產生一份 Word 成果報告，內容取自下方「儲存成果」填寫的摘要、KPI 與照片圖說（不經過 AI）'
+      return '將產生一份 Word 成果報告：活動內容取自「活動流程」附件的文字與行程表，活動效益取自下方「儲存成果」的成果摘要與 KPI，另附照片圖說，並把「活動流程」「簽到表」的 PDF／圖片逐頁附在報告最後（不經過 AI）'
     case '公文':
       return '將產生一份 Word 公文（函），主旨與說明由活動資料帶入；發文日期、字號等請於下載後填寫'
   }
@@ -70,9 +79,17 @@ async function download() {
   try {
     let blob: Blob
     switch (props.kind) {
-      case '簽到表':
-        blob = await buildSignInSheetDocx(props.activity, { titlePlans: pickedPlansInOrder(), layout: signInLayout.value })
+      case '簽到表': {
+        const source = parsableRegistrations.value.find((f) => f.url === registrationUrl.value)
+        const participants = source ? await readParticipants(source) : []
+        blob = await buildSignInSheetDocx(props.activity, {
+          titlePlans: pickedPlansInOrder(),
+          layout: signInLayout.value,
+          participants,
+        })
+        if (source) pushToast(`已從報名表帶入 ${participants.length} 位參加者`)
         break
+      }
       case '領據':
         blob = await buildReceiptDocx(props.activity, planNames.value)
         break
@@ -126,6 +143,16 @@ async function download() {
         <select v-model="signInLayout">
           <option v-for="(l, key) in SIGN_IN_LAYOUTS" :key="key" :value="key">{{ l.label }}</option>
         </select>
+        <label style="margin-top:12px">從參與者名單（報名表）帶入</label>
+        <select v-model="registrationUrl">
+          <option value="">不帶入（空白簽到表）</option>
+          <option v-for="f in parsableRegistrations" :key="f.url" :value="f.url">{{ f.name }}</option>
+        </select>
+        <p class="meta" style="font-size:11.5px;margin:4px 0 0">
+          <template v-if="!registrationFiles.length">這個活動還沒有上傳報名表。</template>
+          <template v-else-if="!parsableRegistrations.length">已上傳的報名表不是 Excel／CSV 格式，無法自動帶入。</template>
+          <template v-else>依表頭的「單位／職稱／姓名」欄位帶入（雙欄版型只帶姓名），名單之外依活動人數保留空白列。</template>
+        </p>
       </template>
       <template v-if="(kind === '公文' || kind === '簽到表') && planOptions.length">
         <label style="margin-top:12px">{{ kind === '公文' ? '說明「依據」的專案（不勾＝不寫依據）' : '標題顯示的專案（不勾＝不顯示）' }}</label>

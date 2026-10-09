@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { confirm } from '../composables/useConfirm'
-import type { ActivityCategory, ActivityRecord } from '../types'
+import { ONLINE_PLACE_LABEL } from '../types'
+import type { ActivityCategory, ActivityRecord, PlaceMode } from '../types'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 import PlaceAutocompleteInput from './PlaceAutocompleteInput.vue'
 
@@ -20,7 +21,12 @@ const categories = ref<ActivityCategory[]>(props.activity ? [...props.activity.c
 const date = ref(props.activity?.date ?? '')
 const time = ref(props.activity?.time ?? '')
 const timeEnd = ref(props.activity?.timeEnd ?? '')
-const place = ref(props.activity?.place ?? '')
+const placeMode = ref<PlaceMode>(props.activity?.placeMode ?? 'physical')
+// 地址與會議連結分開存，切換「實體／線上」時不會把另一邊已經輸入的內容清掉；
+// 線上活動的 place 固定是「線上」，不是地址，編輯時地址欄從空白開始。
+const address = ref(props.activity?.placeMode === 'online' ? '' : (props.activity?.place ?? ''))
+const meetingUrl = ref(props.activity?.meetingUrl ?? '')
+const meetingUrlError = ref('')
 const owner = ref(props.activity?.owner ?? '')
 const attendees = ref(props.activity?.attendees ?? '')
 const participantDesc = ref(props.activity?.participantDesc ?? '')
@@ -41,7 +47,9 @@ function snapshot() {
     date: date.value,
     time: time.value,
     timeEnd: timeEnd.value,
-    place: place.value,
+    placeMode: placeMode.value,
+    address: address.value,
+    meetingUrl: meetingUrl.value,
     owner: owner.value,
     attendees: attendees.value,
     participantDesc: participantDesc.value,
@@ -95,13 +103,21 @@ async function submit() {
     nameError.value = true
     return
   }
+  const url = meetingUrl.value.trim()
+  if (placeMode.value === 'online' && url && !/^https?:\/\//i.test(url)) {
+    meetingUrlError.value = '會議連結要以 http:// 或 https:// 開頭'
+    return
+  }
+  const online = placeMode.value === 'online'
   const input = {
     name: trimmed,
     categories: categories.value,
     date: date.value,
     time: time.value,
     timeEnd: timeEnd.value,
-    place: place.value.trim(),
+    placeMode: placeMode.value,
+    place: online ? ONLINE_PLACE_LABEL : address.value.trim(),
+    meetingUrl: online ? url : '',
     owner: owner.value.trim(),
     attendees: attendees.value.trim(),
     participantDesc: participantDesc.value.trim(),
@@ -164,7 +180,21 @@ async function submit() {
 
       <div style="margin-top:12px">
         <label>地點</label>
-        <PlaceAutocompleteInput v-model="place" placeholder="輸入地址，會自動帶出建議" />
+        <div class="row" style="gap:16px;margin-bottom:6px">
+          <label class="chk"><input type="radio" value="physical" v-model="placeMode">實體</label>
+          <label class="chk"><input type="radio" value="online" v-model="placeMode">線上</label>
+        </div>
+        <PlaceAutocompleteInput v-if="placeMode === 'physical'" v-model="address" placeholder="輸入地址，會自動帶出建議" />
+        <template v-else>
+          <input
+            v-model="meetingUrl"
+            type="url"
+            inputmode="url"
+            placeholder="會議連結，例如：https://meet.google.com/xxx-xxxx-xxx"
+            @input="meetingUrlError = ''"
+          >
+          <p v-if="meetingUrlError" style="color:var(--stamp);font-size:12px;margin:4px 0 0">{{ meetingUrlError }}</p>
+        </template>
       </div>
 
       <div style="margin-top:12px">
