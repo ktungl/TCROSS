@@ -147,7 +147,7 @@ async function attach() {
           </div>
         </div>
 
-        <p v-else class="empty">沒有符合條件的歷史檔案。</p>
+        <p v-else class="empty">目前篩選條件下沒有檔案。</p>
       </div>
 
       <div class="row actions">

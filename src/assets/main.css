@@ -412,6 +412,7 @@ table.out tbody tr:hover{background:var(--gold-100)}
   aside.open .nav-toggle span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
   main{padding:24px 18px 60px}
   .grid2,.grid3{grid-template-columns:1fr}
+  .f-search,.f-plan,.f-narrow{width:100%}
   .entry{grid-template-columns:1fr;gap:6px}
   .dial{justify-content:flex-start}
 

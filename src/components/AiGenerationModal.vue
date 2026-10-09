@@ -258,7 +258,7 @@ useEscape(close)
                   ? `上傳中 ${Math.round((fileProgress.get(f) ?? 0) * 100)}%`
                   : FILE_STATE_LABELS[fileStates.get(f) ?? 'queued'] }}
               </span>
-              <button class="x" :disabled="submitting" @click="removeSelected(key, i)">×</button>
+              <button class="x" title="移除" :disabled="submitting" @click="removeSelected(key, i)">×</button>
             </span>
             <div
               v-if="fileStates.get(f) === 'uploading'"

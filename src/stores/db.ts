@@ -500,7 +500,7 @@ export const useDbStore = defineStore('db', () => {
     generationJobs.value = generationJobs.value.filter((j) => j.id !== id)
   }
 
-  /** 稽核紀錄，由新到舊。傳 activityId 只查這個活動（含它的 AI 生成任務）。 */
+  /** 稽核紀錄，由新到舊。傳 activityId 只查這個活動（含它的 AI 生成工作）。 */
   async function fetchAuditLogs(
     options: { activityId?: string; limit?: number } = {},
   ): Promise<AuditLogRecord[]> {

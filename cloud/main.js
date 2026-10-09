@@ -69,11 +69,11 @@ const CLASS_LABELS = {
   Plan: '計畫',
   Category: '分類',
   Activity: '活動',
-  GenerationJob: 'AI 生成任務',
+  GenerationJob: 'AI 生成工作',
 };
 
 const FOLDER_LABELS = {
-  photoFiles: '照片',
+  photoFiles: '活動照片',
   signInFiles: '簽到表',
   recordFiles: '成果紀錄',
   agendaFiles: '活動流程',
@@ -104,19 +104,28 @@ const FIELD_LABELS = {
   headcount: '人數（舊版欄位）',
   maleCount: '男性人數',
   femaleCount: '女性人數',
-  totalCount: '總人數',
-  plans: '所屬計畫',
-  summary: '活動內容簡述與效益',
+  totalCount: '合計人數',
+  plans: '對應計畫',
+  summary: '成果摘要',
   kpis: 'KPI',
   remark: '備註',
   activity: '所屬活動',
-  kind: '類型',
+  kind: '種類',
   status: '狀態',
   sourceFiles: '素材檔案',
   resultFile: '產出檔案',
   errorMessage: '錯誤訊息',
   deletedAt: '移到垃圾桶',
 };
+
+// 同一個欄位在不同資料類型的畫面上叫法不同：活動是「對應計畫」，分類是「所屬計畫」。
+const FIELD_LABELS_BY_CLASS = {
+  Category: { plans: '所屬計畫' },
+};
+
+function fieldLabel(className, field) {
+  return (FIELD_LABELS_BY_CLASS[className] || {})[field] || FIELD_LABELS[field] || field;
+}
 
 // 這些欄位不列進 AuditLog 的逐欄差異：系統欄位、操作者欄位本身，以及附件陣列
 // （附件改用 attachmentSummaries() 寫成「新增 N 個檔案到『照片』」這類摘要）。
@@ -219,7 +228,7 @@ function plain(value) {
   return value;
 }
 
-function fieldChanges(object, original) {
+function fieldChanges(className, object, original) {
   const keys = new Set([
     ...Object.keys(object.attributes),
     ...(original ? Object.keys(original.attributes) : []),
@@ -231,7 +240,7 @@ function fieldChanges(object, original) {
     const after = plain(object.get(field));
     if (JSON.stringify(before) === JSON.stringify(after)) continue;
     if (!original && (after === null || after === '' || (Array.isArray(after) && !after.length))) continue;
-    changes.push({ field, label: FIELD_LABELS[field] || field, before, after });
+    changes.push({ field, label: fieldLabel(className, field), before, after });
   }
   return changes;
 }
@@ -307,7 +316,7 @@ async function writeAudit(entry) {
 async function auditSave(className, request) {
   const { object, original } = request;
   const actor = actorOf(request, className) || { id: '', name: '（不明）' };
-  const changes = fieldChanges(object, original);
+  const changes = fieldChanges(className, object, original);
   const fileLines = className === 'Activity' ? attachmentSummaries(object, original) : [];
   if (original && !changes.length && !fileLines.length) return; // 內容沒有實際變動，不記
 
@@ -472,7 +481,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   for (const field of ['maleCount', 'femaleCount', 'totalCount']) {
     const value = object.get(field);
     if (value !== undefined && value !== null && !isNonNegativeNumber(value)) {
-      fail(`${field} 必須是不小於 0 的數字`);
+      fail(`${FIELD_LABELS[field]}必須是不小於 0 的數字`);
     }
   }
 
@@ -574,12 +583,12 @@ Parse.Cloud.beforeSave('Activity', (request) => {
         fail(`${field} 的 featured 必須是布林值`);
       }
       if (file.size > MAX_FILE_SIZE_BYTES) {
-        fail(`${field} 的「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
+        fail(`「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
       }
       // 先去掉結尾的點與空白：Windows 存檔時會自動拿掉，「evil.exe.」下載後就是 evil.exe
       const ext = (file.name.replace(/[.\s]+$/, '').split('.').pop() || '').toLowerCase();
       if (BLOCKED_EXTENSIONS.includes(ext)) {
-        fail(`${field} 的「${file.name}」檔案類型不允許上傳`);
+        fail(`「${file.name}」的檔案類型不允許上傳`);
       }
       if (file.deletedAt !== undefined && typeof file.deletedAt !== 'string') {
         fail(`${field} 的 deletedAt 必須是字串`);

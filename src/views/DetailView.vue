@@ -114,6 +114,7 @@ async function onCaptionChange(folder: AttachmentKey, i: number, e: Event) {
   const caption = (e.target as HTMLInputElement).value
   try {
     await db.updateFileMeta(activity.value.id, folder, i, { caption })
+    pushToast('已儲存圖說')
   } catch (e2) {
     pushToast(errorMessage(e2), 'error')
   }
@@ -123,6 +124,7 @@ async function onFeaturedToggle(folder: AttachmentKey, i: number, e: Event) {
   const featured = (e.target as HTMLInputElement).checked
   try {
     await db.updateFileMeta(activity.value.id, folder, i, { featured })
+    pushToast(featured ? '已設為精選照片' : '已取消精選照片')
   } catch (e2) {
     pushToast(errorMessage(e2), 'error')
   }
@@ -339,7 +341,7 @@ async function duplicateActivity() {
           <input v-model="k.k" placeholder="指標名稱，例如 受益人數">
           <input v-model="k.v" placeholder="數值" type="number">
           <input v-model="k.u" placeholder="單位">
-          <button class="x" title="刪除" @click="removeKpi(i)">×</button>
+          <button class="x" title="刪除此列" @click="removeKpi(i)">×</button>
         </div>
         <p v-if="!kpisDraft.length" class="empty" style="padding:0 0 8px">還沒有 KPI。</p>
       </div>

@@ -408,6 +408,7 @@ async function batchHardDeleteJobs() {
           <option value="">全部類型</option>
           <option v-for="[key, label] in ATTACHMENT_TYPES" :key="key" :value="key">{{ label }}</option>
         </select>
+        <button class="btn ghost sm" @click="uKeyword = ''; uPlan = ''; uType = ''">清除篩選</button>
       </div>
       <div class="view-toggle">
         <button type="button" :class="{ active: uView === 'grid' }" @click="uView = 'grid'">方格檢視</button>
@@ -513,6 +514,7 @@ async function batchHardDeleteJobs() {
         <option value="">全部狀態</option>
         <option v-for="(label, key) in statusLabels" :key="key" :value="key">{{ label }}</option>
       </select>
+      <button class="btn ghost sm" @click="gPlan = ''; gStatus = ''">清除篩選</button>
     </div>
 
     <div class="row selection-bar item-gap">

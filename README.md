@@ -38,7 +38,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - **`lib/`**：`parse.ts` 用 `.env` 的 App ID/JS Key/Server URL 初始化 Parse SDK，全專案共用同一個實例；`middleware.ts` 封裝呼叫 Cloud Run 中介層（`server/`）的三支 API——`requestSignedUploadUrl()`、`requestDownloadUrl()`、`deleteObjects()`，都會帶上 `Parse.User.current()?.getSessionToken()` 做驗證。
 - **`composables/`**：`useToast.ts`/`useConfirm.ts` 是全域的提示訊息與刪除確認彈窗狀態（`reactive` 陣列/物件，搭配 `components/ToastStack.vue`、`components/ConfirmDialogHost.vue` 掛在 `App.vue` 顯示）；`useGenerationJobPolling.ts` 每 5 秒輪詢 `GenerationJob.status`。
 - **`components/`**：頁面共用的 UI 元件，例如活動卡片（`ActivityEntry.vue`）、活動新增/編輯表單（`ActivityFormModal.vue`）、AI 生成任務彈窗（`AiGenerationModal.vue`）、各附件分類共用的拖曳上傳卡（`FolderDropzone.vue`）、產出文件預覽（`GeneratedDocModal.vue`）。
-- **`utils/`**：`download.ts` 用 `docx`/`exceljs` 產生真正格式的大紀事 Excel、內政部結案 Word（依《需求訪談》欄位對照表）以及簽到表/活動紀錄表/領據；`activity.ts` 是活動相關的純函式（篩選、缺漏檢核、格式化等）。
+- **`utils/`**：`download.ts` 用 `docx`/`exceljs` 產生真正格式的大事紀 Excel、內政部結案 Word（依《需求訪談》欄位對照表）以及簽到表/活動紀錄表/領據；`activity.ts` 是活動相關的純函式（篩選、缺漏檢核、格式化等）。
 - **`models/`**：`Activity.ts`/`Plan.ts`/`GenerationJob.ts` 定義對應 Parse Class 的型別/轉換邏輯，供 `stores/db.ts` 使用。
 
 ## 資料結構（Parse Classes）
@@ -50,7 +50,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
   - 基本資料：`name`（活動名稱／事由）/ `category`（活動分類）/ `date`＋`dateEnd`（起訖日期，同一天時 `dateEnd` 留空）/ `place` / `owner`（負責人，內部管理用）/ `plans`（對應多個 Plan）
   - 與會資訊：`attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `maleCount`＋`femaleCount`＋`totalCount`（與會人數統計）
   - 成果：`summary`（活動內容簡述與效益）/ `kpis` / `remark`（備註）
-  - 附件（9 分類，各存一個 `{name, size, url, caption?, featured?, deletedAt?, uploadedById?, uploadedByName?, uploadedAt?, deletedById?, deletedByName?}` 陣列；`uploaded*`／`deleted*` 是上傳者／移到垃圾桶的人，由 Cloud Code 以 url 比對前後陣列後寫入）：`registrationFiles`（參與者名單／報名表）/ `photoFiles`（照片，`caption` 為圖說、`featured` 為大紀事精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
+  - 附件（9 分類，各存一個 `{name, size, url, caption?, featured?, deletedAt?, uploadedById?, uploadedByName?, uploadedAt?, deletedById?, deletedByName?}` 陣列；`uploaded*`／`deleted*` 是上傳者／移到垃圾桶的人，由 Cloud Code 以 url 比對前後陣列後寫入）：`registrationFiles`（參與者名單／報名表）/ `photoFiles`（照片，`caption` 為圖說、`featured` 為大事紀精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）
   - 舊版殘留：`headcount`（單一人數數字，已由 `maleCount`/`femaleCount`/`totalCount` 取代）/ `audioFiles`／`videoFiles`／`docFiles`（舊 4 分類附件）——前端不再讀寫，但舊資料可能還在，Cloud Code 仍會驗證與清孤兒檔
 - **Category**：`name` / `plans`（所屬計畫，可留空）
 - **AuditLog**（稽核紀錄，2026-09-27）：`action`（create/update/delete/login/logout）/ `targetClass` / `targetId` / `targetName` / `activityId` / `actorId` / `actorName` / `changes`（`[{field, label, before, after}]`）/ `summary`（中文摘要）——由 Cloud Code 的 afterSave/afterDelete/afterLogin/afterLogout 用 Master Key 寫入，CLP 不開放任何人新增／修改／刪除；前端「操作紀錄」頁與活動詳情頁底部可查

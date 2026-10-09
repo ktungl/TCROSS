@@ -107,7 +107,7 @@ async function doExport() {
     }
     if (wantNeimu.value) {
       const blob = await buildNeimuReportDocx(picked.value, pn)
-      downloadBlob('內政部核銷成果報告.docx', blob)
+      downloadBlob('內政部結案成果報告.docx', blob)
     }
   } catch (e) {
     pushToast(errorMessage(e), 'error')
@@ -185,10 +185,10 @@ async function doExport() {
         </thead>
         <tbody>
           <tr v-for="a in picked" :key="a.id">
-            <td class="mono">{{ a.date }}</td>
+            <td class="mono">{{ a.date || '未定日期' }}</td>
             <td>{{ a.name }}</td>
             <td>{{ a.categories.join('、') || '—' }}</td>
-            <td>{{ a.place }}</td>
+            <td>{{ a.place || '—' }}</td>
             <td class="mono">{{ a.headcount.total }}</td>
             <td>{{ a.kpis.map(k => `${k.k} ${k.v}${k.u}`).join('；') || '—' }}</td>
             <td class="mono">{{ nFiles(a) }}</td>

@@ -70,9 +70,11 @@ function formatTimeRange(time: string, timeEnd: string): string {
   return ` ${time}～${timeEnd}`
 }
 
+/** 領據、活動紀錄表開頭的活動資訊；日期跟其他產出文件一樣用民國年（114年1月3日）。 */
 function activityInfoLines(a: ActivityRecord, planNames: string): string[] {
+  const date = formatRocChinese(a.date) || a.date
   return [
-    `活動名稱：${a.name}　日期：${a.date}${formatTimeRange(a.time, a.timeEnd)}`,
+    `活動名稱：${a.name}　日期：${date}${formatTimeRange(a.time, a.timeEnd)}`,
     `地點：${a.place}　負責人：${a.owner}`,
     `對應計畫：${planNames || '—'}`,
   ]
@@ -266,12 +268,22 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
     sheet.getRow(rowIdx).height = rowHeightForWrappedText(value, 70, heightLines)
   })
 
+  // 字型跟大事紀一致，不然 Excel 會用預設字型開啟
+  sheet.eachRow((row) => row.eachCell((cell) => (cell.font = { ...cell.font, name: LEDGER_FONT.name })))
+
   const buffer = await workbook.xlsx.writeBuffer()
   return new Blob([buffer], { type: XLSX_MIME })
 }
 
 export async function buildReceiptDocx(a: ActivityRecord, planNames: string): Promise<Blob> {
   const doc = new Document({
+    // 字型跟其他產出文件一致；docx 預設的 Heading 1 是藍色，改成黑色粗體 16pt
+    styles: {
+      default: {
+        document: { run: { font: REPORT_FONT, size: 24 } },
+        heading1: { run: { font: REPORT_FONT, size: 32, bold: true, color: '000000' } },
+      },
+    },
     sections: [
       {
         children: [
@@ -372,7 +384,7 @@ export async function buildOfficialLetterDocx(a: ActivityRecord, opts: OfficialL
   return Packer.toBlob(doc)
 }
 
-// ---------- 大紀事 Excel／內政部結案 Word（需求訪談欄位對照表） ----------
+// ---------- 大事紀 Excel／內政部結案 Word（需求訪談欄位對照表） ----------
 
 const ROC_EPOCH = 1911
 
@@ -388,7 +400,7 @@ function formatRocCompact(dateStr: string): string {
   return `${p.y}${String(p.m).padStart(2, '0')}${String(p.d).padStart(2, '0')}`
 }
 
-/** 大紀事日期欄格式：1140103 */
+/** 大事紀日期欄格式：1140103 */
 export function formatLedgerDate(date: string): string {
   return formatRocCompact(date)
 }
@@ -588,7 +600,7 @@ function buildPhotoTable(photos: ImageAsset[], captions: string[]): Table {
 
 export type LedgerPhotoSize = 'small' | 'medium' | 'large'
 
-/** 大紀事精選照片的尺寸選項（每張照片框的寬×高，公分）。「標準」對應《114年大紀事_範例.xlsx》
+/** 大事紀精選照片的尺寸選項（每張照片框的寬×高，公分）。「標準」對應《114年大紀事_範例.xlsx》
  * 裡的照片大小。每一列的列高、照片欄的欄寬都由這裡推算，整份表格列高固定一致，照片一定落在
  * 格子內，不用匯出後再手動調版面。 */
 export const LEDGER_PHOTO_SIZES: Record<LedgerPhotoSize, { label: string; widthCm: number; heightCm: number }> = {
@@ -610,7 +622,7 @@ const pxToPt = (px: number) => Math.ceil(px * 0.75 * 10) / 10
 
 const LEDGER_FONT = { name: '微軟正黑體', size: 12 }
 
-/** 大紀事 Excel，格式比照《114年大紀事_範例.xlsx》：
+/** 大事紀 Excel，格式比照《114年大紀事_範例.xlsx》：
  * 專案名稱／計畫項目／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
 export async function buildLedgerXlsx(
   activities: ActivityRecord[],

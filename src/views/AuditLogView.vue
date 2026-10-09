@@ -21,7 +21,7 @@ const CLASS_OPTIONS: [string, string][] = [
   ['Activity', '活動（含附件）'],
   ['Plan', '計畫'],
   ['Category', '分類'],
-  ['GenerationJob', 'AI 生成任務'],
+  ['GenerationJob', 'AI 生成工作'],
   ['_User', '登入／登出'],
 ]
 
@@ -38,6 +38,14 @@ async function load() {
 }
 
 onMounted(load)
+
+function clearFilters() {
+  actorFilter.value = ''
+  classFilter.value = ''
+  dateFrom.value = ''
+  dateTo.value = ''
+  keyword.value = ''
+}
 
 const actors = computed(() => [...new Set(logs.value.map((l) => l.actorName).filter(Boolean))].sort())
 
@@ -64,7 +72,7 @@ const filtered = computed(() => {
 
 <template>
   <h1>操作紀錄</h1>
-  <p class="sub">所有人對計畫、分類、活動、附件與 AI 生成任務的新增、修改、刪除，以及登入登出，都會自動記錄在這裡，無法修改或刪除。</p>
+  <p class="sub">所有人對計畫、分類、活動、附件與 AI 生成工作的新增、修改、刪除，以及登入登出，都會自動記錄在這裡，無法修改或刪除。</p>
 
   <div class="card section-gap">
     <div class="filters">
@@ -92,19 +100,22 @@ const filtered = computed(() => {
       </div>
       <div class="kw">
         <label>關鍵字</label>
-        <input v-model="keyword" placeholder="活動名稱、檔名…">
+        <input v-model="keyword" placeholder="搜尋名稱／摘要內容">
       </div>
     </div>
     <div class="row field between">
       <span class="count-text">顯示 {{ filtered.length }} ／ 共 {{ logs.length }} 筆（最近 1000 筆）</span>
-      <button class="btn ghost sm" :disabled="loading" @click="load">{{ loading ? '載入中…' : '重新整理' }}</button>
+      <span class="row" style="gap:8px">
+        <button class="btn ghost sm" @click="clearFilters">清除篩選</button>
+        <button class="btn ghost sm" :disabled="loading" @click="load">{{ loading ? '載入中…' : '重新整理' }}</button>
+      </span>
     </div>
   </div>
 
   <p v-if="loadError" class="flagbox"><b>讀取失敗</b>　{{ loadError }}</p>
   <div class="card flush">
     <p v-if="loading && !logs.length" class="empty">載入中…</p>
-    <AuditLogList v-else :logs="filtered" />
+    <AuditLogList v-else :logs="filtered" :empty-text="logs.length ? '目前篩選條件下沒有操作紀錄。' : undefined" />
   </div>
 </template>
 

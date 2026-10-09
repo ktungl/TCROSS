@@ -166,11 +166,11 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 
 ## 範本修改流程
 
-大紀事 Excel／內政部結案 Word／簽到表／領據／活動紀錄表的產出邏輯全部在 `src/utils/download.ts`，用 `exceljs`（xlsx）與 `docx`（Word）組字串樣板，不是套現成的 Office 檔案模板。
+大事紀 Excel／內政部結案 Word／簽到表／領據／活動紀錄表的產出邏輯全部在 `src/utils/download.ts`，用 `exceljs`（xlsx）與 `docx`（Word）組字串樣板，不是套現成的 Office 檔案模板。
 
 **要改欄位、排版、抬頭文字**：
 
-1. 找到對應的 `build*` 函式（例如大紀事是 `buildLedgerXlsx()`，內政部結案是 `buildNeimuReportDocx()`）
+1. 找到對應的 `build*` 函式（例如大事紀是 `buildLedgerXlsx()`，內政部結案是 `buildNeimuReportDocx()`）
 2. 改樣板內容（儲存格文字、欄寬、標題）
 3. 本機 `npm run dev` 起服務，登入後到「匯出成果」頁面實際跑一次匯出，打開產出的 `.xlsx`/`.docx` 肉眼核對
 4. 如果改動涉及圖片內嵌，參考 2026-09-04 驗證圖片內嵌排版的做法（見 [ROADMAP.md](ROADMAP.md) 9 月 Demo 項目 1）：在瀏覽器 devtools 攔截 `URL.createObjectURL()` 拿到匯出的 `Blob`，解壓內部 zip 比對圖片位元組是否跟原始檔案一致，比單純肉眼看排版更可靠

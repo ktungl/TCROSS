@@ -10,6 +10,8 @@ defineProps<{
   logs: AuditLogRecord[]
   /** 在活動頁裡顯示時不用再連回同一個活動 */
   hideActivityLink?: boolean
+  /** 沒有資料時的提示；有篩選條件的頁面要說明是「篩選後」沒有 */
+  emptyText?: string
 }>()
 
 const router = useRouter()
@@ -96,7 +98,7 @@ function activityExists(id: string): boolean {
       </template>
     </li>
   </ul>
-  <p v-else class="empty">沒有操作紀錄。</p>
+  <p v-else class="empty">{{ emptyText ?? '沒有操作紀錄。' }}</p>
 </template>
 
 <style scoped>

@@ -73,7 +73,7 @@ async function onDuplicate(id: string) {
       @duplicate="onDuplicate(a.id)"
     />
   </div>
-  <p v-if="!rows.length" class="empty">{{ db.loading ? '載入中…' : '這個條件下沒有活動。' }}</p>
+  <p v-if="!rows.length" class="empty">{{ db.loading ? '載入中…' : '目前篩選條件下沒有活動。' }}</p>
 
   <ActivityFormModal v-if="showCreate" @close="showCreate = false" />
 </template>
