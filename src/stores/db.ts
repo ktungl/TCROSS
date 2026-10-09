@@ -509,6 +509,11 @@ export const useDbStore = defineStore('db', () => {
     return (await query.find()).map(auditLogToRecord)
   }
 
+  /** 計畫 id → 名稱；找不到（已刪除）時回傳「—」。 */
+  function planName(id: string): string {
+    return plans.value.find((p) => p.id === id)?.name ?? '—'
+  }
+
   return {
     plans,
     categories,
@@ -516,6 +521,7 @@ export const useDbStore = defineStore('db', () => {
     generationJobs,
     loading,
     error,
+    planName,
     fetchAll,
     createPlan,
     renamePlan,

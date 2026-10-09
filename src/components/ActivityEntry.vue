@@ -17,7 +17,7 @@ const root = ref<HTMLElement | null>(null)
     <span class="date mono">{{ activity.date || '未定日期' }}</span>
     <span>
       <span class="name">{{ activity.name }}</span>
-      <span class="meta">{{ activity.place || '—' }}　·　{{ activity.owner || '未指定負責人' }}　·　檔案 {{ nFiles(activity) }} 件</span>
+      <span class="meta">{{ activity.place || '—' }}　·　{{ activity.owner || '未指定負責人' }}　·　檔案 {{ nFiles(activity) }} 個</span>
     </span>
     <span class="plans">
       <template v-if="activity.plans.length">

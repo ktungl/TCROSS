@@ -16,8 +16,6 @@ const fGap = ref(false)
 const keyword = ref('')
 const showCreate = ref(false)
 
-const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—'
-
 const rows = computed(() => {
   const q = keyword.value.trim().toLowerCase()
   return db.activities
@@ -53,16 +51,16 @@ async function onDuplicate(id: string) {
 <template>
   <h1>活動列表</h1>
   <p class="sub">一個活動建立一次，可掛在多個計畫底下重複使用。</p>
-  <div class="row" style="margin-bottom:18px">
+  <div class="row toolbar">
     <button class="btn" @click="showCreate = true">建立活動</button>
-    <input v-model="keyword" placeholder="搜尋活動名稱／地點／負責人" style="width:220px">
-    <select v-model="fPlan" style="width:190px">
+    <input class="f-search" v-model="keyword" placeholder="搜尋活動名稱／地點／負責人">
+    <select class="f-plan" v-model="fPlan">
       <option value="">全部計畫</option>
       <option v-for="p in db.plans" :key="p.id" :value="p.id">{{ p.name }}</option>
     </select>
-    <input type="month" v-model="fMonth" style="width:150px">
+    <input class="f-narrow" type="month" v-model="fMonth">
     <button class="btn ghost sm" @click="clearFilters">清除篩選</button>
-    <label class="chk" style="margin:0 0 0 auto"><input type="checkbox" v-model="fGap">只看有缺漏</label>
+    <label class="chk" style="margin-left:auto"><input type="checkbox" v-model="fGap">只看有缺漏</label>
   </div>
 
   <div class="ledger">
@@ -70,7 +68,7 @@ async function onDuplicate(id: string) {
       v-for="a in rows"
       :key="a.id"
       :activity="a"
-      :plan-name="planName"
+      :plan-name="db.planName"
       @click="openDetail(a.id)"
       @duplicate="onDuplicate(a.id)"
     />

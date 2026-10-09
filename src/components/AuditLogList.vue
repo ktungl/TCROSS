@@ -2,8 +2,9 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
-import { formatDateTime } from '../utils/actor'
-import type { AuditAction, AuditChange, AuditLogRecord } from '../types'
+import { UNRECORDED, formatDateTime } from '../utils/actor'
+import { GENERATION_STATUS_LABELS } from '../types'
+import type { AuditAction, AuditChange, AuditLogRecord, GenerationJobStatus } from '../types'
 
 defineProps<{
   logs: AuditLogRecord[]
@@ -21,13 +22,6 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   delete: '刪除',
   login: '登入',
   logout: '登出',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: '等待中',
-  processing: '處理中',
-  done: '完成',
-  error: '失敗',
 }
 
 function toggle(id: string) {
@@ -50,7 +44,7 @@ function formatValue(change: AuditChange, value: unknown): string {
   if (change.field === 'activity' && typeof value === 'string') {
     return db.activities.find((a) => a.id === value)?.name ?? '（已刪除的活動）'
   }
-  if (change.field === 'status' && typeof value === 'string') return STATUS_LABELS[value] ?? value
+  if (change.field === 'status' && typeof value === 'string') return GENERATION_STATUS_LABELS[value as GenerationJobStatus] ?? value
   if (change.field === 'deletedAt') return typeof value === 'string' ? formatDateTime(value) : String(value)
   if (change.field === 'kpis' && Array.isArray(value)) {
     return value
@@ -76,17 +70,17 @@ function activityExists(id: string): boolean {
     <li v-for="log in logs" :key="log.id">
       <div class="audit-head">
         <span class="mono audit-time">{{ formatDateTime(log.createdAt) }}</span>
-        <strong>{{ log.actorName || '（不明）' }}</strong>
+        <strong>{{ log.actorName || UNRECORDED }}</strong>
         <span class="tag">{{ ACTION_LABELS[log.action] ?? log.action }}</span>
         <button
           v-if="!hideActivityLink && log.activityId && activityExists(log.activityId)"
-          class="link-btn"
+          class="link link-sm"
           @click="router.push({ name: 'detail', params: { id: log.activityId } })"
         >前往活動</button>
       </div>
       <div class="audit-summary">{{ log.summary }}</div>
       <template v-if="log.action === 'update' && log.changes.length">
-        <button class="link-btn" @click="toggle(log.id)">
+        <button class="link link-sm" @click="toggle(log.id)">
           {{ expanded.has(log.id) ? '收合修改內容' : `查看修改內容（${log.changes.length} 個欄位）` }}
         </button>
         <table v-if="expanded.has(log.id)" class="audit-changes">
@@ -135,15 +129,10 @@ function activityExists(id: string): boolean {
   color: var(--ink-soft);
   overflow-wrap: anywhere;
 }
-.link-btn {
-  background: none;
-  border: 0;
-  padding: 0;
+.link-sm {
   margin-top: 4px;
   font-size: 12px;
   color: var(--ink-soft);
-  text-decoration: underline;
-  cursor: pointer;
 }
 .audit-changes {
   width: 100%;

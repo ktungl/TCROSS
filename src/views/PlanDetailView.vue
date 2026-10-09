@@ -10,7 +10,6 @@ const router = useRouter()
 const db = useDbStore()
 
 const plan = computed(() => db.plans.find((p) => p.id === props.id))
-const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—'
 
 const activities = computed(() =>
   db.activities
@@ -26,7 +25,7 @@ function openDetail(id: string) {
 
 <template>
   <div v-if="plan">
-    <button class="back" @click="router.push({ name: 'plans' })">← 回計畫列表</button>
+    <button class="back" @click="router.push({ name: 'plans' })">← 回計畫與分類管理</button>
     <h1>{{ plan.name }}</h1>
     <p class="sub mono">
       {{ activities.length }} 場活動　·　{{ activities.filter((a) => gaps(a).length).length }} 場有缺漏
@@ -37,7 +36,7 @@ function openDetail(id: string) {
         v-for="a in activities"
         :key="a.id"
         :activity="a"
-        :plan-name="planName"
+        :plan-name="db.planName"
         @click="openDetail(a.id)"
       />
     </div>

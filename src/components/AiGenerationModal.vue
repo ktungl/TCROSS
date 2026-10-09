@@ -12,9 +12,10 @@ import {
 } from '../lib/middleware'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { useEscape } from '../composables/useEscape'
 import FolderDropzone from './FolderDropzone.vue'
-import { UNRECORDED } from '../utils/actor'
-import { FOLDERS, fileUploadRejectionReason } from '../types'
+import { UNRECORDED, formatDateTime } from '../utils/actor'
+import { FOLDERS, GENERATION_STATUS_LABELS, fileUploadRejectionReason } from '../types'
 import type { ActivityRecord, FolderKey, GenerationJobRecord, GenerationJobStatus } from '../types'
 
 const props = defineProps<{ activity: ActivityRecord }>()
@@ -30,6 +31,7 @@ function emptySelection(): Record<FolderKey, File[]> {
 const selected = reactive(emptySelection())
 const fileStates = reactive(new Map<File, 'queued' | 'uploading' | 'uploaded' | 'error'>())
 const fileProgress = reactive(new Map<File, number>())
+const FILE_STATE_LABELS = { queued: '待上傳', uploading: '上傳中', uploaded: '已上傳', error: '上傳失敗' } as const
 /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
 const UPLOAD_CONCURRENCY = 3
 /** 每筆生成工作的素材數量上限，要跟 server/main.py 的 MAX_SOURCE_FILES 一致——
@@ -50,14 +52,8 @@ const pastJobs = computed(() =>
   ),
 )
 
-const statusLabels: Record<GenerationJobStatus, string> = {
-  pending: '待處理',
-  processing: '處理中',
-  done: '已完成',
-  error: '錯誤',
-}
 function statusLabel(status: GenerationJobStatus): string {
-  return statusLabels[status]
+  return GENERATION_STATUS_LABELS[status]
 }
 
 const canRetrigger = computed(() => {
@@ -211,7 +207,7 @@ async function download(job: GenerationJobRecord) {
 const deletingJobId = ref<string | null>(null)
 
 async function removeJob(job: GenerationJobRecord) {
-  if (!(await confirm(`確定要把這筆「${job.kind}」生成工作移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`))) return
+  if (!(await confirm(`確定要把這筆「${job.kind}」生成工作移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`, '移到垃圾桶'))) return
   deletingJobId.value = job.id
   try {
     await db.trashGenerationJob(job.id)
@@ -227,23 +223,29 @@ async function removeJob(job: GenerationJobRecord) {
   }
 }
 
-function close() {
+async function close() {
+  if (submitting.value) {
+    pushToast('素材還在上傳，請等上傳完成再關閉', 'error')
+    return
+  }
+  if (totalSelected.value && !(await confirm('已選的素材還沒送出，確定要放棄嗎？', '放棄'))) return
   stopPolling()
   emit('close')
 }
+useEscape(close)
 </script>
 
 <template>
   <div class="modal" @click.self="close">
     <div class="card">
-      <h2 style="margin-top:0">AI 自動生成成果報告</h2>
+      <h2>AI 自動生成成果報告</h2>
       <p class="sub">選擇語音／影片／照片／文件素材，上傳後建立一筆生成工作。</p>
 
       <FolderDropzone
         v-for="[key, label] in FOLDERS"
         :key="key"
         :label="label"
-        :count-label="`已選 ${selected[key].length} 件`"
+        :count-label="`已選 ${selected[key].length} 個`"
         @pick="(files) => addFiles(key, files)"
         @drop="(files) => addFiles(key, files)"
       >
@@ -254,7 +256,7 @@ function close() {
               <span class="mono fsize">
                 {{ fileStates.get(f) === 'uploading'
                   ? `上傳中 ${Math.round((fileProgress.get(f) ?? 0) * 100)}%`
-                  : fileStates.get(f) ?? '待上傳' }}
+                  : FILE_STATE_LABELS[fileStates.get(f) ?? 'queued'] }}
               </span>
               <button class="x" :disabled="submitting" @click="removeSelected(key, i)">×</button>
             </span>
@@ -270,27 +272,27 @@ function close() {
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按選擇檔案。</p>
       </FolderDropzone>
 
-      <div v-if="activeJob" class="card" style="margin-top:14px">
+      <div v-if="activeJob" class="card field">
         <b>目前工作</b>：{{ activeJob.kind }}　狀態：{{ statusLabel(activeJob.status) }}
-        <p v-if="activeJob.status !== 'done' && activeJob.status !== 'error'" class="sub" style="margin:6px 0 0">
+        <p v-if="activeJob.status !== 'done' && activeJob.status !== 'error'" class="sub kv">
           已送出，等待後端處理（此頁面每 5 秒自動查詢一次最新狀態）。
-          <button v-if="canRetrigger" class="btn ghost sm" style="margin-left:8px;width:auto;letter-spacing:0" @click="retrigger">重新觸發</button>
+          <button v-if="canRetrigger" class="btn ghost sm" style="margin-left:8px" @click="retrigger">重新觸發</button>
         </p>
-        <p v-else-if="activeJob.status === 'error'" class="sub" style="margin:6px 0 0">
+        <p v-else-if="activeJob.status === 'error'" class="sub kv">
           {{ activeJob.errorMessage || '生成失敗' }}
         </p>
         <button
           v-else-if="activeJob.resultFile"
           class="btn ghost sm"
-          style="margin-top:8px;width:auto;letter-spacing:0"
+          style="margin-top:8px"
           :disabled="downloading === activeJob.id"
           @click="download(activeJob)"
         >
-          {{ downloading === activeJob.id ? '取得下載網址中…' : '下載檔案' }}
+          {{ downloading === activeJob.id ? '取得中…' : '下載' }}
         </button>
       </div>
 
-      <div v-if="pastJobs.length" style="margin-top:14px">
+      <div class="field" v-if="pastJobs.length">
         <label>過去的生成工作</label>
         <ul class="files">
           <li v-for="j in pastJobs" :key="j.id">
@@ -299,20 +301,20 @@ function close() {
               <button
                 v-if="j.status === 'done' && j.resultFile"
                 class="btn ghost sm"
-                style="margin:0;width:auto;letter-spacing:0"
+               
                 :disabled="downloading === j.id"
                 @click="download(j)"
               >
                 {{ downloading === j.id ? '取得中…' : '下載' }}
               </button>
-              <span class="mono fsize">{{ new Date(j.createdAt).toLocaleString() }}</span>
+              <span class="mono fsize">{{ formatDateTime(j.createdAt) }}</span>
               <button class="x" title="移到垃圾桶" :disabled="deletingJobId === j.id" @click="removeJob(j)">×</button>
             </span>
           </li>
         </ul>
       </div>
 
-      <div class="row" style="margin-top:20px">
+      <div class="row actions">
         <button class="btn" :disabled="submitting || !totalSelected" @click="startGeneration">
           {{ submitting ? '上傳中…' : '開始生成' }}
         </button>

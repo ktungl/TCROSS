@@ -13,6 +13,7 @@ import {
 } from '../utils/download'
 import type { GeneratedFormKind, OfficialLetterPurpose, SignInLayout } from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { useEscape } from '../composables/useEscape'
 import { isParsableRegistration, readParticipants } from '../utils/registration'
 import { ATTACHMENT_TYPES } from '../types'
 import type { ActivityRecord } from '../types'
@@ -23,6 +24,7 @@ const props = defineProps<{
   planName: (id: string) => string
 }>()
 const emit = defineEmits<{ close: [] }>()
+useEscape(() => emit('close'))
 
 const downloading = ref(false)
 
@@ -38,7 +40,7 @@ function readIssuer(): string {
 const letterIssuer = ref(readIssuer() || ORGANIZER_NAME)
 const letterRecipient = ref('')
 const letterPurpose = ref<OfficialLetterPurpose>('邀請參加')
-// 公文「依據」、簽到表標題要列哪些專案：活動上掛的專案不一定都是計畫
+// 公文「依據」、簽到表標題要列哪些計畫：活動上掛的計畫不一定都要寫進文件
 // （例如「2026大事紀」），所以讓使用者自己勾，預設全勾
 const planOptions = computed(() => props.activity.plans.map(props.planName))
 const pickedPlans = ref<string[]>([...planOptions.value])
@@ -125,7 +127,7 @@ async function download() {
 <template>
   <div class="modal" @click.self="emit('close')">
     <div class="card">
-      <h2 style="margin-top:0">{{ kind }}</h2>
+      <h2>{{ kind }}</h2>
       <p class="sub">{{ summary }}</p>
       <template v-if="kind === '公文'">
         <label>公文用途</label>
@@ -133,9 +135,9 @@ async function download() {
           <option value="邀請參加">邀請參加活動</option>
           <option value="檢送成果">檢送活動成果</option>
         </select>
-        <label style="margin-top:12px">發文機關（全銜）</label>
+        <label class="field">發文機關（全銜）</label>
         <input v-model="letterIssuer" placeholder="例：社團法人○○協會">
-        <label style="margin-top:12px">受文者</label>
+        <label class="field">受文者</label>
         <input v-model="letterRecipient" placeholder="例：內政部">
       </template>
       <template v-if="kind === '簽到表'">
@@ -143,26 +145,26 @@ async function download() {
         <select v-model="signInLayout">
           <option v-for="(l, key) in SIGN_IN_LAYOUTS" :key="key" :value="key">{{ l.label }}</option>
         </select>
-        <label style="margin-top:12px">從參與者名單（報名表）帶入</label>
+        <label class="field">從參與者名單（報名表）帶入</label>
         <select v-model="registrationUrl">
           <option value="">不帶入（空白簽到表）</option>
           <option v-for="f in parsableRegistrations" :key="f.url" :value="f.url">{{ f.name }}</option>
         </select>
-        <p class="meta" style="font-size:11.5px;margin:4px 0 0">
+        <p class="hint">
           <template v-if="!registrationFiles.length">這個活動還沒有上傳報名表。</template>
           <template v-else-if="!parsableRegistrations.length">已上傳的報名表不是 Excel／CSV 格式，無法自動帶入。</template>
           <template v-else>依表頭的「單位／職稱／姓名」欄位帶入（雙欄版型只帶姓名），名單之外依活動人數保留空白列。</template>
         </p>
       </template>
       <template v-if="(kind === '公文' || kind === '簽到表') && planOptions.length">
-        <label style="margin-top:12px">{{ kind === '公文' ? '說明「依據」的專案（不勾＝不寫依據）' : '標題顯示的專案（不勾＝不顯示）' }}</label>
+        <label class="field">{{ kind === '公文' ? '說明「依據」的計畫（不勾＝不寫依據）' : '標題顯示的計畫（不勾＝不顯示）' }}</label>
         <div class="row" style="gap:14px">
           <label v-for="n in planOptions" :key="n" class="chk">
             <input v-model="pickedPlans" type="checkbox" :value="n">{{ n }}
           </label>
         </div>
       </template>
-      <div class="row" style="margin-top:20px">
+      <div class="row actions">
         <button class="btn" :disabled="downloading" @click="download">{{ downloading ? '產生中…' : '下載' }}</button>
         <button class="btn ghost" @click="emit('close')">關閉</button>
       </div>

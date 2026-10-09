@@ -28,7 +28,7 @@ const ledgerPhotosPerRow = ref(1)
 const exporting = ref(false)
 const previewVisible = ref(false)
 
-const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—'
+const planName = db.planName
 
 function toggleCategory(c: ActivityCategory, checked: boolean) {
   xCategories.value = checked ? [...xCategories.value, c] : xCategories.value.filter((x) => x !== c)
@@ -129,12 +129,12 @@ async function doExport() {
           <option v-for="p in db.plans" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
       </div>
-      <div><label>起</label><input type="date" v-model="xFrom"></div>
-      <div><label>訖</label><input type="date" v-model="xTo"></div>
+      <div><label>起日</label><input type="date" v-model="xFrom"></div>
+      <div><label>迄日</label><input type="date" v-model="xTo"></div>
     </div>
 
-    <label style="margin-top:14px">活動分類（不勾選＝全部）</label>
-    <p v-if="xPlan" class="meta" style="font-size:11.5px;margin:-4px 0 6px">依已選計畫篩選相關項目</p>
+    <label class="field">活動分類（不勾選＝全部）</label>
+    <p v-if="xPlan" class="hint" style="margin:-4px 0 6px">依已選計畫篩選相關項目</p>
     <div class="row" style="gap:14px">
       <label v-for="c in categoryOptions" :key="c.id" class="chk">
         <input
@@ -145,13 +145,13 @@ async function doExport() {
       </label>
     </div>
 
-    <label style="margin-top:14px">匯出檔案類型</label>
+    <label class="field">匯出檔案類型</label>
     <div class="row">
       <label class="chk"><input type="checkbox" v-model="wantLedger">大事紀 Excel</label>
       <label class="chk"><input type="checkbox" v-model="wantNeimu">內政部結案 Word</label>
     </div>
 
-    <div v-if="wantLedger" class="grid3" style="margin-top:14px">
+    <div v-if="wantLedger" class="grid3 field">
       <div>
         <label>大事紀照片大小</label>
         <select v-model="ledgerPhotoSize">
@@ -165,11 +165,11 @@ async function doExport() {
         </select>
       </div>
     </div>
-    <p v-if="wantLedger" class="meta" style="font-size:11.5px;margin:4px 0 0">
+    <p v-if="wantLedger" class="hint">
       優先放標記為精選的照片；一張照片一個格子，每列列高固定，照片不會超出格子
     </p>
 
-    <div class="row" style="margin-top:16px">
+    <div class="row actions">
       <button class="btn" :disabled="exporting" @click="doExport">{{ exporting ? '產生中…' : '下載匯出檔案' }}</button>
       <button class="btn ghost" @click="doPreview">產生預覽</button>
       <button class="btn ghost" @click="doCsv">下載成果清單 CSV</button>

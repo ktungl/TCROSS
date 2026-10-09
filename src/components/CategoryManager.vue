@@ -15,7 +15,6 @@ const editingName = ref('')
 const editingPlanIds = ref<string[]>([])
 
 const planOptions = () => db.plans.map((p) => ({ id: p.id, label: p.name }))
-const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—'
 
 async function addCategory() {
   const n = categoryName.value.trim()
@@ -63,7 +62,7 @@ async function saveRename() {
 }
 
 async function removeCategory(id: string, name: string) {
-  if (!(await confirm(`確定要刪除分類「${name}」嗎？已建立活動上記錄的分類文字不會被移除，只是往後新增/編輯活動時不會再看到這個選項。`))) return
+  if (!(await confirm(`確定要刪除分類「${name}」嗎？已建立活動上記錄的分類文字不會被移除，只是往後新增／編輯活動時不會再看到這個選項。`, '刪除分類', true))) return
   try {
     await db.deleteCategory(id)
     pushToast('已刪除分類')
@@ -74,19 +73,19 @@ async function removeCategory(id: string, name: string) {
 </script>
 
 <template>
-  <p class="sub">活動分類（原「活動分類」下拉選單的選項）可以在這裡自訂新增、改名或刪除，調整不會影響已建立活動上已記錄的分類文字。分類可以指定所屬計畫：建立活動時先選計畫，分類清單就只會顯示對應的項目（沒有指定計畫的分類不受影響，任何計畫都看得到）。</p>
-  <div class="card" style="margin-bottom:20px">
+  <p class="sub">活動分類（建立活動時「活動分類」下拉選單的選項）可以在這裡自訂新增、改名或刪除，調整不會影響已建立活動上已記錄的分類文字。分類可以指定所屬計畫：建立活動時先選計畫，分類清單就只會顯示對應的項目（沒有指定計畫的分類不受影響，任何計畫都看得到）。</p>
+  <div class="card section-gap">
     <div class="row">
-      <input ref="categoryNameInput" v-model="categoryName" placeholder="分類名稱，例如：理監事聯席會議" style="flex:1;min-width:220px" @keyup.enter="addCategory">
+      <input class="grow" ref="categoryNameInput" v-model="categoryName" placeholder="分類名稱，例如：理監事聯席會議" @keyup.enter="addCategory">
       <button class="btn" @click="addCategory">新增分類</button>
     </div>
-    <div style="margin-top:10px">
+    <div class="field">
       <label>所屬計畫（可複選，留空＝不限計畫）</label>
       <MultiSelectDropdown v-model="newCategoryPlanIds" :options="planOptions()" placeholder="不指定＝所有計畫都看得到" />
     </div>
   </div>
 
-  <div v-for="c in db.categories" :key="c.id" class="card" style="margin-bottom:10px">
+  <div v-for="c in db.categories" :key="c.id" class="card item-gap">
     <div v-if="editingId === c.id" style="display:flex;flex-direction:column;gap:10px">
       <input v-model="editingName" placeholder="分類名稱" @keyup.esc="cancelRename">
       <div>
@@ -98,12 +97,12 @@ async function removeCategory(id: string, name: string) {
         <button class="btn ghost sm" @click="cancelRename">取消</button>
       </div>
     </div>
-    <div v-else class="row" style="justify-content:space-between">
+    <div v-else class="row between">
       <div>
         <strong>{{ c.name }}</strong>
-        <div class="meta" style="font-size:12px;color:var(--ink-soft)">
+        <div class="card-meta">
           {{ db.activities.filter(a => a.categories.includes(c.name)).length }} 場活動使用中
-          　·　所屬計畫：{{ c.planIds.length ? c.planIds.map(planName).join('、') : '不限' }}
+          　·　所屬計畫：{{ c.planIds.length ? c.planIds.map(db.planName).join('、') : '不限' }}
         </div>
         <StampLine :record="c" />
       </div>
@@ -113,5 +112,5 @@ async function removeCategory(id: string, name: string) {
       </div>
     </div>
   </div>
-  <p v-if="!db.categories.length" class="empty" style="padding:0">還沒有分類。</p>
+  <p v-if="!db.categories.length" class="empty flush">還沒有分類。</p>
 </template>

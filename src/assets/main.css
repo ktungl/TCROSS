@@ -24,6 +24,7 @@
   --ok:#4E7A52;
   --flag:#C4902F;
   --stamp:#A8462F;
+  --ok-bg:#EDF4F1;
 
   --r:4px;
   --r-lg:10px;
@@ -94,6 +95,7 @@ nav button[aria-current="true"]{
 .actor-stamp{display:inline-block;border:1px solid var(--stamp);color:var(--stamp);
   font-size:11px;letter-spacing:.04em;padding:1px 7px;border-radius:var(--r);
   line-height:1.6;white-space:normal}
+.actor-stamp.block{display:table;margin-top:3px}
 .whoami{font-size:12px;color:#C9B89A;padding:0 12px 6px}
 .logout-btn{background:none;border:0;color:#9C8567;text-align:left;
   padding:8px 12px;border-radius:var(--r);font-size:12.5px;width:100%;
@@ -131,6 +133,52 @@ h2{font-size:11.5px;letter-spacing:.2em;color:var(--ink-soft);font-weight:500;
 .btn.ghost{background:var(--card);color:var(--ink-soft);border-color:var(--line)}
 .btn.ghost:hover{background:var(--gold-100);border-color:var(--gold-400);color:var(--ink)}
 .btn.sm{padding:5px 12px;font-size:12.5px}
+/* label 當按鈕用（選擇檔案）時，蓋掉全域 label 的字距與下邊距 */
+label.btn{margin:0;letter-spacing:0}
+/* 無法復原的動作（刪除活動、永久刪除） */
+.btn.danger,.btn.ghost.danger{background:var(--card);color:var(--stamp);border-color:var(--stamp)}
+.btn.danger:hover,.btn.ghost.danger:hover{background:#FBEDE9;color:var(--stamp);border-color:var(--stamp)}
+
+/* 文字連結樣式的按鈕 */
+.link{background:none;border:0;padding:0;color:var(--ink);font:inherit;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.link:hover{color:var(--gold-600)}
+/* 外觀完全透明、只負責點擊的按鈕（整塊卡片可點） */
+.bare-btn{background:none;border:0;padding:0;text-align:left;color:inherit;font:inherit;cursor:pointer}
+
+/* 欄位下方的補充說明與錯誤訊息 */
+.hint{font-size:11.5px;color:var(--ink-soft);margin:4px 0 0}
+.field-error{color:var(--stamp);font-size:12px;margin:4px 0 0}
+/* 卡片內的次要資訊列（場次、所屬計畫…） */
+.card-meta{font-size:12px;color:var(--ink-soft)}
+
+/* ---------- 間距（全站統一，不要再寫行內 margin） ---------- */
+.field{margin-top:14px}          /* 表單欄位之間 */
+.actions{margin-top:20px}        /* 表單／對話框底部的按鈕列 */
+.toolbar{margin-bottom:14px}     /* 列表上方的篩選列 */
+.section-gap{margin-bottom:20px} /* 區塊卡片之間 */
+.item-gap{margin-bottom:10px}    /* 清單式卡片之間 */
+.card.flush,.empty.flush{padding:0}
+.flush-m{margin:0!important}
+.between{justify-content:space-between}
+.grow{flex:1;min-width:220px}
+.nowrap{white-space:nowrap}
+.more-row{justify-content:center;margin-top:14px}
+.selection-gap{margin:10px 0}
+.check-item{margin-bottom:6px}
+
+/* 篩選列欄位寬度：搜尋框／計畫下拉／其他短下拉 */
+.f-search{width:220px}
+.f-plan{width:190px}
+.f-narrow{width:150px}
+
+/* 段落：卡片內開頭說明、對話框的「欄位：值」列、標題下方的補充行 */
+.sub.card-intro{margin:0 0 14px}
+.sub.kv{margin:4px 0}
+.sub.sub-extra{margin-top:-8px}
+/* 筆數、選取數 */
+.count-text{font-size:12px;color:var(--ink-soft)}
+.sel-count{font-family:var(--f-mono);font-size:12.5px}
 
 /* ---------- 活動列表 ---------- */
 .ledger{border-top:2px solid var(--gold-400)}
@@ -168,6 +216,12 @@ h2{font-size:11.5px;letter-spacing:.2em;color:var(--ink-soft);font-weight:500;
   padding:12px 15px;font-size:13px;margin:14px 0;
   border-radius:0 var(--r) var(--r) 0}
 .flagbox b{color:var(--gold-600)}
+.flagbox.ok{border-color:var(--ok);background:var(--ok-bg)}
+.flagbox.ok b{color:var(--ok)}
+
+/* ---------- 數字卡（總覽） ---------- */
+.stat label{margin-bottom:8px}
+.stat-num{font-family:var(--f-mono);font-size:28px;font-weight:700}
 
 /* ---------- 資料夾 ---------- */
 .folder{border:1px solid var(--line);border-radius:var(--r-lg);
@@ -221,6 +275,8 @@ h2{font-size:11.5px;letter-spacing:.2em;color:var(--ink-soft);font-weight:500;
   padding:40px 20px;overflow:auto;z-index:50}
 .modal .card{width:100%;max-width:660px}
 .modal h2:first-child{margin-top:0}
+.modal .card.confirm-card{max-width:400px}
+.modal .card.wide{max-width:760px}
 .hide{display:none!important}
 
 .back{background:none;border:0;color:var(--ink-soft);font-size:13px;
@@ -264,7 +320,7 @@ table.out th{font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
   font-weight:500;background:var(--line-soft)}
 table.out tbody tr:hover{background:var(--gold-100)}
 
-.chk{display:flex;align-items:center;gap:8px;font-size:13px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:0}
 .chk input{width:auto}
 
 /* 表格在窄螢幕改為水平捲動，避免欄位被壓成直書 */

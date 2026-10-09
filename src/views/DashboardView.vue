@@ -31,24 +31,24 @@ function openActivity(id: string) {
   <h1>總覽</h1>
   <p class="sub">所有活動與計畫的整體狀態。</p>
 
-  <div class="grid3" style="margin-bottom:20px">
-    <div class="card">
-      <label style="margin-bottom:8px">活動總數</label>
-      <div class="mono" style="font-size:28px;font-weight:700">{{ totalActivities }}</div>
+  <div class="grid3 section-gap">
+    <div class="card stat">
+      <label>活動總數</label>
+      <div class="stat-num">{{ totalActivities }}</div>
     </div>
-    <div class="card">
-      <label style="margin-bottom:8px">有缺漏活動</label>
-      <div class="mono" style="font-size:28px;font-weight:700">{{ gapCount }}</div>
+    <div class="card stat">
+      <label>有缺漏活動</label>
+      <div class="stat-num">{{ gapCount }}</div>
     </div>
-    <div class="card">
-      <label style="margin-bottom:8px">計畫總數</label>
-      <div class="mono" style="font-size:28px;font-weight:700">{{ totalPlans }}</div>
+    <div class="card stat">
+      <label>計畫總數</label>
+      <div class="stat-num">{{ totalPlans }}</div>
     </div>
   </div>
 
   <h2>各活動缺漏項目</h2>
-  <div class="card" style="margin-bottom:20px">
-    <p v-if="!gapActivities.length" class="empty" style="padding:0">目前沒有活動有缺漏。</p>
+  <div class="card section-gap">
+    <p v-if="!gapActivities.length" class="empty flush">目前沒有活動有缺漏。</p>
     <div v-else class="gap-list">
       <button v-for="a in gapActivities" :key="a.id" class="gap-row" @click="openActivity(a.id)">
         <span class="gap-row-head">

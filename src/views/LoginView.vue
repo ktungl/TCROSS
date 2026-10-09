@@ -43,18 +43,18 @@ onBeforeUnmount(() => clearTimeout(enterTimer))
 <template>
   <div class="login-page">
     <div v-if="welcomed" class="card login-card welcome-card">
-      <h1 style="margin-top:0">{{ auth.greetingName }}，您好</h1>
+      <h1>{{ auth.greetingName }}，您好</h1>
       <p class="sub">登入成功，正在進入系統…</p>
       <button class="btn" type="button" @click="enter">進入系統</button>
     </div>
     <div v-else class="card login-card">
-      <h1 style="margin-top:0">合照盟</h1>
-      <p class="sub" style="margin-bottom:0">計畫資料整合平台</p>
+      <h1>合照盟</h1>
+      <p class="sub flush-m">計畫資料整合平台</p>
       <p class="sub">請登入以繼續。</p>
       <form @submit.prevent="submit">
         <label>帳號</label>
         <input v-model="username" autocomplete="username" autofocus>
-        <label style="margin-top:12px">密碼</label>
+        <label class="field">密碼</label>
         <div class="password-field">
           <input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password">
           <button
@@ -71,7 +71,7 @@ onBeforeUnmount(() => clearTimeout(enterTimer))
             </svg>
           </button>
         </div>
-        <div class="row" style="margin-top:20px">
+        <div class="row actions">
           <button class="btn" type="submit" :disabled="submitting">{{ submitting ? '登入中…' : '登入' }}</button>
         </div>
       </form>
@@ -80,16 +80,6 @@ onBeforeUnmount(() => clearTimeout(enterTimer))
 </template>
 
 <style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.login-card {
-  width: 100%;
-  max-width: 360px;
-}
 .password-field {
   position: relative;
 }

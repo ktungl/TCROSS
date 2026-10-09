@@ -206,6 +206,14 @@ export interface ActivityRecord extends ActorStamp {
 export type GenerationJobKind = '成果報告' | '其他'
 export type GenerationJobStatus = 'pending' | 'processing' | 'done' | 'error'
 
+/** 生成工作狀態的顯示文字；AI 生成彈窗、歷史檔案頁、操作紀錄共用同一套。 */
+export const GENERATION_STATUS_LABELS: Record<GenerationJobStatus, string> = {
+  pending: '待處理',
+  processing: '處理中',
+  done: '已完成',
+  error: '失敗',
+}
+
 export interface GenerationJobRecord {
   id: string
   activityId: string

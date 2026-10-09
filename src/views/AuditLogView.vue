@@ -66,7 +66,7 @@ const filtered = computed(() => {
   <h1>操作紀錄</h1>
   <p class="sub">所有人對計畫、分類、活動、附件與 AI 生成任務的新增、修改、刪除，以及登入登出，都會自動記錄在這裡，無法修改或刪除。</p>
 
-  <div class="card" style="margin-bottom:16px">
+  <div class="card section-gap">
     <div class="filters">
       <div>
         <label>人員</label>
@@ -95,14 +95,14 @@ const filtered = computed(() => {
         <input v-model="keyword" placeholder="活動名稱、檔名…">
       </div>
     </div>
-    <div class="row" style="margin-top:12px;justify-content:space-between">
-      <span style="font-size:11.5px;color:var(--ink-faint)">顯示 {{ filtered.length }} ／ 共 {{ logs.length }} 筆（最近 1000 筆）</span>
+    <div class="row field between">
+      <span class="count-text">顯示 {{ filtered.length }} ／ 共 {{ logs.length }} 筆（最近 1000 筆）</span>
       <button class="btn ghost sm" :disabled="loading" @click="load">{{ loading ? '載入中…' : '重新整理' }}</button>
     </div>
   </div>
 
   <p v-if="loadError" class="flagbox"><b>讀取失敗</b>　{{ loadError }}</p>
-  <div class="card" style="padding:0">
+  <div class="card flush">
     <p v-if="loading && !logs.length" class="empty">載入中…</p>
     <AuditLogList v-else :logs="filtered" />
   </div>

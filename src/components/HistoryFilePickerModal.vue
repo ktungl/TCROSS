@@ -3,16 +3,18 @@ import { computed, ref } from 'vue'
 import { useDbStore } from '../stores/db'
 import { attachmentSrc } from '../lib/attachments'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { useEscape } from '../composables/useEscape'
 import { kb } from '../utils/activity'
+import { fileExt, isImageFile } from '../utils/file'
 import { ATTACHMENT_TYPES } from '../types'
 import type { AttachmentKey } from '../types'
 
 const props = defineProps<{ activityId: string; folder: AttachmentKey }>()
 const emit = defineEmits<{ close: [] }>()
+useEscape(() => emit('close'))
 
 const db = useDbStore()
 const attachmentLabel = Object.fromEntries(ATTACHMENT_TYPES) as Record<AttachmentKey, string>
-const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—'
 
 const pPlan = ref('')
 const pType = ref<AttachmentKey | ''>(props.folder)
@@ -46,15 +48,6 @@ const rows = computed<PickRow[]>(() => {
     .filter((r) => !pPlan.value || r.planIds.includes(pPlan.value))
     .filter((r) => !q || [r.activityName, r.name].some((s) => s.toLowerCase().includes(q)))
 })
-
-const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'svg']
-function isImageFile(name: string): boolean {
-  const ext = name.toLowerCase().split('.').pop() ?? ''
-  return IMAGE_EXTENSIONS.includes(ext)
-}
-function fileExt(name: string): string {
-  return name.toLowerCase().split('.').pop() ?? ''
-}
 
 function rowKey(r: PickRow): string {
   return `${r.activityId}:${r.type}:${r.url}`
@@ -92,29 +85,29 @@ async function attach() {
 
 <template>
   <div class="modal" @click.self="emit('close')">
-    <div class="card" style="max-width:760px">
-      <h2 style="margin-top:0">從歷史檔案選取（{{ attachmentLabel[folder] }}）</h2>
+    <div class="card wide">
+      <h2>從歷史檔案選取（{{ attachmentLabel[folder] }}）</h2>
       <p class="sub">挑選其他活動已經上傳過的檔案，直接加進這個活動的「{{ attachmentLabel[folder] }}」，不用重新上傳。</p>
 
-      <div class="row" style="margin-bottom:14px;justify-content:space-between">
+      <div class="row toolbar between">
         <div class="row">
-          <input v-model="pKeyword" placeholder="搜尋活動名稱／檔案名稱" style="width:200px">
-          <select v-model="pPlan" style="width:170px">
+          <input class="f-search" v-model="pKeyword" placeholder="搜尋活動名稱／檔案名稱">
+          <select class="f-plan" v-model="pPlan">
             <option value="">全部計畫</option>
             <option v-for="p in db.plans" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
-          <select v-model="pType" style="width:150px">
+          <select class="f-narrow" v-model="pType">
             <option value="">全部類型</option>
             <option v-for="[key, label] in ATTACHMENT_TYPES" :key="key" :value="key">{{ label }}</option>
           </select>
         </div>
         <div class="view-toggle">
-          <button type="button" :class="{ active: pView === 'grid' }" @click="pView = 'grid'">方格</button>
-          <button type="button" :class="{ active: pView === 'list' }" @click="pView = 'list'">列表</button>
+          <button type="button" :class="{ active: pView === 'grid' }" @click="pView = 'grid'">方格檢視</button>
+          <button type="button" :class="{ active: pView === 'list' }" @click="pView = 'list'">列表檢視</button>
         </div>
       </div>
 
-      <p class="sub mono" style="margin:0 0 10px">共 {{ rows.length }} 筆可選　·　已選取 {{ selected.size }} 筆</p>
+      <p class="count-text" style="margin:0 0 10px">共 {{ rows.length }} 個可選　·　已選取 {{ selected.size }} 個</p>
 
       <div style="max-height:400px;overflow:auto">
         <table class="out" v-if="rows.length && pView === 'list'">
@@ -149,7 +142,7 @@ async function attach() {
             <span class="file-cell-body">
               <span class="file-cell-name">{{ r.name }}</span>
               <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ r.activityName || '（未命名活動）' }}</span>
-              <span class="file-cell-meta">{{ r.planIds.map(planName).join('、') || '—' }}</span>
+              <span class="file-cell-meta">{{ r.planIds.map(db.planName).join('、') || '—' }}</span>
             </span>
           </div>
         </div>
@@ -157,7 +150,7 @@ async function attach() {
         <p v-else class="empty">沒有符合條件的歷史檔案。</p>
       </div>
 
-      <div class="row" style="margin-top:20px">
+      <div class="row actions">
         <button class="btn" :disabled="!selected.size || attaching" @click="attach">
           {{ attaching ? '加入中…' : `加入選取的 ${selected.size} 個檔案` }}
         </button>

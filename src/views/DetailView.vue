@@ -24,7 +24,6 @@ const router = useRouter()
 const db = useDbStore()
 
 const activity = computed(() => db.activities.find((a) => a.id === props.id))
-const planName = (id: string) => db.plans.find((p) => p.id === id)?.name ?? '—'
 
 const summaryDraft = ref('')
 const kpisDraft = ref<Kpi[]>([])
@@ -102,7 +101,7 @@ async function upload(folder: AttachmentKey, files: File[]) {
 async function onRemoveFile(folder: AttachmentKey, i: number) {
   if (!activity.value) return
   const name = activity.value.files[folder][i]?.name ?? '此檔案'
-  if (!(await confirm(`確定要把「${name}」移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`))) return
+  if (!(await confirm(`確定要把「${name}」移到垃圾桶嗎？之後可以在「歷史檔案」頁復原或永久刪除。`, '移到垃圾桶'))) return
   try {
     await db.trashFile(activity.value.id, folder, i)
     pushToast('已移到垃圾桶')
@@ -159,7 +158,7 @@ async function downloadAllAttachments() {
 
 async function deleteActivity() {
   if (!activity.value) return
-  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，活動會從系統中移除；已上傳的附件檔案與 AI 生成紀錄不會一併刪除。`))) return
+  if (!(await confirm(`確定要刪除「${activity.value.name}」嗎？此動作無法復原，活動會從系統中移除；已上傳的附件檔案與 AI 生成紀錄不會一併刪除。`, '刪除活動', true))) return
   try {
     await db.deleteActivity(activity.value.id)
     pushToast('已刪除活動')
@@ -218,15 +217,15 @@ async function duplicateActivity() {
       {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}<template v-if="activity.timeEnd && activity.timeEnd !== activity.time">～{{ activity.timeEnd }}</template></template>
       <template v-if="activity.placeMode === 'online'">　線上<template v-if="activity.meetingUrl">（<a :href="activity.meetingUrl" target="_blank" rel="noopener">會議連結</a>）</template></template>
       <template v-else>　<a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template></template>
-      　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '—' }}
+      　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '未指定' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
     </p>
-    <p v-if="activity.attendees || activity.participantDesc" class="sub" style="margin-top:-8px">
+    <p v-if="activity.attendees || activity.participantDesc" class="sub sub-extra">
       <template v-if="activity.attendees">與會單位或成員：{{ activity.attendees }}　</template>
       <template v-if="activity.participantDesc">參加對象：{{ activity.participantDesc }}</template>
     </p>
-    <p v-if="activity.remark" class="sub" style="margin-top:-8px">備註：{{ activity.remark }}</p>
-    <p class="sub" style="margin-top:-8px"><StampLine :record="activity" /></p>
+    <p v-if="activity.remark" class="sub sub-extra">備註：{{ activity.remark }}</p>
+    <p class="sub sub-extra"><StampLine :record="activity" /></p>
 
     <div class="row" style="margin-bottom:6px">
       <button class="btn ghost sm" @click="showEdit = true">編輯基本資料</button>
@@ -237,19 +236,19 @@ async function duplicateActivity() {
       <button class="btn ghost sm" @click="genKind = '成果報告'">產生成果報告</button>
       <button class="btn ghost sm" @click="genKind = '公文'">產生公文</button>
       <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
-      <button class="btn ghost sm" style="color:var(--stamp);margin-left:auto" @click="deleteActivity">刪除此活動</button>
+      <button class="btn ghost sm danger" style="margin-left:auto" @click="deleteActivity">刪除此活動</button>
     </div>
 
     <div v-if="gaps(activity).length" class="flagbox">
       <b>缺漏提醒</b>　{{ gaps(activity).join('、') }}
     </div>
-    <div v-else class="flagbox" style="border-color:var(--ok);background:#EDF4F1">
-      <b style="color:var(--ok)">資料齊全</b>　可直接納入成果報告。
+    <div v-else class="flagbox ok">
+      <b>資料齊全</b>　可直接納入成果報告。
     </div>
 
     <h2>對應計畫</h2>
     <div class="card">
-      <label v-for="p in db.plans" :key="p.id" class="chk" style="margin-bottom:6px">
+      <label v-for="p in db.plans" :key="p.id" class="chk check-item">
         <input
           type="checkbox"
           :value="p.id"
@@ -257,14 +256,14 @@ async function duplicateActivity() {
           @change="togglePlan(p.id, ($event.target as HTMLInputElement).checked)"
         >{{ p.name }}
       </label>
-      <span v-if="!db.plans.length" class="empty" style="padding:0">還沒有計畫，先到「計畫」頁新增。</span>
+      <span v-if="!db.plans.length" class="empty flush">還沒有計畫，先到「計畫與分類管理」頁新增。</span>
     </div>
 
-    <div class="row" style="align-items:center;justify-content:space-between">
+    <div class="row between">
       <h2>活動資料</h2>
       <button
         class="btn ghost sm"
-        style="margin:0;width:auto"
+       
         :disabled="!totalAttachments || !!downloadingAll"
         :title="totalAttachments ? '依分類打包成 zip 下載（不含垃圾桶）' : '還沒有上傳任何檔案'"
         @click="downloadAllAttachments"
@@ -277,8 +276,8 @@ async function duplicateActivity() {
         :label="label"
         :count-label="
           key === 'photo'
-            ? `${activity.files[key].length} 件（需 ${PHOTO_MIN}–${PHOTO_MAX} 張）`
-            : `${activity.files[key].length} 件`
+            ? `${activity.files[key].length} 個（需 ${PHOTO_MIN}–${PHOTO_MAX} 張）`
+            : `${activity.files[key].length} 個`
         "
         pick-label="上傳"
         history-pickable
@@ -292,7 +291,7 @@ async function duplicateActivity() {
             <li v-if="key === 'photo' && f.url" class="photo-item">
               <div class="thumb-wrap">
                 <img :src="attachmentSrc(f.url, f.name)" class="thumb-lg" :alt="f.name">
-                <button class="x" title="刪除照片" @click="onRemoveFile(key, i)">×</button>
+                <button class="x" title="移到垃圾桶" @click="onRemoveFile(key, i)">×</button>
               </div>
               <div class="photo-body">
                 <div class="photo-head">
@@ -307,7 +306,7 @@ async function duplicateActivity() {
                     style="flex:1"
                     @change="onCaptionChange(key, i, $event)"
                   >
-                  <label class="chk" style="margin:0;white-space:nowrap">
+                  <label class="chk nowrap">
                     <input
                       type="checkbox"
                       :checked="f.featured"
@@ -318,10 +317,10 @@ async function duplicateActivity() {
               </div>
             </li>
             <li v-else>
-              <span class="fname">{{ f.name }}<span class="actor-stamp" style="display:table;margin-top:3px">上傳：{{ actorLine(f.uploadedByName, f.uploadedAt) }}</span></span>
+              <span class="fname">{{ f.name }}<span class="actor-stamp block">上傳：{{ actorLine(f.uploadedByName, f.uploadedAt) }}</span></span>
               <span style="display:flex;align-items:center">
                 <span class="fsize mono">{{ kb(f.size) }}</span>
-                <button class="x" @click="onRemoveFile(key, i)">×</button>
+                <button class="x" title="移到垃圾桶" @click="onRemoveFile(key, i)">×</button>
               </span>
             </li>
           </template>
@@ -334,7 +333,7 @@ async function duplicateActivity() {
     <div class="card">
       <label>成果摘要</label>
       <textarea v-model="summaryDraft" placeholder="這場活動做了什麼、達成什麼，三到五句。"></textarea>
-      <label style="margin-top:16px">KPI</label>
+      <label class="field">KPI</label>
       <div>
         <div v-for="(k, i) in kpisDraft" :key="i" class="kpi">
           <input v-model="k.k" placeholder="指標名稱，例如 受益人數">
@@ -345,18 +344,18 @@ async function duplicateActivity() {
         <p v-if="!kpisDraft.length" class="empty" style="padding:0 0 8px">還沒有 KPI。</p>
       </div>
       <button class="btn ghost sm" @click="addKpi">新增一列 KPI</button>
-      <div style="margin-top:16px"><button class="btn" @click="saveResults">儲存成果</button></div>
+      <div class="actions"><button class="btn" @click="saveResults">儲存成果</button></div>
     </div>
 
     <h2>操作紀錄</h2>
-    <details class="card" style="padding:0" @toggle="onLogsToggle">
+    <details class="card flush" @toggle="onLogsToggle">
       <summary style="padding:12px 15px;cursor:pointer">顯示這個活動的操作紀錄（含附件與 AI 生成）</summary>
       <p v-if="logsLoading && !activityLogs.length" class="empty">載入中…</p>
       <AuditLogList v-else :logs="activityLogs" hide-activity-link />
     </details>
 
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
-    <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="planName" @close="genKind = null" />
+    <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="db.planName" @close="genKind = null" />
     <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
     <HistoryFilePickerModal
       v-if="pickerFolder"

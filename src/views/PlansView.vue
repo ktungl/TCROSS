@@ -9,7 +9,8 @@ const activeTab = ref<'plans' | 'categories'>('plans')
 </script>
 
 <template>
-  <h1>計畫與分類</h1>
+  <h1>計畫與分類管理</h1>
+  <p class="sub">管理計畫與活動分類；一個活動可以同時掛在多個計畫底下。</p>
 
   <div class="pane-tabs">
     <button :class="{ active: activeTab === 'plans' }" @click="activeTab = 'plans'">計畫</button>

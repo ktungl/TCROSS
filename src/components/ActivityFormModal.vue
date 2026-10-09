@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { confirm } from '../composables/useConfirm'
+import { useEscape } from '../composables/useEscape'
 import { ONLINE_PLACE_LABEL } from '../types'
 import type { ActivityCategory, ActivityRecord, PlaceMode } from '../types'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
@@ -68,9 +69,10 @@ async function requestClose() {
   }
   emit('close')
 }
+useEscape(requestClose)
 
-// 選了專案名稱後，分類清單只顯示那些專案底下的項目（沒有指定所屬專案的分類
-// 不限，任何專案都會顯示）。沒選任何專案時顯示全部分類。
+// 選了計畫後，分類清單只顯示那些計畫底下的項目（沒有指定所屬計畫的分類
+// 不限，任何計畫都會顯示）。沒選任何計畫時顯示全部分類。
 const categoryOptions = computed(() => {
   const selectedPlanIds = new Set(selectedPlans.value)
   const visible = selectedPlanIds.size
@@ -80,7 +82,7 @@ const categoryOptions = computed(() => {
 })
 const planOptions = () => db.plans.map((p) => ({ id: p.id, label: p.name }))
 
-// 取消勾選專案後，原本跟著那個專案跳出來的分類選項也要一併從已選清單移除，
+// 取消勾選計畫後，原本跟著那個計畫跳出來的分類選項也要一併從已選清單移除，
 // 不然使用者會看到分類還留著，但選單裡其實已經找不到它。
 watch(selectedPlans, () => {
   const validNames = new Set(categoryOptions.value.map((o) => o.id))
@@ -152,33 +154,33 @@ async function submit() {
 <template>
   <div class="modal" @click.self="requestClose">
     <div class="card">
-      <h2 style="margin-top:0">{{ isNew ? '建立活動' : '編輯基本資料' }}</h2>
+      <h2>{{ isNew ? '建立活動' : '編輯基本資料' }}</h2>
 
       <div class="grid2">
         <div>
-          <label>專案名稱（可複選）</label>
-          <MultiSelectDropdown v-model="selectedPlans" :options="planOptions()" placeholder="請選擇專案名稱" />
+          <label>對應計畫（可複選）</label>
+          <MultiSelectDropdown v-model="selectedPlans" :options="planOptions()" placeholder="請選擇計畫" />
         </div>
         <div>
           <label>活動分類（可複選）</label>
           <MultiSelectDropdown v-model="categories" :options="categoryOptions" placeholder="請選擇活動分類" />
-          <p v-if="selectedPlans.length" class="meta" style="font-size:11.5px;margin:4px 0 0">依已選專案篩選相關項目</p>
+          <p v-if="selectedPlans.length" class="hint">依已選計畫篩選相關項目</p>
         </div>
       </div>
 
-      <div style="margin-top:12px">
+      <div class="field">
         <label>活動名稱／事由</label>
         <input v-model="name" placeholder="例如：溪畔淨溪與生態導覽" @input="nameError = false">
-        <p v-if="nameError" style="color:var(--stamp);font-size:12px;margin:4px 0 0">請輸入活動名稱</p>
+        <p v-if="nameError" class="field-error">請輸入活動名稱</p>
       </div>
 
-      <div class="grid3" style="margin-top:12px">
+      <div class="grid3 field">
         <div><label>活動日期</label><input type="date" v-model="date"></div>
         <div><label>開始時間（選填）</label><input type="time" v-model="time"></div>
         <div><label>結束時間（選填，同一時間可留空）</label><input type="time" v-model="timeEnd"></div>
       </div>
 
-      <div style="margin-top:12px">
+      <div class="field">
         <label>地點</label>
         <div class="row" style="gap:16px;margin-bottom:6px">
           <label class="chk"><input type="radio" value="physical" v-model="placeMode">實體</label>
@@ -193,29 +195,29 @@ async function submit() {
             placeholder="會議連結，例如：https://meet.google.com/xxx-xxxx-xxx"
             @input="meetingUrlError = ''"
           >
-          <p v-if="meetingUrlError" style="color:var(--stamp);font-size:12px;margin:4px 0 0">{{ meetingUrlError }}</p>
+          <p v-if="meetingUrlError" class="field-error">{{ meetingUrlError }}</p>
         </template>
       </div>
 
-      <div style="margin-top:12px">
+      <div class="field">
         <label>與會單位或成員</label>
         <input v-model="attendees" placeholder="例如：○○里辦公室、○○協會">
       </div>
 
-      <label style="margin-top:14px">參加對象說明</label>
+      <label class="field">參加對象說明</label>
       <input v-model="participantDesc" placeholder="例如：社區長者及居民">
 
-      <label style="margin-top:14px">與會人數統計</label>
+      <label class="field">與會人數統計</label>
       <div class="grid3">
         <div><label>男性人數</label><input type="number" min="0" v-model.number="male"></div>
         <div><label>女性人數</label><input type="number" min="0" v-model.number="female"></div>
         <div><label>合計人數</label><input type="number" min="0" v-model.number="total"></div>
       </div>
 
-      <label style="margin-top:14px">備註</label>
+      <label class="field">備註</label>
       <input v-model="remark" placeholder="補充說明（如場次、申請事項）">
 
-      <div class="row" style="margin-top:20px">
+      <div class="row actions">
         <button class="btn" :disabled="submitting" @click="submit">
           {{ submitting ? '處理中…' : (isNew ? '建立' : '儲存') }}
         </button>

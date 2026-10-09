@@ -43,10 +43,10 @@ function onDrop(e: DragEvent) {
           v-if="historyPickable"
           type="button"
           class="btn ghost sm"
-          style="margin:0;width:auto;letter-spacing:0"
+         
           @click="emit('browse-history')"
         >從歷史檔案選取</button>
-        <label class="btn ghost sm" style="margin:0;width:auto;letter-spacing:0">{{ pickLabel ?? '選擇檔案' }}
+        <label class="btn ghost sm">{{ pickLabel ?? '選擇檔案' }}
           <input type="file" multiple style="display:none" @change="onPick">
         </label>
       </div>
