@@ -43,6 +43,9 @@ body{margin:0;background:var(--paper);color:var(--ink);
   font-family:var(--f-body);font-size:14px;line-height:1.7;
   -webkit-font-smoothing:antialiased}
 button{font-family:inherit;cursor:pointer}
+/* 連結（地址、會議連結）不用瀏覽器預設的亮藍色，配合品牌色 */
+a{color:var(--ink);text-decoration-color:var(--gold-400);text-underline-offset:2px}
+a:hover{color:var(--gold-600)}
 .mono{font-family:var(--f-mono)}
 
 input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink);
@@ -198,6 +201,10 @@ label.btn{margin:0;letter-spacing:0}
 .plans{display:flex;gap:4px;flex-wrap:wrap}
 .tag{font-size:11px;padding:2px 9px;border:1px solid var(--gold-400);
   border-radius:99px;color:var(--ink-soft);background:var(--gold-100);white-space:nowrap}
+/* 列表的計畫欄寬度固定，長計畫名稱（例如【內政部標案】…）不換行會溢出、蓋住右邊的完整度，
+   這裡讓標籤在欄內換行 */
+.entry .plans{min-width:0}
+.entry .plans .tag{white-space:normal;max-width:100%;border-radius:10px;line-height:1.45}
 
 /* ---------- 完整度指示器 ----------
    沿用 logo 的五個並肩人形：頭 + 拱形身體。
