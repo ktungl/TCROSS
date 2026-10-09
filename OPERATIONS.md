@@ -162,7 +162,7 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 - **沒有自動化測試**：`server/` 沒有 CI/測試套件，每次部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
 - **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻（細節見 [ROADMAP.md](ROADMAP.md#資安iso-27001-annex-a-技術面)）
 - **備份不含 GCS 主桶**：AI 生成素材與 `.docx` 產出不在每日備份範圍（素材本來就 30 天刪除）；還原後帳號需重設密碼、`createdAt` 會變成還原時間（見「資料備份」）
-- **正式網域用 Firebase 預設網域**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`，尚未綁自訂網域；`ALLOWED_ORIGIN` 目前含 localhost與 Firebase 兩個網域（Netlify 已於 09-29 停用並移除）
+- **正式網址**：`https://tacc-iip.web.app`（10-09 起，Firebase Hosting 網站 `tacc-iip`），尚未綁自訂網域。舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 是同專案的預設網站，只做 301 轉址到新網址（`firebase.json` 的第二個 hosting 設定）。`ALLOWED_ORIGIN`、GCS 主桶 CORS、Maps 金鑰網站限制都同時列新舊兩組網域（Netlify 已於 09-29 停用並移除）
 
 ## 範本修改流程
 

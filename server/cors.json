@@ -2,6 +2,8 @@
   {
     "origin": [
       "http://localhost:5173",
+      "https://tacc-iip.web.app",
+      "https://tacc-iip.firebaseapp.com",
       "https://project-80ac5e1a-2ea4-4000-9ff.web.app",
       "https://project-80ac5e1a-2ea4-4000-9ff.firebaseapp.com"
     ],

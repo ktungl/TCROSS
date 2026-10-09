@@ -9,8 +9,8 @@
 ## 目前狀態
 
 - **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
-- **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`。push 到 main 自動部署（GitHub Actions＋WIF），10-05 最近一次成功。Netlify 09-29 起停用。
-- **後端（Cloud Run）**：`tcross-middleware` revision `00017-p9d`（10-09，附件 GCS 端點），`/status` 200。
+- **前端（Firebase Hosting）**：`https://tacc-iip.web.app`（10-09 起；舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 301 轉址過來）。push 到 main 自動部署（GitHub Actions＋WIF）。Netlify 09-29 起停用。
+- **後端（Cloud Run）**：`tcross-middleware` revision `00018-p22`（10-09），`/status` 200。
 - **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 10-09。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
 - **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | 1 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 2 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在 Firebase Hosting 正式網址上跑一次，排在場域測試時。 |
-| 11 | 🟡 附件搬到 GCS | 10/9 上線 | ✅ 10-09 上線並完成搬遷：Cloud Run `00017-p9d`、Cloud Code 貼回、主桶 CORS／每日附件備份設定完成；119 個附件（13 筆活動）改指 GCS，核對剩餘舊網址 0、上傳者／時間／圖說變動 0。⬜ 正式站實測上傳／檢視／匯出（10/10～10/14 團隊實測）；⬜ 場域測試後清除 Back4App 原檔。方案見下方「附件搬到 GCS」。 |
+| 11 | 🟡 附件搬到 GCS | 10/9 上線 | ✅ 10-09 上線並完成搬遷：Cloud Run `00017-p9d`、Cloud Code 貼回、主桶 CORS／每日附件備份設定完成；119 個附件（13 筆活動）改指 GCS，核對剩餘舊網址 0、上傳者／時間／圖說變動 0。✅ 10-09 正式站實測：詳細頁 25 張、歷史檔案 18 張 GCS 照片全部載入；「手機測試」上傳報名表 CSV＋照片，資料庫存 `gcs:attachments/…`、GCS 有實體檔；頁面內 `fetch` 讀 GCS 照片 200 且大小一致（匯出嵌入照片的路徑），主控台 0 錯誤。⬜ 實際下載匯出檔核對照片、團隊實測（10/10～10/14）；⬜ 場域測試後清除 Back4App 原檔。方案見下方「附件搬到 GCS」。 |
 | 4 | ⬜ 刪除 Netlify 網站 | 10/15 | Netlify 已停用，到後台刪除網站，避免 push 後還在建置。 |
 | 5 | 🟡 CSP 改正式 | 待辦 2 之後 | ✅ 10-05 正式站瀏覽 6 個主要頁面、活動詳細頁（13 張照片全部載入）、地址建議（5 筆），0 個違規（偵測方式以故意送出的白名單外請求驗證過有效）。⬜ 還沒測上傳與 AI 生成／下載，等待辦 2 跑過也沒違規，再把 `firebase.json` 改成正式 `Content-Security-Policy`。 |
 | 6 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
@@ -39,6 +39,7 @@
 
 | 日期 | 項目 | 重點 |
 | --- | --- | --- |
+| 10-09 | 正式網址改為 `tacc-iip.web.app` | 新增 Hosting 網站 `tacc-iip`，舊網址 301 轉址；Cloud Run `ALLOWED_ORIGIN`（`00018-p22`）、GCS 主桶 CORS、Maps 金鑰網站限制加入新網域。 |
 | 10-05 | 備份機制 | `scripts/backup-parse.mjs` 匯出全部 class／schema／角色成員／附件；GitHub Actions 每天 02:00 上傳 `gs://…-backup/parse/`（Nearline、90 天、`github-backup` 只能新增不能刪）。 |
 | 10-05 | 確認 Back4App 內建備份 | Free 方案沒有自動備份（MVP 以上才有每日備份），目前每日 GCS 備份是唯一一份。 |
 | 10-05 | 還原演練 | `scripts/restore-parse.mjs` 還原到測試 app `TCROSS-restore-test`：筆數與角色成員一致、2058 個欄位 0 差異、86 個附件全部可開啟。步驟見 OPERATIONS.md「資料備份」。 |
@@ -129,7 +130,8 @@
 | `00014-jjh` | 09-29 | `ALLOWED_ORIGIN` 移除 Netlify 網域 |
 | `00015-m96` | 10-05 | `/generate` 限制來源檔須在該活動資料夾下等安全修正（另一台電腦部署） |
 | `00016-pv2` | 10-09 | `/attachments/upload-urls`、`/view-urls`、`/delete`（附件搬到 GCS） |
-| **`00017-p9d`**（線上） | 10-09 | 附件分類補上「參與者名單（報名表）」（`registration`） |
+| `00017-p9d` | 10-09 | 附件分類補上「參與者名單（報名表）」（`registration`） |
+| **`00018-p22`**（線上） | 10-09 | `ALLOWED_ORIGIN` 加入 `tacc-iip.web.app`／`tacc-iip.firebaseapp.com` |
 
 `00013`／`00014` 只改 `ALLOWED_ORIGIN`，其餘設定沿用 `00012-6nc`：`maxScale=2`、`cpu-throttling=true`、`timeoutSeconds=900`、`GCP_LOCATION=asia-northeast1`。映像檔由 09-28 原始碼建置，`requirements.txt` 已是 `fastapi==0.141.1`，因此 Python 套件升級已在線上。
 
