@@ -2,7 +2,7 @@
 
 合照盟計畫資料整合平台的進度、待辦與部署紀錄。目標架構見 [README.md](README.md#架構擴充導入-gcpgoogle-cloud-platform)，部署維運步驟見 [OPERATIONS.md](OPERATIONS.md)。
 
-> 最後查核：2026-10-05（對照 git、GitHub Actions 執行紀錄、線上回應標頭、`gcloud`）
+> 最後查核：2026-10-09（對照 git、GitHub Actions 執行紀錄、線上回應標頭、`gcloud`）
 
 ---
 
@@ -10,8 +10,8 @@
 
 - **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
 - **前端（Firebase Hosting）**：`https://project-80ac5e1a-2ea4-4000-9ff.web.app`。push 到 main 自動部署（GitHub Actions＋WIF），10-05 最近一次成功。Netlify 09-29 起停用。
-- **後端（Cloud Run）**：`tcross-middleware` revision `00014-jjh`，`/status` 200。
-- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 09-27。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
+- **後端（Cloud Run）**：`tcross-middleware` revision `00017-p9d`（10-09，附件 GCS 端點），`/status` 200。
+- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 10-09。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
 - **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
 
@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | 1 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 2 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在 Firebase Hosting 正式網址上跑一次，排在場域測試時。 |
-| 11 | 🟠 附件搬到 GCS | 10/9 上線 | Back4App Free 檔案上限 1 GB，10-05 已用 275 MB（27%），對方要照片原檔不能壓縮，再約 250 張就滿。決定把附件搬到 GCS（資料庫仍在 Back4App），解決空間問題、不必升級 MVP。方案見下方「附件搬到 GCS」。 |
+| 11 | 🟡 附件搬到 GCS | 10/9 上線 | ✅ 10-09 上線並完成搬遷：Cloud Run `00017-p9d`、Cloud Code 貼回、主桶 CORS／每日附件備份設定完成；119 個附件（13 筆活動）改指 GCS，核對剩餘舊網址 0、上傳者／時間／圖說變動 0。⬜ 正式站實測上傳／檢視／匯出（10/10～10/14 團隊實測）；⬜ 場域測試後清除 Back4App 原檔。方案見下方「附件搬到 GCS」。 |
 | 4 | ⬜ 刪除 Netlify 網站 | 10/15 | Netlify 已停用，到後台刪除網站，避免 push 後還在建置。 |
 | 5 | 🟡 CSP 改正式 | 待辦 2 之後 | ✅ 10-05 正式站瀏覽 6 個主要頁面、活動詳細頁（13 張照片全部載入）、地址建議（5 筆），0 個違規（偵測方式以故意送出的白名單外請求驗證過有效）。⬜ 還沒測上傳與 AI 生成／下載，等待辦 2 跑過也沒違規，再把 `firebase.json` 改成正式 `Content-Security-Policy`。 |
 | 6 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
@@ -53,14 +53,14 @@
 | --- | --- | --- |
 | 8/31 需求與欄位凍結 | 架構圖、GCP 部署、欄位對照表 | ✅ |
 | 9/30 Demo | Excel／Word 匯出模組、API 規格、Gemini 呼叫規格 | ✅（匯出格式細節見待辦 1） |
-| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）完成；待辦 1、2、4、11（附件搬到 GCS） |
+| 10/15 場域測試 | 正式部署、備份機制、匯出格式修正 | 🟡 部署、備份（每日＋還原演練）、附件搬到 GCS（10-09）完成；待辦 1、2、4，待辦 11 收尾 |
 | 10/31 驗收交付 | 部署維運說明、範本修改流程 | 🟡 技術面完成（OPERATIONS.md）；組織面見待辦 6 |
 
 **分工**：鍾雅婷（Donna）——架構、部署、匯出引擎、API 規格；劉冠彤——前端表單與介面；陳怡靜——資料模型、後端 CRUD、帳號權限。
 
 ---
 
-## 附件搬到 GCS（10-05 規劃，待開工）
+## 附件搬到 GCS（10-05 規劃，10-09 上線）
 
 **現況**：活動附件（8 類，10-05 共 86 個、219 MB，其中照片 70）用 Parse 上傳到 Back4App，`FileMeta.url` 是 `parsefiles.back4app.com` 的公開網址（不用登入、知道網址就能看）。GCS 目前只放 AI 生成素材。
 
@@ -93,7 +93,8 @@
 
 ```
 瀏覽器（Vue，Firebase Hosting）
- ├─ 一般資料與附件 → Back4App（Parse，含 Parse Files）
+ ├─ 一般資料       → Back4App（Parse）
+ ├─ 活動附件       → Cloud Run 取 Signed URL → 直傳 GCS（`gcs:attachments/…`，檢視時換 15 分鐘臨時網址）
  └─ AI 生成素材   → Cloud Run 取 Signed URL → 直傳 GCS
                    → POST /generate/{jobId} → Gemini 分析 → 產 .docx 存 GCS → 寫回 GenerationJob
 ```
@@ -102,7 +103,7 @@
 | --- | --- | --- |
 | Cloud Run `tcross-middleware` | `asia-east1` | FastAPI；唯一持有 GCP 憑證與 Parse Master Key（Secret Manager）的地方 |
 | Gemini | Vertex AI `asia-northeast1`，`gemini-2.5-flash` | 素材以 `gs://` 直接餵入；`response_schema` 回傳摘要／重點／KPI |
-| GCS 主桶 | `tcross-2026-…` | 只放 AI 生成素材與產出（路徑 `activities/{id}/…`）；一般附件在 Back4App |
+| GCS 主桶 | `tcross-2026-…` | AI 生成素材與產出（`activities/{id}/…`）、活動附件（`attachments/{id}/{分類}/…`，每日增量備份到備份桶） |
 | GCS 備份桶 | `project-80ac5e1a-2ea4-4000-9ff-backup` | Back4App 每日備份（`parse/*.tar.gz`），GitHub Actions 上傳 |
 | `GenerationJob`（Parse class） | Back4App | `status`：pending → processing → done／error |
 
@@ -125,7 +126,10 @@
 | `00011-hdv` | 09-17 | Phase 3b：`/generate`、Gemini |
 | `00012-6nc` | 09-28 | 省費用：同步生成、按請求計費、`max-instances` 2、`timeout` 900、Gemini 改 `asia-northeast1` |
 | `00013-p4g` | 09-29 | `ALLOWED_ORIGIN` 加入 Firebase Hosting 網域（`web.app`／`firebaseapp.com`） |
-| **`00014-jjh`**（線上） | 09-29 | `ALLOWED_ORIGIN` 移除 Netlify 網域 |
+| `00014-jjh` | 09-29 | `ALLOWED_ORIGIN` 移除 Netlify 網域 |
+| `00015-m96` | 10-05 | `/generate` 限制來源檔須在該活動資料夾下等安全修正（另一台電腦部署） |
+| `00016-pv2` | 10-09 | `/attachments/upload-urls`、`/view-urls`、`/delete`（附件搬到 GCS） |
+| **`00017-p9d`**（線上） | 10-09 | 附件分類補上「參與者名單（報名表）」（`registration`） |
 
 `00013`／`00014` 只改 `ALLOWED_ORIGIN`，其餘設定沿用 `00012-6nc`：`maxScale=2`、`cpu-throttling=true`、`timeoutSeconds=900`、`GCP_LOCATION=asia-northeast1`。映像檔由 09-28 原始碼建置，`requirements.txt` 已是 `fastapi==0.141.1`，因此 Python 套件升級已在線上。
 
@@ -137,6 +141,7 @@
 | --- | --- | --- |
 | 09-04 | 需求訪談欄位驗證、`GenerationJob` 檢查 | REST 實測 4 筆畸形資料被擋 |
 | 09-27 | 角色分級、`AuditLog`、上傳大小檢查、Category `beforeSave` | REST 實測 15 項通過 |
+| 10-09 | 附件網址接受 `gcs:attachments/`、搬遷 context、共用檔案不誤刪、錯誤訊息改中文欄位名 | 搬遷腳本寫回 13 筆活動成功（舊版會回「必須是 http(s) 網址」）；System Logs 有重啟紀錄 |
 
 ---
 

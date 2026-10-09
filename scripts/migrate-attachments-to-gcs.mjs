@@ -9,7 +9,8 @@
 // - 用 Master Key 寫回，並帶 X-Parse-Cloud-Context: attachmentMigration，cloud/main.js 會
 //   保留原上傳者／最後修改者、不刪原檔，稽核只記一筆「附件搬移到 GCS」。
 // - GCS 用本機 gcloud 登入的帳號上傳（gcloud auth print-access-token），需要主桶寫入權限。
-// - 可以重跑：已經是 gcs: 的項目會略過；GCS 上用 ifGenerationMatch=0，不會覆蓋既有物件。
+// - 可以重跑：已經是 gcs: 的項目會略過；上次中途失敗已傳上去的物件（同活動／分類／檔名且大小相同）
+//   直接沿用不重傳；GCS 上用 ifGenerationMatch=0，不會覆蓋既有物件。
 //
 // 對照表寫到 backups/attachment-migration-<時間>.json（backups/ 不進 git）。
 import { execSync } from 'child_process'
@@ -98,6 +99,27 @@ async function uploadToGcs(path, data, contentType) {
   if (Number(meta.size) !== data.length) throw new Error(`GCS 大小不符 ${path}：${meta.size} ≠ ${data.length}`)
 }
 
+/** 上一次搬遷中途失敗時已經傳上去、但還沒寫回活動的物件：{活動}/{分類}/{檔名} → [{ path, size }] */
+async function listExistingObjects() {
+  const out = new Map()
+  let pageToken = ''
+  do {
+    const qs = new URLSearchParams({ prefix: 'attachments/', fields: 'items(name,size),nextPageToken', ...(pageToken && { pageToken }) })
+    const res = await fetch(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o?${qs}`, { headers: { Authorization: `Bearer ${gcsToken()}` } })
+    if (!res.ok) throw new Error(`列出 GCS 物件失敗：HTTP ${res.status} ${await res.text()}`)
+    const body = await res.json()
+    for (const o of body.items || []) {
+      const m = /^attachments\/([^/]+)\/([^/]+)\/[0-9a-f]{8}_(.+)$/.exec(o.name)
+      if (!m) continue
+      const key = `${m[1]}/${m[2]}/${m[3]}`
+      if (!out.has(key)) out.set(key, [])
+      out.get(key).push({ path: o.name, size: Number(o.size) })
+    }
+    pageToken = body.nextPageToken
+  } while (pageToken)
+  return out
+}
+
 // ── 盤點 ─────────────────────────────────────────────
 const activities = await fetchActivities()
 const plan = [] // { activity, field, index, item }
@@ -120,16 +142,30 @@ if (!apply) {
 
 // ── 搬遷 ─────────────────────────────────────────────
 const urlMap = new Map() // 舊網址 → gcs:路徑（同一檔案只傳一次）
+// 重跑時沿用上次已傳上去的物件（同活動、同分類、同檔名且大小相同），不重複上傳
+const existing = await listExistingObjects()
+const used = new Set()
 let n = 0
+let reused = 0
 for (const p of plan) {
   if (urlMap.has(p.item.url)) continue
   const res = await fetch(p.item.url)
   if (!res.ok) throw new Error(`下載失敗 ${p.item.url}：HTTP ${res.status}`)
   const data = Buffer.from(await res.arrayBuffer())
-  const path = `attachments/${p.activity.objectId}/${FIELD_FOLDER[p.field]}/${randomBytes(4).toString('hex')}_${sanitize(p.item.name)}`
-  await uploadToGcs(path, data, res.headers.get('content-type') || 'application/octet-stream')
+  const folder = FIELD_FOLDER[p.field]
+  const name = sanitize(p.item.name)
+  const prior = (existing.get(`${p.activity.objectId}/${folder}/${name}`) || []).find((o) => o.size === data.length && !used.has(o.path))
+  let path
+  if (prior) {
+    path = prior.path
+    used.add(path)
+    reused++
+  } else {
+    path = `attachments/${p.activity.objectId}/${folder}/${randomBytes(4).toString('hex')}_${name}`
+    await uploadToGcs(path, data, res.headers.get('content-type') || 'application/octet-stream')
+  }
   urlMap.set(p.item.url, `gcs:${path}`)
-  if (++n % 10 === 0 || n === uniqueUrls.size) console.log(`  已上傳 ${n}/${uniqueUrls.size}`)
+  if (++n % 10 === 0 || n === uniqueUrls.size) console.log(`  已處理 ${n}/${uniqueUrls.size}（沿用既有 ${reused} 個）`)
 }
 
 for (const a of activities) {
