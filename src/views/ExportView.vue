@@ -26,7 +26,6 @@ const wantNeimu = ref(true)
 const ledgerPhotoSize = ref<LedgerPhotoSize>('medium')
 const ledgerPhotosPerRow = ref(1)
 const exporting = ref(false)
-const previewVisible = ref(false)
 
 const planName = db.planName
 
@@ -59,10 +58,6 @@ const picked = computed(() =>
     .slice()
     .sort((x, y) => (x.date || '').localeCompare(y.date || '')),
 )
-
-function doPreview() {
-  previewVisible.value = true
-}
 
 function doCsv() {
   const rows = [
@@ -179,14 +174,15 @@ async function doExport() {
 
     <div class="row actions">
       <button class="btn" :disabled="exporting" @click="doExport">{{ exporting ? '產生中…' : '下載匯出檔案' }}</button>
-      <button class="btn ghost" @click="doPreview">產生預覽</button>
       <button class="btn ghost" @click="doCsv">下載成果清單 CSV</button>
     </div>
   </div>
 
-  <div v-if="previewVisible">
+  <!-- 預覽跟著上方篩選即時更新，匯出前就能確認會包含哪些活動 -->
+  <div>
     <h2>成果清單預覽（{{ picked.length }} 場）</h2>
-    <div class="card" style="overflow:auto">
+    <p v-if="!picked.length" class="empty">目前篩選條件下沒有活動。</p>
+    <div v-else class="card" style="overflow:auto">
       <table class="out">
         <thead>
           <tr><th>日期</th><th>活動</th><th>分類</th><th>地點</th><th>人數</th><th>KPI</th><th>檔案</th><th>完整度</th></tr>

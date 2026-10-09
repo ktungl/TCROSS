@@ -718,7 +718,7 @@ async function batchHardDeleteJobs() {
     <p v-else class="empty">垃圾桶裡沒有生成工作。</p>
   </div>
 
-  <div v-if="viewingJob" class="modal" @click.self="closeJobView">
+  <div v-if="viewingJob" class="modal" v-modal-focus @click.self="closeJobView">
     <div class="card">
       <h2>{{ viewingJob.job.kind }}</h2>
       <p class="sub card-intro">

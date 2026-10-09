@@ -24,9 +24,15 @@ const props = defineProps<{
   planName: (id: string) => string
 }>()
 const emit = defineEmits<{ close: [] }>()
-useEscape(() => emit('close'))
+useEscape(close)
 
 const downloading = ref(false)
+
+// 檔案還在產生時不讓對話框關掉，否則下載在背景完成卻沒有任何畫面回饋
+function close() {
+  if (downloading.value) return
+  emit('close')
+}
 
 // 公文專用欄位；發文機關記在瀏覽器裡，下次不用重打
 const ISSUER_KEY = 'tcross.letterIssuer'
@@ -125,7 +131,7 @@ async function download() {
 </script>
 
 <template>
-  <div class="modal" @click.self="emit('close')">
+  <div class="modal" v-modal-focus @click.self="close">
     <div class="card">
       <h2>{{ kind }}</h2>
       <p class="sub">{{ summary }}</p>
@@ -166,7 +172,7 @@ async function download() {
       </template>
       <div class="row actions">
         <button class="btn" :disabled="downloading" @click="download">{{ downloading ? '產生中…' : '下載' }}</button>
-        <button class="btn ghost" @click="emit('close')">關閉</button>
+        <button class="btn ghost" :disabled="downloading" @click="close">關閉</button>
       </div>
     </div>
   </div>

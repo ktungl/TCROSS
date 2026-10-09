@@ -19,7 +19,7 @@ let enterTimer: ReturnType<typeof setTimeout> | undefined
 
 function enter() {
   clearTimeout(enterTimer)
-  router.push({ name: 'list' })
+  router.push({ name: 'dashboard' })
 }
 
 async function submit() {

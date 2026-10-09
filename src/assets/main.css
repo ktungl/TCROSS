@@ -133,6 +133,10 @@ h2{font-size:11.5px;letter-spacing:.2em;color:var(--ink-soft);font-weight:500;
 .btn.ghost{background:var(--card);color:var(--ink-soft);border-color:var(--line)}
 .btn.ghost:hover{background:var(--gold-100);border-color:var(--gold-400);color:var(--ink)}
 .btn.sm{padding:5px 12px;font-size:12.5px}
+/* 停用中（送出中、產生中、條件不足）：看得出來不能按，滑過也不變色 */
+.btn:disabled,.btn:disabled:hover{opacity:.5;cursor:not-allowed;
+  background:var(--card);color:var(--ink-soft);border-color:var(--line)}
+.x:disabled,.x:disabled:hover{opacity:.4;cursor:not-allowed;background:none;color:var(--ink-faint)}
 /* label 當按鈕用（選擇檔案）時，蓋掉全域 label 的字距與下邊距 */
 label.btn{margin:0;letter-spacing:0}
 /* 無法復原的動作（刪除活動、永久刪除） */
@@ -220,8 +224,14 @@ label.btn{margin:0;letter-spacing:0}
 .flagbox.ok b{color:var(--ok)}
 
 /* ---------- 數字卡（總覽） ---------- */
-.stat label{margin-bottom:8px}
-.stat-num{font-family:var(--f-mono);font-size:28px;font-weight:700}
+.stat label,.stat .stat-label{display:block;font-size:11.5px;letter-spacing:.12em;
+  color:var(--ink-soft);margin-bottom:8px}
+/* 可點的數字卡：點下去帶到對應的列表 */
+.stat-link{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.stat-link:hover{border-color:var(--gold-400);background:var(--gold-100)}
+.stat-link .stat-go{font-size:11.5px;color:var(--ink-faint)}
+.stat-link:hover .stat-go{color:var(--gold-600)}
+.stat-num{display:block;font-family:var(--f-mono);font-size:28px;font-weight:700}
 
 /* ---------- 資料夾 ---------- */
 .folder{border:1px solid var(--line);border-radius:var(--r-lg);
@@ -279,6 +289,16 @@ label.btn{margin:0;letter-spacing:0}
 .modal .card.wide{max-width:760px}
 .hide{display:none!important}
 
+/* ---------- 下拉動作選單（活動詳細頁「產生文件」） ---------- */
+.detail-toolbar{margin-bottom:6px}
+.menu{position:relative}
+.menu-panel{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:160px;
+  display:flex;flex-direction:column;padding:4px 0;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:0 6px 18px rgba(62,44,23,.15)}
+.menu-panel button{background:none;border:0;text-align:left;padding:8px 14px;
+  font-size:13px;color:var(--ink)}
+.menu-panel button:hover,.menu-panel button:focus-visible{background:var(--gold-100)}
+
 .back{background:none;border:0;color:var(--ink-soft);font-size:13px;
   padding:0;margin-bottom:14px}
 .back:hover{color:var(--ink)}
@@ -327,7 +347,9 @@ table.out tbody tr:hover{background:var(--gold-100)}
 .shell>main{min-width:0}
 @media(max-width:1024px){
   table.out{min-width:620px}
-  .card{max-width:100%;overflow-x:auto}
+  /* 只有放表格的卡片才橫向捲動。不要套在所有 .card：overflow-x 不是 visible 時
+     overflow-y 也會變成 auto，卡片裡的下拉選單、地址建議清單會被切掉 */
+  .card:has(table.out){max-width:100%;overflow-x:auto}
 }
 
 /* ---------- 儀表板缺漏清單 ---------- */
@@ -386,7 +408,8 @@ table.out tbody tr:hover{background:var(--gold-100)}
   .entry>span:nth-child(2){grid-column:2;grid-row:1}
   .entry .plans{grid-column:2;grid-row:2}
   .entry .dial{grid-column:3;grid-row:1;align-self:start}
-  .entry .dup{display:none}
+  /* 「複製此活動」放到完整度下方，不要藏起來 */
+  .entry .dup{grid-column:3;grid-row:2;justify-self:end;white-space:nowrap}
   .grid3{grid-template-columns:1fr 1fr}
 }
 
@@ -406,11 +429,15 @@ table.out tbody tr:hover{background:var(--gold-100)}
   .note{position:static;width:auto;margin-top:24px}
   .nav-toggle{display:flex}
   .nav-wrap{margin-top:0;max-height:0;overflow:hidden;transition:max-height .25s ease}
-  aside.open .nav-wrap{margin-top:16px;max-height:420px}
+  /* 上限用整個螢幕高度，選單項目變多也不會把「登出」切掉 */
+  aside.open .nav-wrap{margin-top:16px;max-height:100vh}
   aside.open .nav-toggle span:nth-child(1){transform:translateY(7px) rotate(45deg)}
   aside.open .nav-toggle span:nth-child(2){opacity:0}
   aside.open .nav-toggle span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
   main{padding:24px 18px 60px}
+  /* 提示訊息改到畫面頂端，不要蓋住頁面底部的儲存／建立按鈕 */
+  .toast-stack{top:12px;bottom:auto;left:16px;right:16px}
+  .toast{text-align:center}
   .grid2,.grid3{grid-template-columns:1fr}
   .f-search,.f-plan,.f-narrow{width:100%}
   .entry{grid-template-columns:1fr;gap:6px}

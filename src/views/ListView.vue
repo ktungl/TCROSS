@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { gaps } from '../utils/activity'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import ActivityEntry from '../components/ActivityEntry.vue'
 
+const route = useRoute()
 const router = useRouter()
 const db = useDbStore()
 
 const fPlan = ref('')
 const fMonth = ref('')
-const fGap = ref(false)
+// 從總覽「有缺漏活動」點進來時帶 ?gap=1，直接勾好「只看有缺漏」
+const fGap = ref(route.query.gap === '1')
 const keyword = ref('')
 const showCreate = ref(false)
 

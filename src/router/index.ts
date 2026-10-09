@@ -34,7 +34,7 @@ const router = createRouter({
 router.beforeEach((to) => {
   const loggedIn = !!Parse.User.current()
   if (!loggedIn && !to.meta.public) return { name: 'login' }
-  if (loggedIn && to.name === 'login') return { name: 'list' }
+  if (loggedIn && to.name === 'login') return { name: 'dashboard' }
 })
 
 export default router

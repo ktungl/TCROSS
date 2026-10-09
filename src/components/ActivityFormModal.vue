@@ -89,9 +89,15 @@ watch(selectedPlans, () => {
   categories.value = categories.value.filter((c) => validNames.has(c))
 })
 
-watch([male, female], ([m, f]) => {
-  total.value = (Number(m) || 0) + (Number(f) || 0)
+// 合計原本等於男＋女時才跟著自動加總；使用者手動改過合計（例如有未填性別的人）
+// 就不再覆蓋，改在欄位下方提示兩者不一致。
+const sumMF = () => (Number(male.value) || 0) + (Number(female.value) || 0)
+watch([male, female], ([m, f], [om, of]) => {
+  if ((Number(total.value) || 0) === (Number(om) || 0) + (Number(of) || 0)) {
+    total.value = (Number(m) || 0) + (Number(f) || 0)
+  }
 })
+const totalMismatch = computed(() => (Number(total.value) || 0) !== sumMF())
 
 const submitting = ref(false)
 
@@ -152,7 +158,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="modal" @click.self="requestClose">
+  <div class="modal" v-modal-focus @click.self="requestClose">
     <div class="card">
       <h2>{{ isNew ? '建立活動' : '編輯基本資料' }}</h2>
 
@@ -219,6 +225,10 @@ async function submit() {
         <div><label>女性人數</label><input type="number" min="0" v-model.number="female"></div>
         <div><label>合計人數</label><input type="number" min="0" v-model.number="total"></div>
       </div>
+      <p class="hint">
+        <template v-if="totalMismatch">合計與男女加總（{{ sumMF() }}）不同，以合計人數為準。<button type="button" class="link" @click="total = sumMF()">改回加總</button></template>
+        <template v-else>合計會依男女人數自動加總，也可以手動修改。</template>
+      </p>
 
       <label class="field">備註</label>
       <input v-model="remark" placeholder="補充說明（如場次、申請事項）">

@@ -32,18 +32,21 @@ function openActivity(id: string) {
   <p class="sub">所有活動與計畫的整體狀態。</p>
 
   <div class="grid3 section-gap">
-    <div class="card stat">
-      <label>活動總數</label>
-      <div class="stat-num">{{ totalActivities }}</div>
-    </div>
-    <div class="card stat">
-      <label>有缺漏活動</label>
-      <div class="stat-num">{{ gapCount }}</div>
-    </div>
-    <div class="card stat">
-      <label>計畫總數</label>
-      <div class="stat-num">{{ totalPlans }}</div>
-    </div>
+    <button class="card stat stat-link" @click="router.push({ name: 'list' })">
+      <span class="stat-label">活動總數</span>
+      <span class="stat-num">{{ totalActivities }}</span>
+      <span class="stat-go">查看活動列表 →</span>
+    </button>
+    <button class="card stat stat-link" @click="router.push({ name: 'list', query: { gap: '1' } })">
+      <span class="stat-label">有缺漏活動</span>
+      <span class="stat-num">{{ gapCount }}</span>
+      <span class="stat-go">只看有缺漏的活動 →</span>
+    </button>
+    <button class="card stat stat-link" @click="router.push({ name: 'plans' })">
+      <span class="stat-label">計畫總數</span>
+      <span class="stat-num">{{ totalPlans }}</span>
+      <span class="stat-go">管理計畫 →</span>
+    </button>
   </div>
 
   <h2>各活動缺漏項目</h2>

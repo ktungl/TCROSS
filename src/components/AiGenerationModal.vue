@@ -236,7 +236,7 @@ useEscape(close)
 </script>
 
 <template>
-  <div class="modal" @click.self="close">
+  <div class="modal" v-modal-focus @click.self="close">
     <div class="card">
       <h2>AI 自動生成成果報告</h2>
       <p class="sub">選擇語音／影片／照片／文件素材，上傳後建立一筆生成工作。</p>

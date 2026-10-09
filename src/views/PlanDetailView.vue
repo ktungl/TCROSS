@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { gaps } from '../utils/activity'
+import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityEntry from '../components/ActivityEntry.vue'
 
 const props = defineProps<{ id: string }>()
@@ -21,6 +22,15 @@ const activities = computed(() =>
 function openDetail(id: string) {
   router.push({ name: 'detail', params: { id } })
 }
+
+async function onDuplicate(id: string) {
+  try {
+    await db.duplicateActivity(id)
+    pushToast('已複製活動，請填寫新日期')
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  }
+}
 </script>
 
 <template>
@@ -38,6 +48,7 @@ function openDetail(id: string) {
         :activity="a"
         :plan-name="db.planName"
         @click="openDetail(a.id)"
+        @duplicate="onDuplicate(a.id)"
       />
     </div>
     <p v-if="!activities.length" class="empty">這個計畫底下還沒有活動。</p>

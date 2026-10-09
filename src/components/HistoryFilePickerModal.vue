@@ -4,6 +4,7 @@ import { useDbStore } from '../stores/db'
 import { attachmentSrc } from '../lib/attachments'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
+import { confirm } from '../composables/useConfirm'
 import { kb } from '../utils/activity'
 import { fileExt, isImageFile } from '../utils/file'
 import { ATTACHMENT_TYPES } from '../types'
@@ -11,7 +12,14 @@ import type { AttachmentKey } from '../types'
 
 const props = defineProps<{ activityId: string; folder: AttachmentKey }>()
 const emit = defineEmits<{ close: [] }>()
-useEscape(() => emit('close'))
+useEscape(close)
+
+// 已經勾了檔案卻不小心點到背景，勾選會整個消失，關閉前先確認
+async function close() {
+  if (attaching.value) return
+  if (selected.value.size && !(await confirm(`已選取 ${selected.value.size} 個檔案還沒加入，確定要關閉嗎？`, '關閉'))) return
+  emit('close')
+}
 
 const db = useDbStore()
 const attachmentLabel = Object.fromEntries(ATTACHMENT_TYPES) as Record<AttachmentKey, string>
@@ -84,7 +92,7 @@ async function attach() {
 </script>
 
 <template>
-  <div class="modal" @click.self="emit('close')">
+  <div class="modal" v-modal-focus @click.self="close">
     <div class="card wide">
       <h2>從歷史檔案選取（{{ attachmentLabel[folder] }}）</h2>
       <p class="sub">挑選其他活動已經上傳過的檔案，直接加進這個活動的「{{ attachmentLabel[folder] }}」，不用重新上傳。</p>
@@ -154,7 +162,7 @@ async function attach() {
         <button class="btn" :disabled="!selected.size || attaching" @click="attach">
           {{ attaching ? '加入中…' : `加入選取的 ${selected.size} 個檔案` }}
         </button>
-        <button class="btn ghost" @click="emit('close')">關閉</button>
+        <button class="btn ghost" @click="close">關閉</button>
       </div>
     </div>
   </div>

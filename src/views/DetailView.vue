@@ -9,6 +9,7 @@ import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
 import type { AttachmentKey, AuditLogRecord, Kpi } from '../types'
 import type { GeneratedFormKind } from '../utils/download'
 import { confirm } from '../composables/useConfirm'
+import { onClickOutside } from '../composables/useClickOutside'
 import { downloadFiles } from '../utils/fileDownload'
 import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
@@ -41,6 +42,10 @@ watch(
 
 const showEdit = ref(false)
 const genKind = ref<GeneratedFormKind | null>(null)
+const GEN_KINDS: GeneratedFormKind[] = ['簽到表', '領據', '活動紀錄表', '成果報告', '公文']
+const genMenuOpen = ref(false)
+const genMenuRoot = ref<HTMLElement | null>(null)
+onClickOutside(genMenuRoot, () => (genMenuOpen.value = false))
 const showAiGenModal = ref(false)
 const pickerFolder = ref<AttachmentKey | null>(null)
 
@@ -229,16 +234,32 @@ async function duplicateActivity() {
     <p v-if="activity.remark" class="sub sub-extra">備註：{{ activity.remark }}</p>
     <p class="sub sub-extra"><StampLine :record="activity" /></p>
 
-    <div class="row" style="margin-bottom:6px">
-      <button class="btn ghost sm" @click="showEdit = true">編輯基本資料</button>
-      <button class="btn ghost sm" @click="duplicateActivity">複製此活動</button>
-      <button class="btn ghost sm" @click="genKind = '簽到表'">產生簽到表</button>
-      <button class="btn ghost sm" @click="genKind = '領據'">產生領據</button>
-      <button class="btn ghost sm" @click="genKind = '活動紀錄表'">產生活動紀錄表</button>
-      <button class="btn ghost sm" @click="genKind = '成果報告'">產生成果報告</button>
-      <button class="btn ghost sm" @click="genKind = '公文'">產生公文</button>
-      <button class="btn ghost sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
-      <button class="btn ghost sm danger" style="margin-left:auto" @click="deleteActivity">刪除此活動</button>
+    <!-- 一般操作在左、刪除獨立在右；換行時刪除自成一組，不會緊貼一般按鈕 -->
+    <div class="row between detail-toolbar">
+      <div class="row">
+        <button class="btn sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
+        <div ref="genMenuRoot" class="menu">
+          <button
+            class="btn ghost sm"
+            type="button"
+            aria-haspopup="menu"
+            :aria-expanded="genMenuOpen"
+            @click="genMenuOpen = !genMenuOpen"
+          >產生文件 ▾</button>
+          <div v-if="genMenuOpen" class="menu-panel" role="menu">
+            <button
+              v-for="k in GEN_KINDS"
+              :key="k"
+              type="button"
+              role="menuitem"
+              @click="genKind = k; genMenuOpen = false"
+            >{{ k }}</button>
+          </div>
+        </div>
+        <button class="btn ghost sm" @click="showEdit = true">編輯基本資料</button>
+        <button class="btn ghost sm" @click="duplicateActivity">複製此活動</button>
+      </div>
+      <button class="btn ghost sm danger" @click="deleteActivity">刪除此活動</button>
     </div>
 
     <div v-if="gaps(activity).length" class="flagbox">
@@ -339,7 +360,7 @@ async function duplicateActivity() {
       <div>
         <div v-for="(k, i) in kpisDraft" :key="i" class="kpi">
           <input v-model="k.k" placeholder="指標名稱，例如 受益人數">
-          <input v-model="k.v" placeholder="數值" type="number">
+          <input v-model="k.v" placeholder="數值，例如 30">
           <input v-model="k.u" placeholder="單位">
           <button class="x" title="刪除此列" @click="removeKpi(i)">×</button>
         </div>
