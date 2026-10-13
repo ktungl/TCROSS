@@ -60,7 +60,7 @@ export function buildCsv(rows: (string | number)[][]): string {
 export type GeneratedFormKind = '簽到表' | '領據' | '活動紀錄表' | '成果報告' | '公文'
 
 export function generatedFormExtension(kind: GeneratedFormKind): 'xlsx' | 'docx' {
-  return kind === '活動紀錄表' ? 'xlsx' : 'docx'
+  return kind === '活動紀錄表' || kind === '領據' ? 'xlsx' : 'docx'
 }
 
 /** 開始～結束時間格式：09:00～10:30；沒填結束時間或跟開始時間一樣就只顯示開始時間。 */
@@ -275,33 +275,139 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
   return new Blob([buffer], { type: XLSX_MIME })
 }
 
-export async function buildReceiptDocx(a: ActivityRecord, planNames: string): Promise<Blob> {
-  const doc = new Document({
-    // 字型跟其他產出文件一致；docx 預設的 Heading 1 是藍色，改成黑色粗體 16pt
-    styles: {
-      default: {
-        document: { run: { font: REPORT_FONT, size: 24 } },
-        heading1: { run: { font: REPORT_FONT, size: 32, bold: true, color: '000000' } },
-      },
-    },
-    sections: [
-      {
-        children: [
-          new Paragraph({ text: '領據', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
-          ...activityInfoLines(a, planNames).map((line) => new Paragraph({ text: line })),
-          new Paragraph({ text: '' }),
-          new Paragraph({
-            text: `茲收到　　　　　　　　　　撥付之「${a.name}」活動經費，金額新臺幣　　　　　　　　元整，特立此據。`,
-          }),
-          new Paragraph({ text: '', spacing: { after: 400 } }),
-          new Paragraph({ text: '立據人（簽章）：　　　　　　　　　　　身分證字號：' }),
-          new Paragraph({ text: '地址：' }),
-          new Paragraph({ text: '日期：中華民國　　年　　月　　日' }),
-        ],
-      },
-    ],
+/** 領據上每一張（一位講師／一個時段）要帶入的資料；空白的欄位留給現場手寫。 */
+export interface ReceiptEntry {
+  /** 時段（HH:MM），摘要的「日期」那行用 */
+  time: string
+  timeEnd: string
+  /** 金額（元）；0 表示留白手寫 */
+  amount: number
+  payeeName: string
+  payeeUnit: string
+}
+
+export interface ReceiptOptions {
+  /** 「茲收到支付之 ○○○」的支付單位 */
+  payer: string
+  /** 款項名稱，例：講師鐘點費 */
+  item: string
+  /** 摘要第一行的計畫名稱 */
+  plans: string[]
+  entries: ReceiptEntry[]
+}
+
+/** 4 位數以內轉國字大寫：6000 → 陸仟、1050 → 壹仟零伍拾 */
+function chineseUpperUnder10000(n: number): string {
+  const units = ['仟', '佰', '拾', '']
+  const digits = String(n).padStart(4, '0').split('').map(Number)
+  let out = ''
+  let pendingZero = false
+  digits.forEach((d, i) => {
+    if (d === 0) {
+      if (out) pendingZero = true
+      return
+    }
+    if (pendingZero) out += '零'
+    pendingZero = false
+    out += LEGAL_DIGITS[d] + units[i]
   })
-  return Packer.toBlob(doc)
+  return out
+}
+
+/** 金額轉國字大寫（不含「元整」，範本後面的儲存格已經印好）：12500 → 壹萬貳仟伍佰 */
+export function toChineseUpperAmount(amount: number): string {
+  const n = Math.floor(amount)
+  if (n <= 0) return ''
+  const groups: number[] = []
+  for (let rest = n; rest > 0; rest = Math.floor(rest / 10000)) groups.unshift(rest % 10000)
+  const groupUnits = ['', '萬', '億', '兆']
+  let out = ''
+  groups.forEach((g, i) => {
+    const unit = groupUnits[groups.length - 1 - i]
+    if (g === 0) return
+    // 上一組有值、這一組不滿千（例如 1 萬 50 元），中間要補「零」
+    if (out && g < 1000) out += '零'
+    out += chineseUpperUnder10000(g) + unit
+  })
+  return out
+}
+
+/** 摘要日期格式：115/10/07(三)10:00-12:00 */
+function formatReceiptDate(date: string, time: string, timeEnd: string): string {
+  const roc = toRocParts(date)
+  if (!roc) return ''
+  const weekday = WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]
+  const range = !time ? '' : !timeEnd || timeEnd === time ? time : `${time}-${timeEnd}`
+  return `${roc.y}/${String(roc.m).padStart(2, '0')}/${String(roc.d).padStart(2, '0')}(${weekday})${range}`
+}
+
+/** 領據 Excel，版面比照場域範本「5.領據_單張.xls」：一位講師（一個時段）一張工作表，
+ * 標楷體、A4 直式；金額同時寫國字大寫與 NT$ 數字，身分證、戶籍地址、電話留白給領款人填。 */
+export async function buildReceiptXlsx(a: ActivityRecord, opts: ReceiptOptions): Promise<Blob> {
+  const workbook = new ExcelJS.Workbook()
+  const KAI = '標楷體'
+  const year = toRocParts(a.date)?.y ?? ''
+  const entries = opts.entries.length ? opts.entries : [{ time: a.time, timeEnd: a.timeEnd, amount: 0, payeeName: '', payeeUnit: '' }]
+
+  entries.forEach((entry, idx) => {
+    // 工作表名稱不能有 : \ / ? * [ ]，最長 31 字
+    const label = (entry.payeeName || `${entry.time}${entry.timeEnd ? `-${entry.timeEnd}` : ''}`).replace(/[:\/?*[\]]/g, '')
+    const sheet = workbook.addWorksheet(`領據${idx + 1}${label ? ` ${label}` : ''}`.slice(0, 31), {
+      pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true },
+    })
+    sheet.columns = [26, 16.46, 14.07, 10.6, 9, 9, 5.6, 5.6, 5.6, 5.6, 5.6, 5.6].map((width) => ({ width }))
+    ;[41.65, 33, 40.45, 40.45, 40.45, 40.45, 40.45, 40.45, 40.45, 33, 28.15, 41.65, 31.15].forEach(
+      (h, i) => (sheet.getRow(i + 1).height = h),
+    )
+    for (const range of ['A1:L1', 'A3:K3', 'C4:D4', 'G4:J4', 'B5:F5', 'H5:J5', 'B6:D6', 'F6:L6', 'B7:L7', 'B8:D8', 'I8:L8', 'B9:L9', 'A10:L10', 'A12:L12']) {
+      sheet.mergeCells(range)
+    }
+
+    const put = (
+      ref: string,
+      value: string | number,
+      style: { size: number; bold?: boolean; font?: string; h?: 'left' | 'center' | 'right'; wrap?: boolean },
+    ) => {
+      const cell = sheet.getCell(ref)
+      cell.value = value
+      cell.font = { name: style.font ?? KAI, size: style.size, bold: style.bold }
+      cell.alignment = { horizontal: style.h, vertical: 'middle', wrapText: style.wrap }
+    }
+
+    put('A1', '領  據', { size: 30, bold: true, h: 'center' })
+    put('G2', year, { size: 12, h: 'center' })
+    put('H2', '年', { size: 12, h: 'center' })
+    put('J2', '月', { size: 12, h: 'center' })
+    put('L2', '日', { size: 12, h: 'center' })
+    put('A3', `茲收到支付之 ${opts.payer.trim()}`, { size: 22, h: 'left' })
+    put('A4', opts.item.trim() || '講師鐘點費', { size: 18, bold: true, h: 'left' })
+    put('B4', '新台幣', { size: 18 })
+    put('C4', toChineseUpperAmount(entry.amount), { size: 18, h: 'center' })
+    put('E4', '元整', { size: 18 })
+    put('F4', 'NT$', { size: 18 })
+    put('G4', entry.amount > 0 ? entry.amount : '', { size: 18, h: 'center' })
+    sheet.getCell('G4').numFmt = '#,##0'
+    put('K4', '元', { size: 18 })
+    put('L4', '整', { size: 18 })
+    put('A5', '領款人姓名：', { size: 18 })
+    // 範本的「(簽章)」靠右；有帶入姓名時寫在前面，中間留空給簽章
+    put('B5', entry.payeeName ? `${entry.payeeName.trim()}　　　　(簽章)` : '(簽章)', { size: 18, h: 'right' })
+    put('A6', '身份證字號：', { size: 18 })
+    put('E6', '單位：', { size: 18 })
+    put('F6', entry.payeeUnit.trim(), { size: 18, h: 'left', wrap: true })
+    put('A7', '戶籍地址：', { size: 18 })
+    put('A8', '聯絡電話:', { size: 18, h: 'left' })
+    put('A10', '摘要:', { size: 18 })
+
+    const SUMMARY = { size: 14, font: REPORT_FONT, h: 'left' as const }
+    put('A11', opts.plans.join('、'), SUMMARY)
+    put('A12', a.placeMode === 'online' || !a.place ? a.name : `${a.name}
+ (${a.place})`, { ...SUMMARY, wrap: true })
+    put('A13', `日期:${formatReceiptDate(a.date, entry.time, entry.timeEnd)}`, SUMMARY)
+  })
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  return new Blob([buffer], { type: XLSX_MIME })
 }
 
 export type OfficialLetterPurpose = '邀請參加' | '檢送成果'

@@ -3,15 +3,16 @@ import { computed, ref } from 'vue'
 import {
   buildActivityRecordXlsx,
   buildOfficialLetterDocx,
-  buildReceiptDocx,
+  buildReceiptXlsx,
   buildResultReportDocx,
   buildSignInSheetDocx,
   downloadBlob,
   generatedFormExtension,
   ORGANIZER_NAME,
   SIGN_IN_LAYOUTS,
+  toChineseUpperAmount,
 } from '../utils/download'
-import type { GeneratedFormKind, OfficialLetterPurpose, SignInLayout } from '../utils/download'
+import type { GeneratedFormKind, OfficialLetterPurpose, ReceiptEntry, SignInLayout } from '../utils/download'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
 import { isParsableRegistration, readParticipants } from '../utils/registration'
@@ -34,16 +35,24 @@ function close() {
   emit('close')
 }
 
-// 公文專用欄位；發文機關記在瀏覽器裡，下次不用重打
-const ISSUER_KEY = 'tcross.letterIssuer'
-function readIssuer(): string {
+function readSaved(key: string): string {
   try {
-    return localStorage.getItem(ISSUER_KEY) ?? ''
+    return localStorage.getItem(key) ?? ''
   } catch {
     return ''
   }
 }
-const letterIssuer = ref(readIssuer() || ORGANIZER_NAME)
+function saveValue(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value.trim())
+  } catch {
+    // 無痕模式等情況存不了，不影響產生文件
+  }
+}
+
+// 公文專用欄位；發文機關記在瀏覽器裡，下次不用重打
+const ISSUER_KEY = 'tcross.letterIssuer'
+const letterIssuer = ref(readSaved(ISSUER_KEY) || ORGANIZER_NAME)
 const letterRecipient = ref('')
 const letterPurpose = ref<OfficialLetterPurpose>('邀請參加')
 // 公文「依據」、簽到表標題要列哪些計畫：活動上掛的計畫不一定都要寫進文件
@@ -53,6 +62,19 @@ const pickedPlans = ref<string[]>([...planOptions.value])
 const pickedPlansInOrder = () => planOptions.value.filter((n) => pickedPlans.value.includes(n))
 
 const signInLayout = ref<SignInLayout>('detailed')
+
+// 領據：支付單位記在瀏覽器裡；一位講師（一個時段）一張，預設一張、時段帶活動時間
+const RECEIPT_PAYER_KEY = 'tcross.receiptPayer'
+const receiptPayer = ref(readSaved(RECEIPT_PAYER_KEY))
+const receiptItem = ref('講師鐘點費')
+const newReceiptEntry = (): ReceiptEntry => ({
+  time: props.activity.time,
+  timeEnd: props.activity.timeEnd,
+  amount: 0,
+  payeeName: '',
+  payeeUnit: '',
+})
+const receiptEntries = ref<ReceiptEntry[]>([newReceiptEntry()])
 
 // 簽到表可以從「參與者名單（報名表）」帶入單位／職稱／姓名；只有試算表格式讀得出欄位
 const registrationFiles = computed(() => props.activity.files.registration ?? [])
@@ -72,7 +94,7 @@ const summary = computed(() => {
       return `將產生 Word 簽到表，依活動人數（${props.activity.headcount.total || 0} 人）共 ${pages} 頁、${pages * perPage} 個簽到欄位`
     }
     case '領據':
-      return '將產生一份可列印簽章的 Word 領據'
+      return `將產生 Excel 領據（比照「領據_單張」範本），每位講師／時段一張工作表，共 ${receiptEntries.value.length} 張；身分證字號、戶籍地址、電話留白由領款人填寫`
     case '活動紀錄表':
       return `將產生活動紀錄表 Excel 檔（含執行情形、附件統計：${ATTACHMENT_TYPES.map(([k, l]) => `${l} ${props.activity.files[k]?.length ?? 0}`).join('、')}）`
     case '成果報告':
@@ -99,7 +121,13 @@ async function download() {
         break
       }
       case '領據':
-        blob = await buildReceiptDocx(props.activity, planNames.value)
+        saveValue(RECEIPT_PAYER_KEY, receiptPayer.value)
+        blob = await buildReceiptXlsx(props.activity, {
+          payer: receiptPayer.value,
+          item: receiptItem.value,
+          plans: pickedPlansInOrder(),
+          entries: receiptEntries.value,
+        })
         break
       case '活動紀錄表':
         blob = await buildActivityRecordXlsx(props.activity, planNames.value)
@@ -108,11 +136,7 @@ async function download() {
         blob = await buildResultReportDocx(props.activity, planNames.value)
         break
       case '公文':
-        try {
-          localStorage.setItem(ISSUER_KEY, letterIssuer.value.trim())
-        } catch {
-          // 無痕模式等情況存不了，不影響產生公文
-        }
+        saveValue(ISSUER_KEY, letterIssuer.value)
         blob = await buildOfficialLetterDocx(props.activity, {
           issuer: letterIssuer.value,
           recipient: letterRecipient.value,
@@ -162,8 +186,42 @@ async function download() {
           <template v-else>依表頭的「單位／職稱／姓名」欄位帶入（雙欄版型只帶姓名），名單之外依活動人數保留空白列。</template>
         </p>
       </template>
-      <template v-if="(kind === '公文' || kind === '簽到表') && planOptions.length">
-        <label class="field">{{ kind === '公文' ? '說明「依據」的計畫（不勾＝不寫依據）' : '標題顯示的計畫（不勾＝不顯示）' }}</label>
+      <template v-if="kind === '領據'">
+        <label>支付單位</label>
+        <input v-model="receiptPayer" placeholder="例：社團法人○○協會">
+        <label class="field">款項名稱</label>
+        <input v-model="receiptItem" placeholder="例：講師鐘點費">
+        <div v-for="(entry, i) in receiptEntries" :key="i" class="receipt-entry">
+          <div class="row between">
+            <strong>第 {{ i + 1 }} 張</strong>
+            <button v-if="receiptEntries.length > 1" class="btn ghost sm" type="button" @click="receiptEntries.splice(i, 1)">移除</button>
+          </div>
+          <div class="grid2">
+            <div>
+              <label class="field">時段</label>
+              <div class="row">
+                <input v-model="entry.time" type="time" class="time-input">～<input v-model="entry.timeEnd" type="time" class="time-input">
+              </div>
+            </div>
+            <div>
+              <label class="field">金額（元，留 0 則空白手寫）</label>
+              <input v-model.number="entry.amount" type="number" min="0" step="100">
+              <p v-if="entry.amount > 0" class="hint">新台幣 {{ toChineseUpperAmount(entry.amount) }} 元整</p>
+            </div>
+            <div>
+              <label class="field">領款人姓名（選填）</label>
+              <input v-model="entry.payeeName">
+            </div>
+            <div>
+              <label class="field">單位（選填）</label>
+              <input v-model="entry.payeeUnit">
+            </div>
+          </div>
+        </div>
+        <button class="btn ghost sm field" type="button" @click="receiptEntries.push(newReceiptEntry())">＋ 再加一張</button>
+      </template>
+      <template v-if="(kind === '公文' || kind === '簽到表' || kind === '領據') && planOptions.length">
+        <label class="field">{{ kind === '公文' ? '說明「依據」的計畫（不勾＝不寫依據）' : kind === '領據' ? '摘要顯示的計畫（不勾＝不顯示）' : '標題顯示的計畫（不勾＝不顯示）' }}</label>
         <div class="row" style="gap:14px">
           <label v-for="n in planOptions" :key="n" class="chk">
             <input v-model="pickedPlans" type="checkbox" :value="n">{{ n }}
@@ -177,3 +235,8 @@ async function download() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.receipt-entry{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r)}
+.time-input{width:auto;flex:1}
+</style>
