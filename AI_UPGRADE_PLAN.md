@@ -11,6 +11,15 @@
 | 1-6 成效統計表 Excel | ✅ 10-13 上線（前端） | 新增 `src/utils/outcomeStats.ts`；`src/views/ExportView.vue` 加「成效統計表 Excel」勾選與預覽統計卡 |
 | 2-4 規則式防呆 | ✅ 10-13 上線（前端） | `src/utils/activity.ts`（`checkBasicInfo`／`checkResults`）；`ActivityFormModal.vue`、`DetailView.vue`（成果補充）即時列出提醒，存檔前確認；`ConfirmDialogHost.vue` 訊息支援換行 |
 | 1-1 AI 改寫文案 | 🟡 10-13 上線（Cloud Run `00019-86n`）；⬜ 正式站實際產生一次並核對內容 | 新增 `server/rewrite.py`、`POST /rewrite/{activityId}`（`server/main.py`）、`get_plan_names()`（`server/parse_auth.py`）；前端新增 `src/components/RewriteModal.vue`、`requestRewrite()`（`src/lib/middleware.ts`），詳細頁「AI 改寫文案」按鈕 |
+| 1-2 簽到表辨識 | 🟡 程式完成，未部署（需 Cloud Run） | 新增 `server/assist.py`、`POST /assist/sign-in`；前端 `SignInReviewModal.vue`（詳細頁「簽到表」卡片的按鈕）、`src/utils/aiImages.ts`、`db.saveAttendance()` |
+| 2-1 海報帶入 | 🟡 程式完成，未部署（需 Cloud Run） | `POST /assist/poster`；前端 `PosterAssist.vue`（建立活動表單上方） |
+| 2-2 分類／計畫推薦 | 🟡 程式完成，未部署（需 Cloud Run） | `POST /assist/classify`、`list_names()`（`server/parse_auth.py`）；前端 `ClassifySuggest.vue`（表單計畫／分類下方） |
+
+**第二批設計**
+- 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId；舊的 Back4App 附件也能一併處理）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
+- 簽到表：模型只回名單（單位／職稱／姓名／性別／是否不確定），**人數由前端依名單計算**；解析度固定 `HIGH`（手寫小字）。對照畫面左原圖、右可編輯表格，不確定列標黃；勾選「更新與會人數」「更新與會單位」後才寫入，仍有不確定列時再確認一次。
+- 海報：今天日期由前端帶入，讓「10/18」這類沒寫年份的日期補對年份。結果逐欄列出「建議值（目前值）」，表單已有值的欄位預設不勾。海報上的活動簡述會一併給分類推薦參考。
+- 分類推薦：後端用呼叫者 session 讀現有 Category／Plan 清單，模型只能從清單挑，清單外的名稱一律丟棄；結果以「＋計畫／＋分類」標籤顯示，點了才加入。
 
 **1-1 設計**：後端用呼叫者的 session 讀活動資料（基本資料、成果摘要、KPI、照片圖說），只送文字給 Gemini，同步回傳 `{title, paragraphs, bullets, hashtags}`；不建 `GenerationJob`、不需改 Cloud Code／schema。前端結果放進可編輯文字框，可複製或下載 Word（瀏覽器端 `docx` 產生）。三種格式的寫法目前是暫定，集中在 `server/rewrite.py` 的 `FORMATS`，團隊提供範本後改那裡。
 

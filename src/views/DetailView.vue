@@ -16,6 +16,7 @@ import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
 import RewriteModal from '../components/RewriteModal.vue'
+import SignInReviewModal from '../components/SignInReviewModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
 import HistoryFilePickerModal from '../components/HistoryFilePickerModal.vue'
 import StampLine from '../components/StampLine.vue'
@@ -49,6 +50,7 @@ const genMenuRoot = ref<HTMLElement | null>(null)
 onClickOutside(genMenuRoot, () => (genMenuOpen.value = false))
 const showAiGenModal = ref(false)
 const showRewriteModal = ref(false)
+const showSignInModal = ref(false)
 const pickerFolder = ref<AttachmentKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
@@ -233,7 +235,7 @@ async function duplicateActivity() {
     <p class="sub mono">
       {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}<template v-if="activity.timeEnd && activity.timeEnd !== activity.time">～{{ activity.timeEnd }}</template></template>
       <template v-if="activity.placeMode === 'online'">　線上<template v-if="activity.meetingUrl">（<a :href="activity.meetingUrl" target="_blank" rel="noopener">會議連結</a>）</template></template>
-      <template v-else>　<a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template></template>
+      <template v-else>　<template v-if="activity.venue">{{ activity.venue }}　</template><a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template></template>
       　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '未指定' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
     </p>
@@ -360,6 +362,7 @@ async function duplicateActivity() {
           </template>
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按上傳。</p>
+        <button v-if="key === 'signIn'" class="btn ghost sm" type="button" @click="showSignInModal = true">AI 辨識簽到表，帶入人數</button>
       </FolderDropzone>
     </div>
 
@@ -398,6 +401,7 @@ async function duplicateActivity() {
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="db.planName" @close="genKind = null" />
     <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
     <RewriteModal v-if="showRewriteModal" :activity="activity" @close="showRewriteModal = false" />
+    <SignInReviewModal v-if="showSignInModal" :activity="activity" @close="showSignInModal = false" />
     <HistoryFilePickerModal
       v-if="pickerFolder"
       :activity-id="activity.id"

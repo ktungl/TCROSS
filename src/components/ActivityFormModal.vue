@@ -10,6 +10,9 @@ import { ONLINE_PLACE_LABEL } from '../types'
 import type { ActivityCategory, ActivityRecord, PlaceMode } from '../types'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 import PlaceAutocompleteInput from './PlaceAutocompleteInput.vue'
+import PosterAssist from './PosterAssist.vue'
+import ClassifySuggest from './ClassifySuggest.vue'
+import type { PosterField } from '../lib/middleware'
 
 const props = defineProps<{ activity?: ActivityRecord }>()
 const emit = defineEmits<{ close: [] }>()
@@ -27,6 +30,7 @@ const placeMode = ref<PlaceMode>(props.activity?.placeMode ?? 'physical')
 // 地址與會議連結分開存，切換「實體／線上」時不會把另一邊已經輸入的內容清掉；
 // 線上活動的 place 固定是「線上」，不是地址，編輯時地址欄從空白開始。
 const address = ref(props.activity?.placeMode === 'online' ? '' : (props.activity?.place ?? ''))
+const venue = ref(props.activity?.venue ?? '')
 const meetingUrl = ref(props.activity?.meetingUrl ?? '')
 const meetingUrlError = ref('')
 const owner = ref(props.activity?.owner ?? '')
@@ -51,6 +55,7 @@ function snapshot() {
     timeEnd: timeEnd.value,
     placeMode: placeMode.value,
     address: address.value,
+    venue: venue.value,
     meetingUrl: meetingUrl.value,
     owner: owner.value,
     attendees: attendees.value,
@@ -100,6 +105,49 @@ watch([male, female], ([m, f], [om, of]) => {
 })
 const totalMismatch = computed(() => (Number(total.value) || 0) !== sumMF())
 
+// AI 輔助（AI_UPGRADE_PLAN.md 2-1、2-2）：只產生建議，使用者勾選／點選後才寫進表單
+const posterDescription = ref('')
+const posterCurrent = computed<Record<PosterField, string>>(() => ({
+  name: name.value,
+  date: date.value,
+  time: time.value,
+  timeEnd: timeEnd.value,
+  placeMode: placeMode.value,
+  place: address.value,
+  venue: venue.value,
+  participantDesc: participantDesc.value,
+  attendees: attendees.value,
+}))
+function applyPoster(fields: Partial<Record<PosterField, string>>) {
+  if (fields.name) {
+    name.value = fields.name
+    nameError.value = false
+  }
+  if (fields.date) date.value = fields.date
+  if (fields.time) time.value = fields.time
+  if (fields.timeEnd) timeEnd.value = fields.timeEnd
+  if (fields.placeMode === 'online' || fields.placeMode === 'physical') placeMode.value = fields.placeMode
+  if (fields.place) address.value = fields.place
+  if (fields.venue) venue.value = fields.venue
+  if (fields.participantDesc) participantDesc.value = fields.participantDesc
+  if (fields.attendees) attendees.value = fields.attendees
+}
+const classifyText = computed(() =>
+  [
+    name.value && `活動名稱：${name.value}`,
+    posterDescription.value && `活動簡述：${posterDescription.value}`,
+    participantDesc.value && `參加對象：${participantDesc.value}`,
+    attendees.value && `與會單位：${attendees.value}`,
+    remark.value && `備註：${remark.value}`,
+  ]
+    .filter(Boolean)
+    .join('\n'),
+)
+function addSuggested(planIds: string[], cats: string[]) {
+  selectedPlans.value = [...new Set([...selectedPlans.value, ...planIds])]
+  categories.value = [...new Set([...categories.value, ...cats])]
+}
+
 // 防呆：前後矛盾（例如名稱寫週六、日期選成週五）即時列出，存檔前再確認一次
 const consistencyIssues = computed(() =>
   checkBasicInfo({
@@ -146,6 +194,7 @@ async function submit() {
     timeEnd: timeEnd.value,
     placeMode: placeMode.value,
     place: online ? ONLINE_PLACE_LABEL : address.value.trim(),
+    venue: online ? '' : venue.value.trim(),
     meetingUrl: online ? url : '',
     owner: owner.value.trim(),
     attendees: attendees.value.trim(),
@@ -182,6 +231,7 @@ async function submit() {
   <div class="modal" v-modal-focus @click.self="requestClose">
     <div class="card">
       <h2>{{ isNew ? '建立活動' : '編輯基本資料' }}</h2>
+      <PosterAssist v-if="isNew" :current="posterCurrent" @apply="applyPoster" @description="posterDescription = $event" />
 
       <div class="grid2">
         <div>
@@ -194,6 +244,7 @@ async function submit() {
           <p v-if="selectedPlans.length" class="hint">依已選計畫篩選相關項目</p>
         </div>
       </div>
+      <ClassifySuggest :text="classifyText" :categories="categories" :plans="selectedPlans" @add="addSuggested" />
 
       <div class="field">
         <label>活動名稱／事由</label>
@@ -213,7 +264,11 @@ async function submit() {
           <label class="chk"><input type="radio" value="physical" v-model="placeMode">實體</label>
           <label class="chk"><input type="radio" value="online" v-model="placeMode">線上</label>
         </div>
-        <PlaceAutocompleteInput v-if="placeMode === 'physical'" v-model="address" placeholder="輸入地址，會自動帶出建議" />
+        <template v-if="placeMode === 'physical'">
+          <PlaceAutocompleteInput v-model="address" placeholder="輸入地址，會自動帶出建議" />
+          <input v-model="venue" class="field" maxlength="100" placeholder="場地名稱（選填），例如：南投清流部落共生之家">
+          <p class="hint">場地名稱會用在領據摘要；沒填就改用地址。</p>
+        </template>
         <template v-else>
           <input
             v-model="meetingUrl"

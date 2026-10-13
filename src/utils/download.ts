@@ -401,8 +401,15 @@ export async function buildReceiptXlsx(a: ActivityRecord, opts: ReceiptOptions):
 
     const SUMMARY = { size: 14, font: REPORT_FONT, h: 'left' as const }
     put('A11', opts.plans.join('、'), SUMMARY)
-    put('A12', a.placeMode === 'online' || !a.place ? a.name : `${a.name}
- (${a.place})`, { ...SUMMARY, wrap: true })
+    // 活動名稱可能夾帶 Tab 或換行（從別處貼上），摘要裡統一成一個空白
+    const activityName = a.name.replace(/\s+/g, ' ').trim()
+    // 範本括號裡寫的是場地名稱；沒填場地名稱的舊資料退回用地址
+    const venue = a.placeMode === 'online' ? '' : a.venue.trim() || a.place
+    const session = venue ? `${activityName}
+ (${venue})` : activityName
+    put('A12', session, { ...SUMMARY, wrap: true })
+    // 合併後整列約 90 個半形字寬；名稱或地址較長會折成多行，列高跟著加高，不被截掉
+    sheet.getRow(12).height = Math.max(41.65, estimateWrappedLines(session, 90) * 20)
     put('A13', `日期:${formatReceiptDate(a.date, entry.time, entry.timeEnd)}`, SUMMARY)
   })
 

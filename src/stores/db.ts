@@ -42,6 +42,7 @@ export interface ActivityFormInput {
   timeEnd: string
   placeMode: PlaceMode
   place: string
+  venue: string
   meetingUrl: string
   owner: string
   attendees: string
@@ -181,6 +182,7 @@ export const useDbStore = defineStore('db', () => {
       timeEnd: '',
       placeMode: existing.placeMode,
       place: existing.place,
+      venue: existing.venue,
       meetingUrl: existing.meetingUrl,
       owner: existing.owner,
       attendees: existing.attendees,
@@ -247,6 +249,7 @@ export const useDbStore = defineStore('db', () => {
           timeEnd: existing.timeEnd,
           placeMode: existing.placeMode,
           place: existing.place,
+          venue: existing.venue,
           meetingUrl: existing.meetingUrl,
           owner: existing.owner,
           attendees: existing.attendees,
@@ -273,6 +276,23 @@ export const useDbStore = defineStore('db', () => {
       (existing) => {
         existing.summary = summary
         existing.kpis = kpis
+      },
+    )
+  }
+
+  /** 簽到表辨識確認後寫入人數；attendees 為 undefined 時不動「與會單位或成員」。 */
+  async function saveAttendance(id: string, headcount: HeadcountStat, attendees?: string): Promise<void> {
+    await patchActivity(
+      id,
+      (obj) => {
+        obj.set('maleCount', headcount.male)
+        obj.set('femaleCount', headcount.female)
+        obj.set('totalCount', headcount.total)
+        if (attendees !== undefined) obj.set('attendees', attendees)
+      },
+      (existing) => {
+        existing.headcount = { ...headcount }
+        if (attendees !== undefined) existing.attendees = attendees
       },
     )
   }
@@ -536,6 +556,7 @@ export const useDbStore = defineStore('db', () => {
     deleteActivity,
     setActivityPlans,
     saveActivityResults,
+    saveAttendance,
     uploadFiles,
     attachExistingFiles,
     trashFile,

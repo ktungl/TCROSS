@@ -16,11 +16,13 @@ from parse_auth import (
     get_activity,
     get_generation_job,
     get_plan_names,
+    list_names,
     verify_session_token,
     write_with_master_key,
 )
 from report import analyze_sources, build_report_docx
 from rewrite import FORMATS as REWRITE_FORMATS, rewrite_activity
+from assist import MAX_SIGN_IN_IMAGES, decode_image, read_poster, recognize_sign_in, suggest_classification
 from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
 from utils import (
     ATTACHMENT_FOLDERS,
@@ -125,6 +127,27 @@ class AttachmentDeleteRequest(BaseModel):
 
 class RewriteRequest(BaseModel):
     format: str
+
+
+class AssistImage(BaseModel):
+    # base64（不含 data: 前綴）；前端已縮圖成 JPEG
+    data: str
+    mimeType: str
+
+
+class SignInAssistRequest(BaseModel):
+    activityId: str
+    images: list[AssistImage]
+
+
+class PosterAssistRequest(BaseModel):
+    image: AssistImage
+    # 使用者當地的今天（YYYY-MM-DD），讓模型把「10/18」這種沒寫年份的日期補對年份
+    today: str
+
+
+class ClassifyAssistRequest(BaseModel):
+    text: str
 
 
 def require_user(authorization: str = Header(...)) -> dict:
@@ -354,6 +377,61 @@ def rewrite(activity_id: str, body: RewriteRequest, user: dict = Depends(enforce
     except Exception:  # noqa: BLE001 — 模型或網路錯誤一律回 502，細節只留在 log
         audit_log.exception("rewrite failed activityId=%s format=%s", activity_id, body.format)
         raise HTTPException(502, "AI 改寫失敗，請稍後再試")
+
+
+def _assist_failed(kind: str) -> HTTPException:
+    audit_log.exception("assist %s failed", kind)
+    return HTTPException(502, "AI 辨識失敗，請稍後再試")
+
+
+@app.post("/assist/sign-in")
+def assist_sign_in(body: SignInAssistRequest, user: dict = Depends(enforce_rate_limit)):
+    """AI_UPGRADE_PLAN.md 1-2：簽到表照片 → 名單。只回傳辨識結果，寫入由前端在使用者確認後做。"""
+    if not body.images or len(body.images) > MAX_SIGN_IN_IMAGES:
+        raise HTTPException(400, f"簽到表照片要 1～{MAX_SIGN_IN_IMAGES} 張")
+    if not activity_exists(user["sessionToken"], body.activityId):
+        raise HTTPException(403, "活動不存在或無權存取")
+    try:
+        images = [(decode_image(i.data, i.mimeType), i.mimeType) for i in body.images]
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    audit_log.info("assist sign-in user=%s activityId=%s images=%d", user.get("username"), body.activityId, len(images))
+    try:
+        return recognize_sign_in(images)
+    except Exception:  # noqa: BLE001
+        raise _assist_failed("sign-in")
+
+
+@app.post("/assist/poster")
+def assist_poster(body: PosterAssistRequest, user: dict = Depends(enforce_rate_limit)):
+    """AI_UPGRADE_PLAN.md 2-1：海報／邀請函 → 活動欄位建議。建立活動時還沒有 activityId，圖片直接隨請求送來、不存檔。"""
+    try:
+        raw = decode_image(body.image.data, body.image.mimeType)
+        today = datetime.strptime(body.today, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    audit_log.info("assist poster user=%s", user.get("username"))
+    try:
+        return read_poster(raw, body.image.mimeType, today)
+    except Exception:  # noqa: BLE001
+        raise _assist_failed("poster")
+
+
+@app.post("/assist/classify")
+def assist_classify(body: ClassifyAssistRequest, user: dict = Depends(enforce_rate_limit)):
+    """AI_UPGRADE_PLAN.md 2-2：從現有分類／計畫清單中推薦，清單由這裡用呼叫者的 session 讀取。"""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "請先填寫活動名稱或說明")
+    categories = list(dict.fromkeys(list_names(user["sessionToken"], "Category").values()))
+    plans = list_names(user["sessionToken"], "Plan")
+    if not categories and not plans:
+        raise HTTPException(400, "目前沒有任何分類或計畫可以推薦")
+    audit_log.info("assist classify user=%s", user.get("username"))
+    try:
+        return suggest_classification(text, categories, plans)
+    except Exception:  # noqa: BLE001
+        raise _assist_failed("classify")
 
 
 def _is_stale_processing(job: dict) -> bool:

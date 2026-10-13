@@ -181,6 +181,8 @@ export interface ActivityRecord extends ActorStamp {
   placeMode: PlaceMode
   /** 實體活動的地址；線上活動固定為「線上」，供匯出文件沿用 */
   place: string
+  /** 實體活動的場地名稱（例：南投清流部落共生之家，選填）；領據摘要用，沒填就用地址 */
+  venue: string
   /** 線上活動的會議連結（http(s)），實體活動留空 */
   meetingUrl: string
   /** 負責人（內部管理用） */

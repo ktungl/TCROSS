@@ -125,3 +125,64 @@ export async function requestRewrite(activityId: string, format: RewriteFormat):
   if (!res.ok) throw new Error(await readErrorMessage(res, 'AI 改寫失敗'))
   return (await res.json()) as RewriteResult
 }
+
+async function postAssist<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  const token = Parse.User.current()?.getSessionToken()
+  if (!token) throw new Error('請重新登入')
+  const res = await fetch(`${baseUrl()}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, fallback))
+  return (await res.json()) as T
+}
+
+interface AssistImagePayload {
+  data: string
+  mimeType: string
+}
+
+export interface SignInRow {
+  page: number
+  unit: string
+  title: string
+  name: string
+  gender: '男' | '女' | ''
+  uncertain: boolean
+}
+
+/** 簽到表辨識（AI_UPGRADE_PLAN.md 1-2）：只回傳名單，寫入由使用者在對照畫面確認後才做。 */
+export function assistSignIn(
+  activityId: string,
+  images: AssistImagePayload[],
+): Promise<{ rows: SignInRow[]; notes: string }> {
+  return postAssist('/assist/sign-in', { activityId, images }, '簽到表辨識失敗')
+}
+
+export interface PosterSuggestion {
+  name: string
+  date: string
+  time: string
+  timeEnd: string
+  online: boolean
+  place: string
+  venue: string
+  participantDesc: string
+  attendees: string
+  description: string
+}
+
+/** 海報辨識可以帶入的活動表單欄位 */
+export type PosterField =
+  | 'name' | 'date' | 'time' | 'timeEnd' | 'placeMode' | 'place' | 'venue' | 'participantDesc' | 'attendees'
+
+/** 海報帶入（AI_UPGRADE_PLAN.md 2-1）：today 是使用者當地日期，讓沒寫年份的日期補對年份。 */
+export function assistPoster(image: AssistImagePayload, today: string): Promise<PosterSuggestion> {
+  return postAssist('/assist/poster', { image, today }, '海報辨識失敗')
+}
+
+/** 分類／計畫推薦（AI_UPGRADE_PLAN.md 2-2）：只會從現有清單挑選。 */
+export function assistClassify(text: string): Promise<{ categories: string[]; planIds: string[]; reason: string }> {
+  return postAssist('/assist/classify', { text }, '推薦失敗')
+}

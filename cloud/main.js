@@ -98,6 +98,7 @@ const FIELD_LABELS = {
   timeEnd: '結束時間',
   placeMode: '實體／線上',
   place: '地點',
+  venue: '場地名稱',
   meetingUrl: '會議連結',
   owner: '負責人',
   attendees: '與會單位或成員',
@@ -523,6 +524,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     fail('placeMode 必須是 physical 或 online');
   }
   checkOptionalString(object, 'place', 200);
+  checkOptionalString(object, 'venue', 100);
   // meetingUrl 會直接當成連結渲染（活動詳情頁），只接受 http(s)，擋掉 javascript: 之類
   checkOptionalString(object, 'meetingUrl', 500);
   const meetingUrl = object.get('meetingUrl');

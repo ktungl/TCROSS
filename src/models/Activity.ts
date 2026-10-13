@@ -80,6 +80,7 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     timeEnd: obj.get('timeEnd') ?? '',
     placeMode: placeModeOf(obj),
     place: obj.get('place') ?? '',
+    venue: obj.get('venue') ?? '',
     meetingUrl: obj.get('meetingUrl') ?? '',
     owner: obj.get('owner') ?? '',
     attendees: obj.get('attendees') ?? '',
@@ -112,6 +113,7 @@ export function applyActivityRecord(
   obj.set('timeEnd', record.timeEnd)
   obj.set('placeMode', record.placeMode)
   obj.set('place', record.place)
+  obj.set('venue', record.venue)
   obj.set('meetingUrl', record.meetingUrl)
   obj.set('owner', record.owner)
   obj.set('attendees', record.attendees)

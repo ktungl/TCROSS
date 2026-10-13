@@ -19,6 +19,8 @@
 
 - `/rewrite/{activity_id}`：AI 改寫文案（`AI_UPGRADE_PLAN.md` 1-1）。body `{"format": "新聞稿"|"社群文案"|"主管摘要"}`；用呼叫者的 session 讀活動與計畫名稱（讀不到回 403），只把文字欄位送 Gemini（`rewrite.py`），同步回傳 `{format, title, paragraphs, bullets, hashtags}`，不建 `GenerationJob`、不寫任何資料。各格式的寫法在 `rewrite.py` 的 `FORMATS`。
 
+- `/assist/sign-in`、`/assist/poster`、`/assist/classify`：表單智慧輔助（`AI_UPGRADE_PLAN.md` 第二批，`assist.py`）。都只回傳建議、不寫任何資料。圖片以 base64 隨請求送來（JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張、`activityId` 須可讀），不存 GCS；分類推薦的清單由這裡用呼叫者 session 讀 Category／Plan，清單外的結果一律丟棄。
+
 另有 `/status` 做健康檢查（回傳 `{"ok": true}`）。**不要叫它 `/healthz`**——實測發現 Cloud Run 預設網域（`*.run.app`）對完全小寫的 `/healthz` 這個路徑字串會在 Google Frontend 層攔截、直接回一個跟這個服務無關的通用 404 頁面，請求根本不會進到容器（用 Cloud Run 的請求記錄可以驗證：`/healthz` 完全沒有記錄，`/health`、`/Healthz` 這種相近但不完全相同的路徑則正常）。
 
 ## 本機開發
