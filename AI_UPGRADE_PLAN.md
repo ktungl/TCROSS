@@ -2,7 +2,55 @@
 
 依《智慧活動管家_功能升級規劃.docx》對照現有程式碼整理，作為修改網站的工作依據。現況與部署見 [ROADMAP.md](ROADMAP.md)。
 
-> 建立：2026-10-13｜狀態：第一批已上線（2026-10-13），見下方「進度」
+> 建立：2026-10-13｜狀態：第一、二批已上線（2026-10-13），第三批未開始
+
+## 製作進度（2026-10-13 收工時）
+
+### 今天完成
+
+| 批次 | 項目 | 上線狀態 |
+| --- | --- | --- |
+| 第一批 | 1-6 成效統計表 Excel、2-4 規則式防呆、1-1 AI 改寫文案 | ✅ 前端＋後端都已上線 |
+| 第二批 | 1-2 簽到表辨識、2-1 海報帶入、2-2 分類／計畫推薦 | ✅ 前端＋後端都已上線 |
+
+**目前線上版本**
+- 前端：`main` = `c6537f3`（GitHub Actions 部署成功，正式站 `tacc-iip.web.app` 已確認含新功能）
+- Cloud Run：`tcross-middleware-00020-8jn`（`/status` 200；`/rewrite`、`/assist/*` 未登入回 422、無效憑證回 401；正式網域 CORS 200）。上一版 `00019-86n`、更早 `00018-p22` 可回滾
+- Back4App schema：唯讀檢查無缺欄位（含新的 `venue`）
+- `Donna` 分支領先 `main` 只差文件 commit（`8185f6d`），不急著上 main
+
+**相關 commit**（`Donna`）：`1df7a0f` 領據改 Excel → `8302d06` 第一批 → `debfa6c` 部署紀錄 → `4da65e0` 場地名稱 `venue`＋第二批 → `c6537f3`／`8185f6d` 部署紀錄
+
+### 明天從這裡開始
+
+**1. 正式站實測（都還沒用真資料跑過）**
+- [ ] 簽到表辨識：用一張真的手寫簽到表（含一份 PDF），看名單、性別、人數準不準；黃色「不確定」列標得合不合理
+- [ ] 海報帶入：用一張活動海報，核對日期（尤其民國年／只寫月日）、時間、地址
+- [ ] 分類推薦：建活動時按一次，看推薦合不合理
+- [ ] AI 改寫文案：挑一場成果摘要已填的活動，三種格式各產一次，核對有沒有杜撰
+- [ ] 成效統計表：實際下載一份，對照活動列表的數字
+- 測完把結果記到上方「進度」表與 ROADMAP「已完成」表（10-13 那列的 ⬜）
+
+**2. 未完成的雜項**
+- [ ] `cloud/main.js` 的 `venue` 長度檢查（`4da65e0`）若還沒貼回 Back4App，貼回後在 ROADMAP「`cloud/main.js`」表記一筆（沒貼不影響存檔）
+- [ ] 已知小誤判：防呆會把「1/2 折」這類寫法當成日期提醒（只提醒、不擋存檔，可接受）
+
+**3. 待團隊提供／決定**（見文末「待團隊決定」）
+- 新聞稿／社群文案／主管摘要範本 → 改 `server/rewrite.py` 的 `FORMATS`
+- 成效統計表公版格式 → 改 `src/utils/outcomeStats.ts`
+- 第三批週報寄送管道（Email／LINE／只放總覽頁）
+
+**4. 第三批（尚未開始）建議順序**
+1. **1-5 公文快讀**：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
+2. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
+3. **1-3 會議錄音整理**：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。先實測 2 小時錄音能否在 900 秒內跑完
+4. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
+
+**部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。指令：
+```
+! gcloud run deploy tcross-middleware --source server --region asia-east1 --service-account tcross-middleware-sa@project-80ac5e1a-2ea4-4000-9ff.iam.gserviceaccount.com --account tainanjade@gmail.com --project project-80ac5e1a-2ea4-4000-9ff --quiet
+! git push origin Donna:main
+```
 
 ## 進度
 
