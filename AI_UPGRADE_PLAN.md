@@ -2,15 +2,15 @@
 
 依《智慧活動管家_功能升級規劃.docx》對照現有程式碼整理，作為修改網站的工作依據。現況與部署見 [ROADMAP.md](ROADMAP.md)。
 
-> 建立：2026-10-13｜狀態：第一批程式完成（未部署），見下方「進度」
+> 建立：2026-10-13｜狀態：第一批已上線（2026-10-13），見下方「進度」
 
 ## 進度
 
 | 項目 | 狀態 | 修改檔案 |
 | --- | --- | --- |
-| 1-6 成效統計表 Excel | ✅ 程式完成，純前端，push main 即上線 | 新增 `src/utils/outcomeStats.ts`；`src/views/ExportView.vue` 加「成效統計表 Excel」勾選與預覽統計卡 |
-| 2-4 規則式防呆 | ✅ 程式完成，純前端 | `src/utils/activity.ts`（`checkBasicInfo`／`checkResults`）；`ActivityFormModal.vue`、`DetailView.vue`（成果補充）即時列出提醒，存檔前確認；`ConfirmDialogHost.vue` 訊息支援換行 |
-| 1-1 AI 改寫文案 | 🟡 程式完成，**Cloud Run 需重新部署**才能用 | 新增 `server/rewrite.py`、`POST /rewrite/{activityId}`（`server/main.py`）、`get_plan_names()`（`server/parse_auth.py`）；前端新增 `src/components/RewriteModal.vue`、`requestRewrite()`（`src/lib/middleware.ts`），詳細頁「AI 改寫文案」按鈕 |
+| 1-6 成效統計表 Excel | ✅ 10-13 上線（前端） | 新增 `src/utils/outcomeStats.ts`；`src/views/ExportView.vue` 加「成效統計表 Excel」勾選與預覽統計卡 |
+| 2-4 規則式防呆 | ✅ 10-13 上線（前端） | `src/utils/activity.ts`（`checkBasicInfo`／`checkResults`）；`ActivityFormModal.vue`、`DetailView.vue`（成果補充）即時列出提醒，存檔前確認；`ConfirmDialogHost.vue` 訊息支援換行 |
+| 1-1 AI 改寫文案 | 🟡 10-13 上線（Cloud Run `00019-86n`）；⬜ 正式站實際產生一次並核對內容 | 新增 `server/rewrite.py`、`POST /rewrite/{activityId}`（`server/main.py`）、`get_plan_names()`（`server/parse_auth.py`）；前端新增 `src/components/RewriteModal.vue`、`requestRewrite()`（`src/lib/middleware.ts`），詳細頁「AI 改寫文案」按鈕 |
 
 **1-1 設計**：後端用呼叫者的 session 讀活動資料（基本資料、成果摘要、KPI、照片圖說），只送文字給 Gemini，同步回傳 `{title, paragraphs, bullets, hashtags}`；不建 `GenerationJob`、不需改 Cloud Code／schema。前端結果放進可編輯文字框，可複製或下載 Word（瀏覽器端 `docx` 產生）。三種格式的寫法目前是暫定，集中在 `server/rewrite.py` 的 `FORMATS`，團隊提供範本後改那裡。
 
