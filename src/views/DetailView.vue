@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
 import { attachmentSrc } from '../lib/attachments'
-import { gaps, googleMapsUrl, kb } from '../utils/activity'
+import { checkResults, consistencyConfirmMessage, gaps, googleMapsUrl, kb } from '../utils/activity'
 import { actorLine } from '../utils/actor'
 import { ATTACHMENT_TYPES, PHOTO_MAX, PHOTO_MIN } from '../types'
 import type { AttachmentKey, AuditLogRecord, Kpi } from '../types'
@@ -15,6 +15,7 @@ import { errorMessage, pushToast } from '../composables/useToast'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
+import RewriteModal from '../components/RewriteModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
 import HistoryFilePickerModal from '../components/HistoryFilePickerModal.vue'
 import StampLine from '../components/StampLine.vue'
@@ -47,6 +48,7 @@ const genMenuOpen = ref(false)
 const genMenuRoot = ref<HTMLElement | null>(null)
 onClickOutside(genMenuRoot, () => (genMenuOpen.value = false))
 const showAiGenModal = ref(false)
+const showRewriteModal = ref(false)
 const pickerFolder = ref<AttachmentKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
@@ -68,8 +70,16 @@ function addKpi() {
 function removeKpi(i: number) {
   kpisDraft.value.splice(i, 1)
 }
+const resultIssues = computed(() =>
+  activity.value ? checkResults(activity.value, summaryDraft.value, kpisDraft.value) : [],
+)
+
 async function saveResults() {
   if (!activity.value) return
+  const issues = resultIssues.value
+  if (issues.length && !(await confirm(consistencyConfirmMessage(issues), '仍要儲存'))) {
+    return
+  }
   // Cloud Code 要求 k/v/u 都必須是字串；舊資料或曾經用 REST API 寫入的 KPI 可能帶著數字型別的
   // v/u 混進來，這裡存檔前強制轉成字串，避免「kpis 陣列項目格式不正確」被伺服器擋下。
   const cleaned = kpisDraft.value
@@ -238,6 +248,7 @@ async function duplicateActivity() {
     <div class="row between detail-toolbar">
       <div class="row">
         <button class="btn sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
+        <button class="btn ghost sm" @click="showRewriteModal = true">AI 改寫文案</button>
         <div ref="genMenuRoot" class="menu">
           <button
             class="btn ghost sm"
@@ -367,6 +378,12 @@ async function duplicateActivity() {
         <p v-if="!kpisDraft.length" class="empty" style="padding:0 0 8px">還沒有 KPI。</p>
       </div>
       <button class="btn ghost sm" @click="addKpi">新增一列 KPI</button>
+      <div v-if="resultIssues.length" class="warn-box field">
+        <strong>請確認以下內容（不影響儲存）</strong>
+        <ul>
+          <li v-for="issue in resultIssues" :key="issue">{{ issue }}</li>
+        </ul>
+      </div>
       <div class="actions"><button class="btn" @click="saveResults">儲存成果</button></div>
     </div>
 
@@ -380,6 +397,7 @@ async function duplicateActivity() {
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="db.planName" @close="genKind = null" />
     <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
+    <RewriteModal v-if="showRewriteModal" :activity="activity" @close="showRewriteModal = false" />
     <HistoryFilePickerModal
       v-if="pickerFolder"
       :activity-id="activity.id"

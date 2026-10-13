@@ -12,6 +12,7 @@ import {
   LEDGER_PHOTO_SIZES,
   type LedgerPhotoSize,
 } from '../utils/download'
+import { buildOutcomeStatsXlsx, computeOutcomeStats } from '../utils/outcomeStats'
 import { errorMessage, pushToast } from '../composables/useToast'
 import type { ActivityCategory } from '../types'
 
@@ -23,6 +24,7 @@ const xTo = ref('')
 const xCategories = ref<ActivityCategory[]>([])
 const wantLedger = ref(true)
 const wantNeimu = ref(true)
+const wantStats = ref(true)
 const ledgerPhotoSize = ref<LedgerPhotoSize>('medium')
 const ledgerPhotosPerRow = ref(1)
 const exporting = ref(false)
@@ -59,6 +61,8 @@ const picked = computed(() =>
     .sort((x, y) => (x.date || '').localeCompare(y.date || '')),
 )
 
+const stats = computed(() => computeOutcomeStats(picked.value, planName))
+
 function doCsv() {
   const rows = [
     [
@@ -90,7 +94,7 @@ function doCsv() {
 }
 
 async function doExport() {
-  if (!wantLedger.value && !wantNeimu.value) {
+  if (!wantLedger.value && !wantNeimu.value && !wantStats.value) {
     pushToast('請至少勾選一種匯出格式', 'error')
     return
   }
@@ -112,6 +116,15 @@ async function doExport() {
       const blob = await buildNeimuReportDocx(picked.value, pn)
       downloadBlob('內政部結案成果報告.docx', blob)
     }
+    if (wantStats.value) {
+      const blob = await buildOutcomeStatsXlsx(picked.value, planName, {
+        planLabel: pn,
+        from: xFrom.value,
+        to: xTo.value,
+        categories: xCategories.value,
+      })
+      downloadBlob('成效統計表.xlsx', blob)
+    }
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   } finally {
@@ -122,7 +135,7 @@ async function doExport() {
 
 <template>
   <h1>匯出成果</h1>
-  <p class="sub">挑計畫、期間或分類，產出大事紀 Excel 與內政部結案 Word。</p>
+  <p class="sub">挑計畫、期間或分類，產出大事紀 Excel、內政部結案 Word 與成效統計表。</p>
   <div class="card">
     <div class="grid3">
       <div>
@@ -152,7 +165,9 @@ async function doExport() {
     <div class="row">
       <label class="chk"><input type="checkbox" v-model="wantLedger">大事紀 Excel</label>
       <label class="chk"><input type="checkbox" v-model="wantNeimu">內政部結案 Word</label>
+      <label class="chk"><input type="checkbox" v-model="wantStats">成效統計表 Excel</label>
     </div>
+    <p v-if="wantStats" class="hint">統計總表（場次、男女與合計人數，依計畫／分類／月份小計）＋活動明細</p>
 
     <div v-if="wantLedger" class="grid3 field">
       <div>
@@ -182,7 +197,22 @@ async function doExport() {
   <div>
     <h2>成果清單預覽（{{ picked.length }} 場）</h2>
     <p v-if="!picked.length" class="empty">目前篩選條件下沒有活動。</p>
-    <div v-else class="card" style="overflow:auto">
+    <template v-else>
+    <div class="grid3 section-gap">
+      <div class="card stat">
+        <span class="stat-label">場次</span>
+        <span class="stat-num">{{ stats.overall.sessions }}</span>
+      </div>
+      <div class="card stat">
+        <span class="stat-label">參與總人數</span>
+        <span class="stat-num">{{ stats.overall.total }}</span>
+      </div>
+      <div class="card stat">
+        <span class="stat-label">男性／女性</span>
+        <span class="stat-num">{{ stats.overall.male }}／{{ stats.overall.female }}</span>
+      </div>
+    </div>
+    <div class="card" style="overflow:auto">
       <table class="out">
         <thead>
           <tr><th>日期</th><th>活動</th><th>分類</th><th>地點</th><th>人數</th><th>KPI</th><th>檔案</th><th>完整度</th></tr>
@@ -201,5 +231,6 @@ async function doExport() {
         </tbody>
       </table>
     </div>
+    </template>
   </div>
 </template>

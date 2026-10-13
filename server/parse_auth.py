@@ -106,6 +106,21 @@ def get_activity(session_token: str, activity_id: str) -> dict | None:
     return resp.json()
 
 
+def get_plan_names(session_token: str, plan_ids: list[str]) -> list[str]:
+    """用呼叫者自己的 session 查計畫名稱（依 plan_ids 順序），讀不到的略過。"""
+    if not plan_ids:
+        return []
+    resp = _client.get(
+        f"{PARSE_SERVER_URL}/classes/Plan",
+        headers=_user_headers(session_token),
+        params={"where": json.dumps({"objectId": {"$in": plan_ids}}), "keys": "name", "limit": len(plan_ids)},
+    )
+    if resp.status_code != 200:
+        return []
+    names = {p["objectId"]: p.get("name", "") for p in resp.json().get("results", [])}
+    return [names[i] for i in plan_ids if names.get(i)]
+
+
 def get_generation_job(session_token: str, job_id: str) -> dict | None:
     """Fetch a GenerationJob the caller can currently read (Parse REST + the
     caller's own session token, so it respects CLP/ACL like the other helpers

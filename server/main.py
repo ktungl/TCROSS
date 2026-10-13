@@ -15,10 +15,12 @@ from parse_auth import (
     find_generation_jobs_for_object_paths,
     get_activity,
     get_generation_job,
+    get_plan_names,
     verify_session_token,
     write_with_master_key,
 )
 from report import analyze_sources, build_report_docx
+from rewrite import FORMATS as REWRITE_FORMATS, rewrite_activity
 from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
 from utils import (
     ATTACHMENT_FOLDERS,
@@ -119,6 +121,10 @@ class AttachmentViewRequest(BaseModel):
 
 class AttachmentDeleteRequest(BaseModel):
     paths: list[str]
+
+
+class RewriteRequest(BaseModel):
+    format: str
 
 
 def require_user(authorization: str = Header(...)) -> dict:
@@ -327,6 +333,27 @@ def attachment_delete(body: AttachmentDeleteRequest, user: dict = Depends(enforc
             deleted.append(path)
     audit_log.info("attachments deleted user=%s deleted=%s kept=%s", user.get("username"), deleted, kept)
     return {"deleted": deleted, "kept": kept}
+
+
+@app.post("/rewrite/{activity_id}")
+def rewrite(activity_id: str, body: RewriteRequest, user: dict = Depends(enforce_rate_limit)):
+    """AI_UPGRADE_PLAN.md 1-1：把活動已建檔的資料改寫成新聞稿／社群文案／主管摘要。
+    活動內容由這裡用呼叫者的 session 讀取，不接受前端送來的文字，避免被拿來任意呼叫 Gemini。
+    只送文字、幾秒內完成，所以同步回傳，不建 GenerationJob。"""
+    if body.format not in REWRITE_FORMATS:
+        raise HTTPException(400, f"format 必須是 {list(REWRITE_FORMATS)} 其中之一")
+    activity = get_activity(user["sessionToken"], activity_id)
+    if not activity:
+        audit_log.warning("rejected: unauthorized rewrite user=%s activityId=%s", user.get("username"), activity_id)
+        raise HTTPException(403, "活動不存在或無權存取")
+    plan_ids = [p.get("objectId") for p in (activity.get("plans") or []) if isinstance(p, dict) and p.get("objectId")]
+    plan_names = get_plan_names(user["sessionToken"], plan_ids)
+    audit_log.info("rewrite user=%s activityId=%s format=%s", user.get("username"), activity_id, body.format)
+    try:
+        return rewrite_activity(body.format, activity, plan_names)
+    except Exception:  # noqa: BLE001 — 模型或網路錯誤一律回 502，細節只留在 log
+        audit_log.exception("rewrite failed activityId=%s format=%s", activity_id, body.format)
+        raise HTTPException(502, "AI 改寫失敗，請稍後再試")
 
 
 def _is_stale_processing(job: dict) -> bool:

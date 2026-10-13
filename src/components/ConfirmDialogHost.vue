@@ -8,7 +8,7 @@ useEscape(() => resolveConfirm(false), { active: () => confirmState.visible, isC
 <template>
   <div v-if="confirmState.visible" class="modal" v-modal-focus @click.self="resolveConfirm(false)">
     <div class="card confirm-card">
-      <p class="flush-m">{{ confirmState.message }}</p>
+      <p class="flush-m" style="white-space:pre-line">{{ confirmState.message }}</p>
       <div class="row actions">
         <button class="btn" :class="{ danger: confirmState.danger }" @click="resolveConfirm(true)">{{ confirmState.confirmLabel }}</button>
         <!-- 危險動作預設聚焦「取消」，避免一開就按 Enter 直接刪除 -->

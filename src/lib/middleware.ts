@@ -101,3 +101,27 @@ export function uploadToSignedUrl(
     xhr.send(file)
   })
 }
+
+export type RewriteFormat = '新聞稿' | '社群文案' | '主管摘要'
+
+export interface RewriteResult {
+  format: RewriteFormat
+  title: string
+  paragraphs: string[]
+  bullets: string[]
+  hashtags: string[]
+}
+
+/** AI 改寫（AI_UPGRADE_PLAN.md 1-1）：後端讀這場活動已建檔的資料，改寫成指定格式後直接回傳，
+ * 只送文字、幾秒內完成，不建 GenerationJob。 */
+export async function requestRewrite(activityId: string, format: RewriteFormat): Promise<RewriteResult> {
+  const token = Parse.User.current()?.getSessionToken()
+  if (!token) throw new Error('請重新登入')
+  const res = await fetch(`${baseUrl()}/rewrite/${activityId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ format }),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, 'AI 改寫失敗'))
+  return (await res.json()) as RewriteResult
+}

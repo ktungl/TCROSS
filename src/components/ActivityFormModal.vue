@@ -5,6 +5,7 @@ import { useDbStore } from '../stores/db'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { confirm } from '../composables/useConfirm'
 import { useEscape } from '../composables/useEscape'
+import { checkBasicInfo, consistencyConfirmMessage } from '../utils/activity'
 import { ONLINE_PLACE_LABEL } from '../types'
 import type { ActivityCategory, ActivityRecord, PlaceMode } from '../types'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
@@ -99,6 +100,22 @@ watch([male, female], ([m, f], [om, of]) => {
 })
 const totalMismatch = computed(() => (Number(total.value) || 0) !== sumMF())
 
+// 防呆：前後矛盾（例如名稱寫週六、日期選成週五）即時列出，存檔前再確認一次
+const consistencyIssues = computed(() =>
+  checkBasicInfo({
+    name: name.value,
+    date: date.value,
+    time: time.value,
+    timeEnd: timeEnd.value,
+    placeMode: placeMode.value,
+    address: address.value,
+    meetingUrl: meetingUrl.value,
+    participantDesc: participantDesc.value,
+    remark: remark.value,
+    headcount: { male: Number(male.value) || 0, female: Number(female.value) || 0, total: Number(total.value) || 0 },
+  }),
+)
+
 const submitting = ref(false)
 
 async function submit() {
@@ -114,6 +131,10 @@ async function submit() {
   const url = meetingUrl.value.trim()
   if (placeMode.value === 'online' && url && !/^https?:\/\//i.test(url)) {
     meetingUrlError.value = '會議連結要以 http:// 或 https:// 開頭'
+    return
+  }
+  const issues = consistencyIssues.value
+  if (issues.length && !(await confirm(consistencyConfirmMessage(issues), '仍要儲存'))) {
     return
   }
   const online = placeMode.value === 'online'
@@ -232,6 +253,13 @@ async function submit() {
 
       <label class="field">備註</label>
       <input v-model="remark" placeholder="補充說明（如場次、申請事項）">
+
+      <div v-if="consistencyIssues.length" class="warn-box field">
+        <strong>請確認以下內容（不影響儲存）</strong>
+        <ul>
+          <li v-for="issue in consistencyIssues" :key="issue">{{ issue }}</li>
+        </ul>
+      </div>
 
       <div class="row actions">
         <button class="btn" :disabled="submitting" @click="submit">
