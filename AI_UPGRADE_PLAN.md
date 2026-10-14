@@ -2,7 +2,7 @@
 
 依《智慧活動管家_功能升級規劃.docx》對照現有程式碼整理，作為修改網站的工作依據。現況與部署見 [ROADMAP.md](ROADMAP.md)。
 
-> 建立：2026-10-13｜狀態：第一、二批已上線（2026-10-13），第三批未開始
+> 建立：2026-10-13｜狀態：第一、二批已上線（2026-10-13）；第三批 1-5 公文快讀後端已上線、前端待 push main（2026-10-14）
 
 ## 製作進度（2026-10-13 收工時）
 
@@ -41,7 +41,7 @@
 - 第三批週報寄送管道（Email／LINE／只放總覽頁）
 
 **4. 第三批（尚未開始）建議順序**
-1. **1-5 公文快讀**：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
+1. ~~**1-5 公文快讀**~~（10-14 後端上線 `00021-j5x`，前端待 push main、待實測）：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
 2. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
 3. **1-3 會議錄音整理**：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。先實測 2 小時錄音能否在 900 秒內跑完
 4. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
@@ -62,12 +62,15 @@
 | 1-2 簽到表辨識 | 🟡 後端 10-13 上線（`00020-8jn`）；前端 10-13 上線；⬜ 用真實手寫簽到表測準確度 | 新增 `server/assist.py`、`POST /assist/sign-in`；前端 `SignInReviewModal.vue`（詳細頁「簽到表」卡片的按鈕）、`src/utils/aiImages.ts`、`db.saveAttendance()` |
 | 2-1 海報帶入 | 🟡 10-13 上線；⬜ 用真實海報實測 | `POST /assist/poster`；前端 `PosterAssist.vue`（建立活動表單上方） |
 | 2-2 分類／計畫推薦 | 🟡 10-13 上線；⬜ 正式站實測 | `POST /assist/classify`、`list_names()`（`server/parse_auth.py`）；前端 `ClassifySuggest.vue`（表單計畫／分類下方） |
+| 1-5 公文快讀 | 🟡 後端 10-14 上線（`00021-j5x`）；⬜ push main 上線前端 → 用真公文實測 | `server/assist.py`（`decode_document`、`digest_document`、`MAX_PDF_BYTES`）、`POST /assist/document`；前端 `DocumentDigestModal.vue`（詳細頁「公文」卡片按鈕）、`assistDocument()`、`loadDocumentForAi()`（`src/utils/aiImages.ts`） |
 
 **第二批設計**
 - 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId；舊的 Back4App 附件也能一併處理）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
 - 簽到表：模型只回名單（單位／職稱／姓名／性別／是否不確定），**人數由前端依名單計算**；解析度固定 `HIGH`（手寫小字）。對照畫面左原圖、右可編輯表格，不確定列標黃；勾選「更新與會人數」「更新與會單位」後才寫入，仍有不確定列時再確認一次。
 - 海報：今天日期由前端帶入，讓「10/18」這類沒寫年份的日期補對年份。結果逐欄列出「建議值（目前值）」，表單已有值的欄位預設不勾。海報上的活動簡述會一併給分類推薦參考。
 - 分類推薦：後端用呼叫者 session 讀現有 Category／Plan 清單，模型只能從清單挑，清單外的名稱一律丟棄；結果以「＋計畫／＋分類」標籤顯示，點了才加入。
+
+**1-5 設計**：PDF 原檔直接以 base64 送出（Gemini 原生讀 PDF 的文字與版面，不轉圖），上限 10 MB（base64 後約 13 MB，留在 Gemini 單次請求與 Cloud Run 請求上限內）；照片沿用縮圖成 JPEG。後端驗 `%PDF` 檔頭。回傳 `{docType, issuer, docNumber, subject, summary, keyPoints[], checkItems[{category: 期限／預算／法規／其他, item, source}], notes}`，只顯示不存檔；畫面頂端固定加註「AI 摘要僅供掌握方向，法規與預算請核對原文」，可複製成文字。目前綁在活動詳細頁（需要 activityId 驗權限），之後要獨立頁面再把 `activityId` 改成選填。Word 公文請先轉 PDF。
 
 **1-1 設計**：後端用呼叫者的 session 讀活動資料（基本資料、成果摘要、KPI、照片圖說），只送文字給 Gemini，同步回傳 `{title, paragraphs, bullets, hashtags}`；不建 `GenerationJob`、不需改 Cloud Code／schema。前端結果放進可編輯文字框，可複製或下載 Word（瀏覽器端 `docx` 產生）。三種格式的寫法目前是暫定，集中在 `server/rewrite.py` 的 `FORMATS`，團隊提供範本後改那裡。
 

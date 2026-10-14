@@ -10,7 +10,7 @@
 
 - **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
 - **前端（Firebase Hosting）**：`https://tacc-iip.web.app`（10-09 起；舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 301 轉址過來）。push 到 main 自動部署（GitHub Actions＋WIF）。Netlify 09-29 起停用。
-- **後端（Cloud Run）**：`tcross-middleware` revision `00020-8jn`（10-13），`/status` 200。
+- **後端（Cloud Run）**：`tcross-middleware` revision `00021-j5x`（10-14），`/status` 200。
 - **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 10-09。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
 - **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
@@ -134,7 +134,8 @@
 | `00017-p9d` | 10-09 | 附件分類補上「參與者名單（報名表）」（`registration`） |
 | `00018-p22` | 10-09 | `ALLOWED_ORIGIN` 加入 `tacc-iip.web.app`／`tacc-iip.firebaseapp.com` |
 | `00019-86n` | 10-13 | `/rewrite/{activityId}` AI 改寫文案（新聞稿／社群文案／主管摘要，見 [AI_UPGRADE_PLAN.md](AI_UPGRADE_PLAN.md) 1-1）；部署帳號 `tainanjade@gmail.com` |
-| **`00020-8jn`**（線上） | 10-13 | `/assist/sign-in`、`/assist/poster`、`/assist/classify` 表單智慧輔助（AI_UPGRADE_PLAN.md 第二批） |
+| `00020-8jn` | 10-13 | `/assist/sign-in`、`/assist/poster`、`/assist/classify` 表單智慧輔助（AI_UPGRADE_PLAN.md 第二批） |
+| **`00021-j5x`**（線上） | 10-14 | `/assist/document` 公文快讀（AI_UPGRADE_PLAN.md 1-5）；`/status` 200、未登入 422、無效憑證 401、正式網域 CORS 200 |
 
 `00013`／`00014` 只改 `ALLOWED_ORIGIN`，其餘設定沿用 `00012-6nc`：`maxScale=2`、`cpu-throttling=true`、`timeoutSeconds=900`、`GCP_LOCATION=asia-northeast1`。映像檔由 09-28 原始碼建置，`requirements.txt` 已是 `fastapi==0.141.1`，因此 Python 套件升級已在線上。
 

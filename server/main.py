@@ -22,7 +22,15 @@ from parse_auth import (
 )
 from report import analyze_sources, build_report_docx
 from rewrite import FORMATS as REWRITE_FORMATS, rewrite_activity
-from assist import MAX_SIGN_IN_IMAGES, decode_image, read_poster, recognize_sign_in, suggest_classification
+from assist import (
+    MAX_SIGN_IN_IMAGES,
+    decode_document,
+    decode_image,
+    digest_document,
+    read_poster,
+    recognize_sign_in,
+    suggest_classification,
+)
 from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
 from utils import (
     ATTACHMENT_FOLDERS,
@@ -148,6 +156,12 @@ class PosterAssistRequest(BaseModel):
 
 class ClassifyAssistRequest(BaseModel):
     text: str
+
+
+class DocumentAssistRequest(BaseModel):
+    activityId: str
+    # PDF 原檔（application/pdf）或前端縮過的圖片，base64 不含 data: 前綴
+    document: AssistImage
 
 
 def require_user(authorization: str = Header(...)) -> dict:
@@ -432,6 +446,25 @@ def assist_classify(body: ClassifyAssistRequest, user: dict = Depends(enforce_ra
         return suggest_classification(text, categories, plans)
     except Exception:  # noqa: BLE001
         raise _assist_failed("classify")
+
+
+@app.post("/assist/document")
+def assist_document(body: DocumentAssistRequest, user: dict = Depends(enforce_rate_limit)):
+    """AI_UPGRADE_PLAN.md 1-5：公文／企劃書 → 重點摘要＋需人工核對清單。只回傳結果、不存檔。"""
+    if not activity_exists(user["sessionToken"], body.activityId):
+        raise HTTPException(403, "活動不存在或無權存取")
+    try:
+        raw = decode_document(body.document.data, body.document.mimeType)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    audit_log.info(
+        "assist document user=%s activityId=%s mime=%s bytes=%d",
+        user.get("username"), body.activityId, body.document.mimeType, len(raw),
+    )
+    try:
+        return digest_document(raw, body.document.mimeType)
+    except Exception:  # noqa: BLE001
+        raise _assist_failed("document")
 
 
 def _is_stale_processing(job: dict) -> bool:

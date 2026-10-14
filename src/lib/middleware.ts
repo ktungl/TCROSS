@@ -186,3 +186,28 @@ export function assistPoster(image: AssistImagePayload, today: string): Promise<
 export function assistClassify(text: string): Promise<{ categories: string[]; planIds: string[]; reason: string }> {
   return postAssist('/assist/classify', { text }, '推薦失敗')
 }
+
+export interface DocumentCheckItem {
+  category: '期限' | '預算' | '法規' | '其他'
+  item: string
+  source: string
+}
+
+export interface DocumentDigest {
+  docType: string
+  issuer: string
+  docNumber: string
+  subject: string
+  summary: string
+  keyPoints: string[]
+  checkItems: DocumentCheckItem[]
+  notes: string
+}
+
+/** 公文快讀（AI_UPGRADE_PLAN.md 1-5）：PDF 原檔或縮過的圖片 → 重點摘要＋需人工核對清單，不存檔。 */
+export function assistDocument(
+  activityId: string,
+  document: { data: string; mimeType: string },
+): Promise<DocumentDigest> {
+  return postAssist('/assist/document', { activityId, document }, '公文快讀失敗')
+}

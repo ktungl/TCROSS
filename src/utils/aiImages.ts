@@ -73,3 +73,19 @@ export async function loadAttachmentForAi(file: FileMeta, maxPages: number): Pro
   }
   return [await prepareImageForAi(blob)]
 }
+
+/** 跟 server/assist.py MAX_PDF_BYTES 一致：PDF 原檔直接送 Gemini，base64 後約 4/3 倍 */
+export const MAX_PDF_BYTES = 10 * 1024 * 1024
+
+/** 公文快讀用：PDF 送原檔（Gemini 能直接讀文字與版面），圖片照樣縮圖成 JPEG。 */
+export async function loadDocumentForAi(blob: Blob, name: string): Promise<{ data: string; mimeType: string }> {
+  if (isPdfName(name)) {
+    if (blob.size > MAX_PDF_BYTES) {
+      throw new Error(`「${name}」超過 ${MAX_PDF_BYTES / 1024 / 1024} MB，請只留需要的頁面再試`)
+    }
+    return { data: await blobToBase64(blob), mimeType: 'application/pdf' }
+  }
+  const img = await prepareImageForAi(blob)
+  URL.revokeObjectURL(img.previewUrl)
+  return { data: img.data, mimeType: img.mimeType }
+}

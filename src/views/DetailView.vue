@@ -17,6 +17,7 @@ import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
 import RewriteModal from '../components/RewriteModal.vue'
 import SignInReviewModal from '../components/SignInReviewModal.vue'
+import DocumentDigestModal from '../components/DocumentDigestModal.vue'
 import FolderDropzone from '../components/FolderDropzone.vue'
 import HistoryFilePickerModal from '../components/HistoryFilePickerModal.vue'
 import StampLine from '../components/StampLine.vue'
@@ -51,6 +52,7 @@ onClickOutside(genMenuRoot, () => (genMenuOpen.value = false))
 const showAiGenModal = ref(false)
 const showRewriteModal = ref(false)
 const showSignInModal = ref(false)
+const showDocumentModal = ref(false)
 const pickerFolder = ref<AttachmentKey | null>(null)
 
 async function togglePlan(planId: string, checked: boolean) {
@@ -363,6 +365,7 @@ async function duplicateActivity() {
         </ul>
         <p v-else class="empty">還沒有{{ label }}。拖曳檔案到這裡或按上傳。</p>
         <button v-if="key === 'signIn'" class="btn ghost sm" type="button" @click="showSignInModal = true">AI 辨識簽到表，帶入人數</button>
+        <button v-if="key === 'document'" class="btn ghost sm" type="button" @click="showDocumentModal = true">AI 公文快讀</button>
       </FolderDropzone>
     </div>
 
@@ -402,6 +405,7 @@ async function duplicateActivity() {
     <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
     <RewriteModal v-if="showRewriteModal" :activity="activity" @close="showRewriteModal = false" />
     <SignInReviewModal v-if="showSignInModal" :activity="activity" @close="showSignInModal = false" />
+    <DocumentDigestModal v-if="showDocumentModal" :activity="activity" @close="showDocumentModal = false" />
     <HistoryFilePickerModal
       v-if="pickerFolder"
       :activity-id="activity.id"

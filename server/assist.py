@@ -4,6 +4,9 @@
 - sign_in：手寫簽到表照片 → 名單（人數由前端依名單計算，不讓模型自己算）
 - poster：活動海報／邀請函 → 活動名稱、日期、時間、地點等欄位建議
 - classify：活動名稱與說明 → 從「現有」分類與計畫清單中挑選，不能自創
+
+第三批：
+- document：公文／企劃書（PDF 或照片）→ 重點摘要＋「需人工核對」清單（1-5）
 """
 
 import base64
@@ -19,6 +22,9 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_SIGN_IN_IMAGES = 6
 _MAX_TEXT_CHARS = 1500
+# 公文 PDF 原檔直接送 Gemini（原生可讀 PDF）。base64 後約 4/3 倍，要留在 Gemini 單次請求
+# 與 Cloud Run 請求大小上限內；前端 DocumentDigestModal.vue 的 MAX_PDF_BYTES 要一起改。
+MAX_PDF_BYTES = 10 * 1024 * 1024
 
 
 def decode_image(data: str, mime_type: str) -> bytes:
@@ -30,6 +36,23 @@ def decode_image(data: str, mime_type: str) -> bytes:
         raise ValueError("圖片資料格式不正確")
     if len(raw) > MAX_IMAGE_BYTES:
         raise ValueError(f"單張圖片不能超過 {MAX_IMAGE_BYTES // 1024 // 1024} MB")
+    return raw
+
+
+def decode_document(data: str, mime_type: str) -> bytes:
+    """公文：PDF 原檔，或已在前端縮過的圖片（掃描成照片的公文）。"""
+    if mime_type != "application/pdf":
+        if mime_type not in ALLOWED_IMAGE_TYPES:
+            raise ValueError("只接受 PDF 或 JPEG／PNG／WebP 圖片")
+        return decode_image(data, mime_type)
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("檔案資料格式不正確")
+    if len(raw) > MAX_PDF_BYTES:
+        raise ValueError(f"PDF 不能超過 {MAX_PDF_BYTES // 1024 // 1024} MB")
+    if not raw.startswith(b"%PDF"):
+        raise ValueError("這不是有效的 PDF 檔")
     return raw
 
 
@@ -167,3 +190,70 @@ def suggest_classification(text: str, categories: list[str], plans: dict[str, st
     picked_categories = [c for c in dict.fromkeys(data.get("categories") or []) if c in category_set]
     picked_plans = [id_by_name[n] for n in dict.fromkeys(data.get("plans") or []) if n in id_by_name]
     return {"categories": picked_categories, "planIds": picked_plans, "reason": str(data.get("reason") or "")}
+
+
+# ── 公文／企劃書快讀 ──
+
+_CHECK_CATEGORIES = ["期限", "預算", "法規", "其他"]
+
+_DOCUMENT_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "docType": {"type": "STRING"},
+        "issuer": {"type": "STRING"},
+        "docNumber": {"type": "STRING"},
+        "subject": {"type": "STRING"},
+        "summary": {"type": "STRING"},
+        "keyPoints": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "checkItems": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "category": {"type": "STRING", "enum": _CHECK_CATEGORIES},
+                    "item": {"type": "STRING"},
+                    "source": {"type": "STRING"},
+                },
+                "required": ["category", "item", "source"],
+            },
+        },
+        "notes": {"type": "STRING"},
+    },
+    "required": ["docType", "issuer", "docNumber", "subject", "summary", "keyPoints", "checkItems", "notes"],
+}
+
+_DOCUMENT_PROMPT = (
+    "以上是一份公文、企劃書或計畫相關文件。請幫社福機構的承辦人快速掌握重點，用繁體中文回覆，"
+    "只能根據文件內容，不要杜撰或補充文件沒寫的事；文件上沒有的欄位留空字串：\n"
+    "- docType：文件類型（例如 函、公告、開會通知單、企劃書、計畫書）\n"
+    "- issuer：發文或撰寫單位；docNumber：發文字號\n"
+    "- subject：主旨（公文照抄主旨，其他文件寫一句話主題）\n"
+    "- summary：2-4 句說明這份文件要我們做什麼或知道什麼\n"
+    "- keyPoints：3-8 點重點條列\n"
+    "- checkItems：需要承辦人對照原文核對的項目，例如繳交或辦理期限、日期、金額、補助比例、"
+    "引用的法規條文、必備文件；category 是 期限／預算／法規／其他，item 寫要核對什麼（含文件上的數字或日期），"
+    "source 寫出處（例如「說明二」「第 3 頁」），找不到出處就留空字串。數字與日期照抄原文，不要換算\n"
+    "- notes：文件模糊、缺頁或看不清楚的地方，沒有就留空字串"
+)
+
+
+def digest_document(raw: bytes, mime: str) -> dict:
+    data = _generate([types.Part.from_bytes(data=raw, mime_type=mime), types.Part.from_text(text=_DOCUMENT_PROMPT)], _DOCUMENT_SCHEMA)
+    text = lambda key: str(data.get(key) or "").strip()  # noqa: E731
+    check_items = []
+    for c in data.get("checkItems") or []:
+        item = str(c.get("item") or "").strip()
+        if not item:
+            continue
+        category = c.get("category") if c.get("category") in _CHECK_CATEGORIES else "其他"
+        check_items.append({"category": category, "item": item, "source": str(c.get("source") or "").strip()})
+    return {
+        "docType": text("docType"),
+        "issuer": text("issuer"),
+        "docNumber": text("docNumber"),
+        "subject": text("subject"),
+        "summary": text("summary"),
+        "keyPoints": [p for p in (str(x).strip() for x in data.get("keyPoints") or []) if p],
+        "checkItems": check_items,
+        "notes": text("notes"),
+    }
