@@ -87,7 +87,8 @@ export function dateMentionMismatches(text: string, date: string, fieldLabel: st
       issues.add(`${fieldLabel}寫「${m[0]}」，但活動日期是 ${actual}`)
     }
   }
-  for (const m of text.matchAll(/(?<![\d/])(\d{1,2})(?:月(\d{1,2})[日號]|\/(\d{1,2}))(?![\d/])/g)) {
+  // 斜線後面接「折、的、人、倍、以上」這類字是分數或比例（1/2 折、3/4 的人），不是日期
+  for (const m of text.matchAll(/(?<![\d/])(\d{1,2})(?:月(\d{1,2})[日號]|\/(\d{1,2})(?!\s*(?:折|的|人|位|名|倍|成|份|組|個|以上|以下|左右|強|弱|%|％)))(?![\d/])/g)) {
     const month = Number(m[1])
     const day = Number(m[2] ?? m[3])
     if (month < 1 || month > 12 || day < 1 || day > 31) continue
