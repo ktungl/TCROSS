@@ -43,7 +43,7 @@
 **4. 第三批（尚未開始）建議順序**
 1. ~~**1-5 公文快讀**~~（10-14 上線：`00021-j5x`＋`7b67cc7`，待實測）：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
 2. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
-3. ~~**1-3 會議錄音整理**~~（10-14 程式完成，待部署與實測）：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。先實測 2 小時錄音能否在 900 秒內跑完
+3. ~~**1-3 會議錄音整理**~~（10-14 程式完成，待部署與實測）：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。每次限 60 分鐘（10-14 決定），上線後看 log 的 `seconds=` 確認耗時
 4. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
 
 **部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。指令：
@@ -73,7 +73,7 @@
 
 **1-5 設計**：PDF 原檔直接以 base64 送出（Gemini 原生讀 PDF 的文字與版面，不轉圖），上限 10 MB（base64 後約 13 MB，留在 Gemini 單次請求與 Cloud Run 請求上限內）；照片沿用縮圖成 JPEG。後端驗 `%PDF` 檔頭。回傳 `{docType, issuer, docNumber, subject, summary, keyPoints[], checkItems[{category: 期限／預算／法規／其他, item, source}], notes}`，只顯示不存檔；畫面頂端固定加註「AI 摘要僅供掌握方向，法規與預算請核對原文」，可複製成文字。目前綁在活動詳細頁（需要 activityId 驗權限），之後要獨立頁面再把 `activityId` 改成選填。Word 公文請先轉 PDF。
 
-**1-3 設計**：沿用 `GenerationJob`（錄音大，走 Signed URL 直傳 GCS → `/generate`），`kind=會議紀錄`。只收 `audio` 資料夾、最多 3 個檔；前端用 `<audio>` 讀長度，合計上限暫定 90 分鐘（`AiGenerationModal.vue` `MAX_MEETING_MINUTES`），實測 2 小時跑得完再放寬。只要結構化紀錄（摘要、與會者、討論重點、決議、待辦 `{task, owner, due}`），不做逐字稿，輸出 token 少。Word 末尾加註「決議、負責人與期限請與主持人確認」。每次完成或失敗都在 Cloud Logging 記 `seconds=`，用來看長錄音離 900 秒還有多遠。**部署順序**：先貼 `cloud/main.js`（否則建立會議紀錄工作會被擋）→ Cloud Run → push main。⚠️ 單檔仍受 50 MB 上限：手機 128 kbps 錄音 90 分鐘約 86 MB 會被擋，64 kbps 約 43 MB 可以（待團隊決定是否放寬，見文末）。
+**1-3 設計**：沿用 `GenerationJob`（錄音大，走 Signed URL 直傳 GCS → `/generate`），`kind=會議紀錄`。只收 `audio` 資料夾、最多 3 個檔；前端用 `<audio>` 讀長度，每次合計上限 **60 分鐘**（10-14 決定；`AiGenerationModal.vue` `MAX_MEETING_MINUTES`），讀不出長度的檔案不收。只要結構化紀錄（摘要、與會者、討論重點、決議、待辦 `{task, owner, due}`），不做逐字稿，輸出 token 少。Word 末尾加註「決議、負責人與期限請與主持人確認」。每次完成或失敗都在 Cloud Logging 記 `seconds=`，用來看長錄音離 900 秒還有多遠。**部署順序**：先貼 `cloud/main.js`（否則建立會議紀錄工作會被擋）→ Cloud Run → push main。⚠️ 單檔仍受 50 MB 上限：手機 128 kbps 錄音 60 分鐘約 57 MB 會被擋，96 kbps 約 43 MB、64 kbps 約 29 MB 可以（待團隊決定是否放寬，見文末）。
 
 **1-1 設計**：後端用呼叫者的 session 讀活動資料（基本資料、成果摘要、KPI、照片圖說），只送文字給 Gemini，同步回傳 `{title, paragraphs, bullets, hashtags}`；不建 `GenerationJob`、不需改 Cloud Code／schema。前端結果放進可編輯文字框，可複製或下載 Word（瀏覽器端 `docx` 產生）。三種格式的寫法目前是暫定，集中在 `server/rewrite.py` 的 `FORMATS`，團隊提供範本後改那裡。
 
@@ -141,7 +141,7 @@
 | | |
 | --- | --- |
 | 做法 | `mediaFiles` 或 AI 素材的錄音 → `kind=會議紀錄` → 回 `summary`／`decisions[]`／`todos[{task, owner, due}]` → `.docx`。 |
-| 注意 | 長錄音費用高：前端顯示預估長度、限制單檔長度（建議先 90 分鐘）；Cloud Run timeout 900 秒需實測 2 小時錄音是否跑得完，不行就改分段。 |
+| 注意 | 長錄音費用高：前端顯示預估長度、每次合計限 60 分鐘（10-14 決定）；60 分鐘約 11.5 萬 token，仍需實測耗時是否遠低於 Cloud Run timeout 900 秒。 |
 
 ### 1-4 活動影片抓亮點
 

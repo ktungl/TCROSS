@@ -47,7 +47,7 @@ const activeJob = ref<GenerationJobRecord | null>(null)
 const isMeeting = computed(() => props.kind === '會議紀錄')
 /** 會議紀錄只收錄音；檔案數要跟 server/main.py MAX_MEETING_FILES 一致 */
 const MAX_MEETING_FILES = 3
-const MAX_MEETING_MINUTES = 90
+const MAX_MEETING_MINUTES = 60
 const folders = computed(() => (isMeeting.value ? FOLDERS.filter(([key]) => key === 'audio') : FOLDERS))
 const maxFiles = computed(() => (isMeeting.value ? MAX_MEETING_FILES : MAX_SOURCE_FILES))
 
@@ -55,7 +55,7 @@ const totalSelected = computed(() =>
   FOLDERS.reduce((n, [key]) => n + selected[key].length, 0),
 )
 
-/** 錄音長度（秒）；瀏覽器讀不出長度的格式記 null，不擋上傳 */
+/** 錄音長度（秒）；瀏覽器讀不出長度的格式記 null，會議紀錄不收（無法確認有沒有超過上限） */
 const durations = reactive(new Map<File, number | null>())
 function readDuration(file: File): Promise<number | null> {
   return new Promise((resolve) => {
@@ -76,7 +76,7 @@ const totalMinutes = computed(() =>
 )
 function minutesLabel(file: File): string {
   const sec = durations.get(file)
-  return sec == null ? '長度未知' : `${Math.round(sec / 60)} 分鐘`
+  return sec == null ? '' : `${Math.round(sec / 60)} 分鐘`
 }
 
 const pastJobs = computed(() =>
@@ -140,7 +140,17 @@ async function addFiles(folder: FolderKey, files: File[]) {
     else accepted.push(file)
   }
   if (isMeeting.value) {
-    for (const file of accepted) durations.set(file, await readDuration(file))
+    const measured: File[] = []
+    for (const file of accepted) {
+      const sec = await readDuration(file)
+      if (sec == null) {
+        pushToast(`讀不出「${file.name}」的長度，請轉成 MP3 或 M4A 再上傳`, 'error')
+        continue
+      }
+      durations.set(file, sec)
+      measured.push(file)
+    }
+    accepted.splice(0, accepted.length, ...measured)
   }
   selected[folder] = [...selected[folder], ...accepted]
 }
