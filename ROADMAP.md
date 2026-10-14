@@ -11,7 +11,7 @@
 - **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
 - **前端（Firebase Hosting）**：`https://tacc-iip.web.app`（10-09 起；舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 301 轉址過來）。push 到 main 自動部署（GitHub Actions＋WIF）。Netlify 09-29 起停用。
 - **後端（Cloud Run）**：`tcross-middleware` revision `00022-jmz`（10-14），`/status` 200。
-- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 10-09。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
+- **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 10-14。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
 - **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
 - **AI 生成**：09-29 實測通過，約 30 秒產出 `.docx`，照片中的數字全部正確讀出。
 
@@ -149,6 +149,7 @@
 | 09-04 | 需求訪談欄位驗證、`GenerationJob` 檢查 | REST 實測 4 筆畸形資料被擋 |
 | 09-27 | 角色分級、`AuditLog`、上傳大小檢查、Category `beforeSave` | REST 實測 15 項通過 |
 | 10-09 | 附件網址接受 `gcs:attachments/`、搬遷 context、共用檔案不誤刪、錯誤訊息改中文欄位名 | 搬遷腳本寫回 13 筆活動成功（舊版會回「必須是 http(s) 網址」）；System Logs 有重啟紀錄 |
+| 10-14 | `GenerationJob.kind` 加「會議紀錄」（AI_UPGRADE_PLAN.md 1-3）、`venue` 長度上限 100 字（`4da65e0`） | 使用者確認已貼回；未登入的 REST 探測會先被 CLP 擋（code 119），無法從外部驗證，待正式站建立第一筆會議紀錄時確認 |
 
 ---
 
