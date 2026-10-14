@@ -63,7 +63,7 @@
 | 2-1 海報帶入 | 🟡 10-13 上線；⬜ 用真實海報實測 | `POST /assist/poster`；前端 `PosterAssist.vue`（建立活動表單上方） |
 | 2-2 分類／計畫推薦 | 🟡 10-13 上線；⬜ 正式站實測 | `POST /assist/classify`、`list_names()`（`server/parse_auth.py`）；前端 `ClassifySuggest.vue`（表單計畫／分類下方） |
 | 1-5 公文快讀 | 🟡 10-14 上線（Cloud Run `00021-j5x`、前端 `main` = `7b67cc7`）；⬜ 用真公文實測 | `server/assist.py`（`decode_document`、`digest_document`、`MAX_PDF_BYTES`）、`POST /assist/document`；前端 `DocumentDigestModal.vue`（詳細頁「公文」卡片按鈕）、`assistDocument()`、`loadDocumentForAi()`（`src/utils/aiImages.ts`） |
-| 1-3 會議錄音整理 | 🔵 10-14 程式完成（`vue-tsc` 通過、Word 組檔以假資料測過）；⬜ 貼回 `cloud/main.js` → Cloud Run 部署 → push main → 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議紀錄」按鈕 |
+| 1-3 會議錄音整理 | 🟡 後端 10-14 上線（`00022-jmz`）；⬜ 貼回 `cloud/main.js` → push main → 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議紀錄」按鈕 |
 
 **第二批設計**
 - 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId；舊的 Back4App 附件也能一併處理）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
