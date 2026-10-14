@@ -201,3 +201,6 @@
 - 本機 `gcloud auth login` 若登入的是舊帳號，要改用新帳號重新登入。
 
 **換正式網域時**：同步更新 Cloud Run `ALLOWED_ORIGIN` 與 Google Maps 金鑰的網域白名單。
+
+
+討論清單網頁：⧉ https://claude.ai/artifact/SbRHW84nxiWrn5HJn8FUKP
