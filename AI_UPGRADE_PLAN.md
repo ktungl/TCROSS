@@ -43,7 +43,7 @@
 **4. 第三批（尚未開始）建議順序**
 1. ~~**1-5 公文快讀**~~（10-14 上線：`00021-j5x`＋`7b67cc7`，待實測）：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
 2. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
-3. ~~**1-3 會議錄音整理**~~（10-14 程式完成，待部署與實測）：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。每次限 60 分鐘（10-14 決定），上線後看 log 的 `seconds=` 確認耗時
+3. ~~**1-3 會議錄音整理**~~（10-14 上線，待確認 Cloud Code 已貼回與實測）：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。每次限 60 分鐘（10-14 決定），上線後看 log 的 `seconds=` 確認耗時
 4. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
 
 **部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。指令：
@@ -63,7 +63,7 @@
 | 2-1 海報帶入 | 🟡 10-13 上線；⬜ 用真實海報實測 | `POST /assist/poster`；前端 `PosterAssist.vue`（建立活動表單上方） |
 | 2-2 分類／計畫推薦 | 🟡 10-13 上線；⬜ 正式站實測 | `POST /assist/classify`、`list_names()`（`server/parse_auth.py`）；前端 `ClassifySuggest.vue`（表單計畫／分類下方） |
 | 1-5 公文快讀 | 🟡 10-14 上線（Cloud Run `00021-j5x`、前端 `main` = `7b67cc7`）；⬜ 用真公文實測 | `server/assist.py`（`decode_document`、`digest_document`、`MAX_PDF_BYTES`）、`POST /assist/document`；前端 `DocumentDigestModal.vue`（詳細頁「公文」卡片按鈕）、`assistDocument()`、`loadDocumentForAi()`（`src/utils/aiImages.ts`） |
-| 1-3 會議錄音整理 | 🟡 後端 10-14 上線（`00022-jmz`）；⬜ 貼回 `cloud/main.js` → push main → 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議紀錄」按鈕 |
+| 1-3 會議錄音整理 | 🟡 10-14 上線（Cloud Run `00022-jmz`、前端 `main` = `c0f6ac3`）；⬜ 確認 `cloud/main.js` 已貼回 Back4App → 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議紀錄」按鈕 |
 
 **第二批設計**
 - 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId；舊的 Back4App 附件也能一併處理）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
