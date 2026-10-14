@@ -33,7 +33,7 @@ const BLOCKED_EXTENSIONS = [
   'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
   'pif', 'wsf', 'wsh', 'hta', 'lnk', 'reg',
 ];
-const GENERATION_JOB_KINDS = ['成果報告', '其他'];
+const GENERATION_JOB_KINDS = ['成果報告', '會議紀錄', '其他'];
 const GENERATION_JOB_STATUSES = ['pending', 'processing', 'done', 'error'];
 
 function isNonNegativeNumber(v) {

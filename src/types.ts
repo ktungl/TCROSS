@@ -205,7 +205,7 @@ export interface ActivityRecord extends ActorStamp {
   trash: ActivityFiles
 }
 
-export type GenerationJobKind = '成果報告' | '其他'
+export type GenerationJobKind = '成果報告' | '會議紀錄' | '其他'
 export type GenerationJobStatus = 'pending' | 'processing' | 'done' | 'error'
 
 /** 生成工作狀態的顯示文字；AI 生成彈窗、歷史檔案頁、操作紀錄共用同一套。 */

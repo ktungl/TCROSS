@@ -20,7 +20,7 @@ from parse_auth import (
     verify_session_token,
     write_with_master_key,
 )
-from report import analyze_sources, build_report_docx
+from report import analyze_meeting, analyze_sources, build_meeting_docx, build_report_docx
 from rewrite import FORMATS as REWRITE_FORMATS, rewrite_activity
 from assist import (
     MAX_SIGN_IN_IMAGES,
@@ -70,6 +70,11 @@ MAX_SOURCE_FILES = int(os.environ.get("MAX_SOURCE_FILES", "20"))
 # 停在 processing 超過這麼久，視為 instance 中途被砍掉的殘留工作，允許重新觸發。
 # 要比 Cloud Run 的 --timeout（900 秒）長，避免把還在跑的工作重複觸發（重複計費）。
 STALE_PROCESSING_AFTER = timedelta(minutes=20)
+
+# GenerationJob.kind 允許的種類，要跟 cloud/main.js GENERATION_JOB_KINDS、src/types.ts GenerationJobKind 一致。
+# 會議紀錄只收錄音（audio 資料夾），檔案數另外限制：錄音 token 多，避免一次丟進好幾小時。
+GENERATION_KINDS = {"成果報告", "會議紀錄"}
+MAX_MEETING_FILES = 3
 
 
 class SignedUrlFile(BaseModel):
@@ -492,6 +497,9 @@ def trigger_generation(job_id: str, user: dict = Depends(enforce_rate_limit)):
         raise HTTPException(409, f"這筆工作目前狀態是「{job['status']}」，無法重複觸發")
     if len(job["sourceFiles"]) > MAX_SOURCE_FILES:
         raise HTTPException(400, f"素材檔案最多 {MAX_SOURCE_FILES} 個")
+    kind = job["kind"]
+    if kind not in GENERATION_KINDS:
+        raise HTTPException(400, f"不支援「{kind}」的自動生成")
     # sourceFiles 是使用者自己寫進 GenerationJob 的字串，Cloud Code 只檢查型別；這裡要確認
     # 每個路徑都在這筆工作所屬活動底下，否則 Gemini 會用服務帳號讀到桶裡任意物件並寫進報告。
     source_prefix = f"activities/{job['activityId']}/"
@@ -501,23 +509,34 @@ def trigger_generation(job_id: str, user: dict = Depends(enforce_rate_limit)):
     ):
         audit_log.warning("rejected: invalid sourceFiles user=%s jobId=%s", user.get("username"), job_id)
         raise HTTPException(400, "素材檔案路徑不合法")
+    if kind == "會議紀錄" and (
+        len(job["sourceFiles"]) > MAX_MEETING_FILES
+        or any(not p.startswith(f"{source_prefix}audio/") for p in job["sourceFiles"])
+    ):
+        raise HTTPException(400, f"會議紀錄只接受錄音檔，最多 {MAX_MEETING_FILES} 個")
 
-    activity = get_activity(user["sessionToken"], job["activityId"])
-    activity_name = (activity or {}).get("name", "")
+    activity = get_activity(user["sessionToken"], job["activityId"]) or {}
 
     write_with_master_key("GenerationJob", job_id, {"status": "processing"})
     audit_log.info(
-        "generation triggered user=%s jobId=%s activityId=%s sourceCount=%d",
-        user.get("username"), job_id, job["activityId"], len(job["sourceFiles"]),
+        "generation triggered user=%s jobId=%s activityId=%s kind=%s sourceCount=%d",
+        user.get("username"), job_id, job["activityId"], kind, len(job["sourceFiles"]),
     )
-    status = _run_generation(job_id, job["activityId"], activity_name, job["sourceFiles"])
+    status = _run_generation(job_id, job["activityId"], kind, activity, job["sourceFiles"])
     return {"status": status}
 
 
-def _run_generation(job_id: str, activity_id: str, activity_name: str, source_paths: list[str]) -> str:
+def _build_result(kind: str, activity: dict, source_paths: list[str]) -> bytes:
+    name = activity.get("name", "")
+    if kind == "會議紀錄":
+        return build_meeting_docx(name, activity.get("date", ""), analyze_meeting(source_paths))
+    return build_report_docx(name, analyze_sources(source_paths))
+
+
+def _run_generation(job_id: str, activity_id: str, kind: str, activity: dict, source_paths: list[str]) -> str:
+    started = time.monotonic()
     try:
-        analysis = analyze_sources(source_paths)
-        docx_bytes = build_report_docx(activity_name, analysis)
+        docx_bytes = _build_result(kind, activity, source_paths)
         result_path = f"activities/{activity_id}/generated/{job_id}.docx"
         upload_bytes(
             result_path,
@@ -525,9 +544,10 @@ def _run_generation(job_id: str, activity_id: str, activity_name: str, source_pa
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
         write_with_master_key("GenerationJob", job_id, {"status": "done", "resultFile": result_path})
-        audit_log.info("generation done jobId=%s resultFile=%s", job_id, result_path)
+        # 耗時記下來，用來確認長錄音能否在 Cloud Run timeout（900 秒）內跑完
+        audit_log.info("generation done jobId=%s kind=%s seconds=%.1f resultFile=%s", job_id, kind, time.monotonic() - started, result_path)
         return "done"
     except Exception as exc:  # noqa: BLE001 — any failure here must still flip status away from "processing"
-        audit_log.exception("generation failed jobId=%s", job_id)
+        audit_log.exception("generation failed jobId=%s kind=%s seconds=%.1f", job_id, kind, time.monotonic() - started)
         write_with_master_key("GenerationJob", job_id, {"status": "error", "errorMessage": str(exc)[:500]})
         return "error"

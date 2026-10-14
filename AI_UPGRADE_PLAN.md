@@ -43,7 +43,7 @@
 **4. 第三批（尚未開始）建議順序**
 1. ~~**1-5 公文快讀**~~（10-14 上線：`00021-j5x`＋`7b67cc7`，待實測）：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
 2. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
-3. **1-3 會議錄音整理**：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。先實測 2 小時錄音能否在 900 秒內跑完
+3. ~~**1-3 會議錄音整理**~~（10-14 程式完成，待部署與實測）：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。先實測 2 小時錄音能否在 900 秒內跑完
 4. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
 
 **部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。指令：
@@ -63,6 +63,7 @@
 | 2-1 海報帶入 | 🟡 10-13 上線；⬜ 用真實海報實測 | `POST /assist/poster`；前端 `PosterAssist.vue`（建立活動表單上方） |
 | 2-2 分類／計畫推薦 | 🟡 10-13 上線；⬜ 正式站實測 | `POST /assist/classify`、`list_names()`（`server/parse_auth.py`）；前端 `ClassifySuggest.vue`（表單計畫／分類下方） |
 | 1-5 公文快讀 | 🟡 10-14 上線（Cloud Run `00021-j5x`、前端 `main` = `7b67cc7`）；⬜ 用真公文實測 | `server/assist.py`（`decode_document`、`digest_document`、`MAX_PDF_BYTES`）、`POST /assist/document`；前端 `DocumentDigestModal.vue`（詳細頁「公文」卡片按鈕）、`assistDocument()`、`loadDocumentForAi()`（`src/utils/aiImages.ts`） |
+| 1-3 會議錄音整理 | 🔵 10-14 程式完成（`vue-tsc` 通過、Word 組檔以假資料測過）；⬜ 貼回 `cloud/main.js` → Cloud Run 部署 → push main → 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議紀錄」按鈕 |
 
 **第二批設計**
 - 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId；舊的 Back4App 附件也能一併處理）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
@@ -71,6 +72,8 @@
 - 分類推薦：後端用呼叫者 session 讀現有 Category／Plan 清單，模型只能從清單挑，清單外的名稱一律丟棄；結果以「＋計畫／＋分類」標籤顯示，點了才加入。
 
 **1-5 設計**：PDF 原檔直接以 base64 送出（Gemini 原生讀 PDF 的文字與版面，不轉圖），上限 10 MB（base64 後約 13 MB，留在 Gemini 單次請求與 Cloud Run 請求上限內）；照片沿用縮圖成 JPEG。後端驗 `%PDF` 檔頭。回傳 `{docType, issuer, docNumber, subject, summary, keyPoints[], checkItems[{category: 期限／預算／法規／其他, item, source}], notes}`，只顯示不存檔；畫面頂端固定加註「AI 摘要僅供掌握方向，法規與預算請核對原文」，可複製成文字。目前綁在活動詳細頁（需要 activityId 驗權限），之後要獨立頁面再把 `activityId` 改成選填。Word 公文請先轉 PDF。
+
+**1-3 設計**：沿用 `GenerationJob`（錄音大，走 Signed URL 直傳 GCS → `/generate`），`kind=會議紀錄`。只收 `audio` 資料夾、最多 3 個檔；前端用 `<audio>` 讀長度，合計上限暫定 90 分鐘（`AiGenerationModal.vue` `MAX_MEETING_MINUTES`），實測 2 小時跑得完再放寬。只要結構化紀錄（摘要、與會者、討論重點、決議、待辦 `{task, owner, due}`），不做逐字稿，輸出 token 少。Word 末尾加註「決議、負責人與期限請與主持人確認」。每次完成或失敗都在 Cloud Logging 記 `seconds=`，用來看長錄音離 900 秒還有多遠。**部署順序**：先貼 `cloud/main.js`（否則建立會議紀錄工作會被擋）→ Cloud Run → push main。⚠️ 單檔仍受 50 MB 上限：手機 128 kbps 錄音 90 分鐘約 86 MB 會被擋，64 kbps 約 43 MB 可以（待團隊決定是否放寬，見文末）。
 
 **1-1 設計**：後端用呼叫者的 session 讀活動資料（基本資料、成果摘要、KPI、照片圖說），只送文字給 Gemini，同步回傳 `{title, paragraphs, bullets, hashtags}`；不建 `GenerationJob`、不需改 Cloud Code／schema。前端結果放進可編輯文字框，可複製或下載 Word（瀏覽器端 `docx` 產生）。三種格式的寫法目前是暫定，集中在 `server/rewrite.py` 的 `FORMATS`，團隊提供範本後改那裡。
 

@@ -16,9 +16,11 @@ import { useEscape } from '../composables/useEscape'
 import FolderDropzone from './FolderDropzone.vue'
 import { UNRECORDED, formatDateTime } from '../utils/actor'
 import { FOLDERS, GENERATION_STATUS_LABELS, fileUploadRejectionReason } from '../types'
-import type { ActivityRecord, FolderKey, GenerationJobRecord, GenerationJobStatus } from '../types'
+import type { ActivityRecord, FolderKey, GenerationJobKind, GenerationJobRecord, GenerationJobStatus } from '../types'
 
-const props = defineProps<{ activity: ActivityRecord }>()
+const props = withDefaults(defineProps<{ activity: ActivityRecord; kind?: GenerationJobKind }>(), {
+  kind: '成果報告',
+})
 const emit = defineEmits<{ close: [] }>()
 
 const db = useDbStore()
@@ -42,13 +44,48 @@ const STALE_PROCESSING_MS = 20 * 60 * 1000
 const submitting = ref(false)
 const activeJob = ref<GenerationJobRecord | null>(null)
 
+const isMeeting = computed(() => props.kind === '會議紀錄')
+/** 會議紀錄只收錄音；檔案數要跟 server/main.py MAX_MEETING_FILES 一致 */
+const MAX_MEETING_FILES = 3
+const MAX_MEETING_MINUTES = 90
+const folders = computed(() => (isMeeting.value ? FOLDERS.filter(([key]) => key === 'audio') : FOLDERS))
+const maxFiles = computed(() => (isMeeting.value ? MAX_MEETING_FILES : MAX_SOURCE_FILES))
+
 const totalSelected = computed(() =>
   FOLDERS.reduce((n, [key]) => n + selected[key].length, 0),
 )
 
+/** 錄音長度（秒）；瀏覽器讀不出長度的格式記 null，不擋上傳 */
+const durations = reactive(new Map<File, number | null>())
+function readDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const audio = new Audio()
+    const done = (v: number | null) => {
+      URL.revokeObjectURL(url)
+      resolve(v)
+    }
+    audio.preload = 'metadata'
+    audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? audio.duration : null)
+    audio.onerror = () => done(null)
+    audio.src = url
+  })
+}
+const totalMinutes = computed(() =>
+  selected.audio.reduce((sum, f) => sum + (durations.get(f) ?? 0), 0) / 60,
+)
+function minutesLabel(file: File): string {
+  const sec = durations.get(file)
+  return sec == null ? '長度未知' : `${Math.round(sec / 60)} 分鐘`
+}
+
 const pastJobs = computed(() =>
   db.generationJobs.filter(
-    (j) => j.activityId === props.activity.id && j.id !== activeJob.value?.id && !j.deletedAt,
+    (j) =>
+      j.activityId === props.activity.id &&
+      j.kind === props.kind &&
+      j.id !== activeJob.value?.id &&
+      !j.deletedAt,
   ),
 )
 
@@ -83,6 +120,7 @@ onMounted(async () => {
     const unresolved = db.generationJobs.find(
       (j) =>
         j.activityId === props.activity.id &&
+        j.kind === props.kind &&
         (j.status === 'pending' || j.status === 'processing'),
     )
     if (unresolved) {
@@ -94,12 +132,15 @@ onMounted(async () => {
   }
 })
 
-function addFiles(folder: FolderKey, files: File[]) {
+async function addFiles(folder: FolderKey, files: File[]) {
   const accepted: File[] = []
   for (const file of files) {
     const reason = fileUploadRejectionReason(file)
     if (reason) pushToast(reason, 'error')
     else accepted.push(file)
+  }
+  if (isMeeting.value) {
+    for (const file of accepted) durations.set(file, await readDuration(file))
   }
   selected[folder] = [...selected[folder], ...accepted]
 }
@@ -112,14 +153,18 @@ async function startGeneration() {
     pushToast('請先選擇至少一個檔案', 'error')
     return
   }
-  if (totalSelected.value > MAX_SOURCE_FILES) {
-    pushToast(`一次最多 ${MAX_SOURCE_FILES} 個檔案，請減少素材`, 'error')
+  if (totalSelected.value > maxFiles.value) {
+    pushToast(`一次最多 ${maxFiles.value} 個檔案，請減少素材`, 'error')
+    return
+  }
+  if (isMeeting.value && totalMinutes.value > MAX_MEETING_MINUTES) {
+    pushToast(`錄音合計約 ${Math.round(totalMinutes.value)} 分鐘，目前上限 ${MAX_MEETING_MINUTES} 分鐘，請剪短或分次整理`, 'error')
     return
   }
   submitting.value = true
   fileStates.clear()
   fileProgress.clear()
-  const allFiles = FOLDERS.flatMap(([folder]) =>
+  const allFiles = folders.value.flatMap(([folder]) =>
     selected[folder].map((file) => ({ folder, file })),
   )
   allFiles.forEach(({ file }) => fileStates.set(file, 'queued'))
@@ -171,7 +216,7 @@ async function startGeneration() {
     )
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failed) throw failed.reason
-    const job = await db.createGenerationJob(props.activity.id, '成果報告', objectPaths as string[])
+    const job = await db.createGenerationJob(props.activity.id, props.kind, objectPaths as string[])
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))
     startPolling(job.id, (r) => (activeJob.value = r))
@@ -238,11 +283,21 @@ useEscape(close)
 <template>
   <div class="modal" v-modal-focus @click.self="close">
     <div class="card">
-      <h2>AI 自動生成成果報告</h2>
-      <p class="sub">選擇語音／影片／照片／文件素材，上傳後建立一筆生成工作。</p>
+      <template v-if="isMeeting">
+        <h2>AI 會議紀錄</h2>
+        <p class="sub">
+          上傳會議錄音（最多 {{ MAX_MEETING_FILES }} 個、合計 {{ MAX_MEETING_MINUTES }} 分鐘內），AI 整理成摘要、決議與待辦的 Word 檔，約需 1～5 分鐘。
+          決議、負責人與期限請與主持人確認後再發出。
+        </p>
+        <p v-if="selected.audio.length" class="hint">已選錄音合計約 {{ Math.round(totalMinutes) }} 分鐘</p>
+      </template>
+      <template v-else>
+        <h2>AI 自動生成成果報告</h2>
+        <p class="sub">選擇語音／影片／照片／文件素材，上傳後建立一筆生成工作。</p>
+      </template>
 
       <FolderDropzone
-        v-for="[key, label] in FOLDERS"
+        v-for="[key, label] in folders"
         :key="key"
         :label="label"
         :count-label="`已選 ${selected[key].length} 個`"
@@ -251,7 +306,7 @@ useEscape(close)
       >
         <ul v-if="selected[key].length" class="files">
           <li v-for="(f, i) in selected[key]" :key="i" style="flex-wrap:wrap">
-            <span class="fname">{{ f.name }}</span>
+            <span class="fname">{{ f.name }}<span v-if="isMeeting" class="actor-stamp block">{{ minutesLabel(f) }}</span></span>
             <span style="display:flex;align-items:center;gap:8px">
               <span class="mono fsize">
                 {{ fileStates.get(f) === 'uploading'

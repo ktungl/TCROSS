@@ -140,3 +140,144 @@ def build_report_docx(activity_name: str, analysis: dict) -> bytes:
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+# ── 會議紀錄（AI_UPGRADE_PLAN.md 1-3）──────────────────────────
+
+_MEETING_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "title": {"type": "STRING"},
+        "participants": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "summary": {"type": "STRING"},
+        "discussions": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "topic": {"type": "STRING"},
+                    "points": {"type": "ARRAY", "items": {"type": "STRING"}},
+                },
+                "required": ["topic", "points"],
+            },
+        },
+        "decisions": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "todos": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "task": {"type": "STRING"},
+                    "owner": {"type": "STRING"},
+                    "due": {"type": "STRING"},
+                },
+                "required": ["task", "owner", "due"],
+            },
+        },
+        "notes": {"type": "STRING"},
+    },
+    "required": ["title", "participants", "summary", "discussions", "decisions", "todos", "notes"],
+}
+
+_MEETING_PROMPT = (
+    "以上是一場會議的錄音（多個檔案時依序接續）。請整理成會議紀錄，用繁體中文回覆，"
+    "只能根據錄音內容，聽不清楚或沒提到的不要杜撰：\n"
+    "- title：會議名稱或主題（錄音中沒提到就依內容寫一句話主題）\n"
+    "- participants：錄音中有自我介紹或被點名的與會者（姓名或職稱），聽不出來就回傳空陣列，不要猜\n"
+    "- summary：3-5 句說明這場會議談了什麼、得到什麼結論\n"
+    "- discussions：依議題整理討論重點，每個議題 2-5 點\n"
+    "- decisions：明確做成的決議，沒有就回傳空陣列\n"
+    "- todos：會後待辦；task 寫要做什麼，owner 寫負責人（錄音中有指定才填，否則空字串），"
+    "due 寫期限（照錄音中的說法，例如「下週三前」「10 月底」，沒提到就空字串）\n"
+    "- notes：錄音品質不佳、中斷或有聽不清楚的段落時簡短說明，沒有就空字串"
+)
+
+
+def analyze_meeting(object_paths: list[str]) -> dict:
+    """錄音直接以 GCS URI 給 Gemini（同 analyze_sources），只回結構化紀錄、不做逐字稿，輸出 token 少。"""
+    if not object_paths:
+        raise ValueError("沒有任何錄音檔")
+    parts = [
+        types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
+        for path in object_paths
+    ]
+    parts.append(types.Part.from_text(text=_MEETING_PROMPT))
+    response = _get_client().models.generate_content(
+        model=GEMINI_MODEL,
+        contents=types.Content(role="user", parts=parts),
+        config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=_MEETING_SCHEMA),
+    )
+    data = json.loads(response.text)
+
+    def strings(values) -> list[str]:
+        return [s for s in (str(v).strip() for v in values or []) if s]
+
+    return {
+        "title": str(data.get("title") or "").strip(),
+        "participants": strings(data.get("participants")),
+        "summary": str(data.get("summary") or "").strip(),
+        "discussions": [
+            {"topic": str(d.get("topic") or "").strip(), "points": strings(d.get("points"))}
+            for d in data.get("discussions") or []
+            if str(d.get("topic") or "").strip() or d.get("points")
+        ],
+        "decisions": strings(data.get("decisions")),
+        "todos": [
+            {
+                "task": str(t.get("task") or "").strip(),
+                "owner": str(t.get("owner") or "").strip(),
+                "due": str(t.get("due") or "").strip(),
+            }
+            for t in data.get("todos") or []
+            if str(t.get("task") or "").strip()
+        ],
+        "notes": str(data.get("notes") or "").strip(),
+    }
+
+
+def build_meeting_docx(activity_name: str, activity_date: str, minutes: dict) -> bytes:
+    doc = Document()
+    doc.add_heading(minutes["title"] or activity_name or "會議紀錄", level=1)
+    meta = "　".join(s for s in [f"活動：{activity_name}" if activity_name else "", f"日期：{activity_date}" if activity_date else ""] if s)
+    if meta:
+        doc.add_paragraph(meta)
+    if minutes["participants"]:
+        doc.add_paragraph(f"與會者（錄音中提到）：{'、'.join(minutes['participants'])}")
+
+    doc.add_heading("會議摘要", level=2)
+    doc.add_paragraph(minutes["summary"] or "（無摘要）")
+
+    if minutes["discussions"]:
+        doc.add_heading("討論重點", level=2)
+        for d in minutes["discussions"]:
+            if d["topic"]:
+                doc.add_heading(d["topic"], level=3)
+            for point in d["points"]:
+                doc.add_paragraph(point, style="List Bullet")
+
+    doc.add_heading("決議事項", level=2)
+    if minutes["decisions"]:
+        for i, item in enumerate(minutes["decisions"], 1):
+            doc.add_paragraph(f"{i}. {item}")
+    else:
+        doc.add_paragraph("（錄音中沒有明確決議）")
+
+    doc.add_heading("待辦事項", level=2)
+    if minutes["todos"]:
+        table = doc.add_table(rows=1, cols=3)
+        table.style = "Light Grid Accent 1"
+        header = table.rows[0].cells
+        header[0].text, header[1].text, header[2].text = "事項", "負責人", "期限"
+        for t in minutes["todos"]:
+            row = table.add_row().cells
+            row[0].text, row[1].text, row[2].text = t["task"], t["owner"] or "（未指定）", t["due"] or "—"
+    else:
+        doc.add_paragraph("（錄音中沒有明確待辦）")
+
+    if minutes["notes"]:
+        doc.add_paragraph(f"錄音狀況：{minutes['notes']}")
+    doc.add_paragraph("※ 本紀錄由 AI 依錄音整理，決議、負責人與期限請與會議主持人確認後再發出。")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()

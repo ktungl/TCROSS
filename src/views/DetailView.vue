@@ -50,6 +50,7 @@ const genMenuOpen = ref(false)
 const genMenuRoot = ref<HTMLElement | null>(null)
 onClickOutside(genMenuRoot, () => (genMenuOpen.value = false))
 const showAiGenModal = ref(false)
+const showMeetingModal = ref(false)
 const showRewriteModal = ref(false)
 const showSignInModal = ref(false)
 const showDocumentModal = ref(false)
@@ -253,6 +254,7 @@ async function duplicateActivity() {
       <div class="row">
         <button class="btn sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
         <button class="btn ghost sm" @click="showRewriteModal = true">AI 改寫文案</button>
+        <button class="btn ghost sm" @click="showMeetingModal = true">AI 會議紀錄</button>
         <div ref="genMenuRoot" class="menu">
           <button
             class="btn ghost sm"
@@ -403,6 +405,7 @@ async function duplicateActivity() {
     <ActivityFormModal v-if="showEdit" :activity="activity" @close="showEdit = false" />
     <GeneratedDocModal v-if="genKind" :activity="activity" :kind="genKind" :plan-name="db.planName" @close="genKind = null" />
     <AiGenerationModal v-if="showAiGenModal" :activity="activity" @close="showAiGenModal = false" />
+    <AiGenerationModal v-if="showMeetingModal" :activity="activity" kind="會議紀錄" @close="showMeetingModal = false" />
     <RewriteModal v-if="showRewriteModal" :activity="activity" @close="showRewriteModal = false" />
     <SignInReviewModal v-if="showSignInModal" :activity="activity" @close="showSignInModal = false" />
     <DocumentDigestModal v-if="showDocumentModal" :activity="activity" @close="showDocumentModal = false" />
