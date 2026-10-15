@@ -74,7 +74,11 @@ const WANTED_BY_CLASS = {
     deletedAt: 'Date',
     ...ACTOR_FIELDS,
   },
-  Plan: { ...ACTOR_FIELDS },
+  // src/models/Plan.ts —— sortOrder 是計畫清單的顯示順序（「編輯排序」寫入）
+  Plan: {
+    sortOrder: 'Number',
+    ...ACTOR_FIELDS,
+  },
   // 顯示名稱（登入歡迎畫面、操作者紀錄用），由 scripts/setup-users.mjs 寫入
   _User: {
     displayName: 'String',

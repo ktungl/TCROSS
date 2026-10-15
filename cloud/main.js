@@ -416,6 +416,10 @@ Parse.Cloud.beforeSave('Plan', (request) => {
     fail('計畫名稱過長（上限 100 字）');
   }
   object.set('name', name.trim());
+  const sortOrder = object.get('sortOrder');
+  if (sortOrder !== undefined && (typeof sortOrder !== 'number' || !Number.isFinite(sortOrder))) {
+    fail('排序值格式錯誤');
+  }
   stampActor(request, 'Plan');
 });
 

@@ -78,7 +78,9 @@ export const useDbStore = defineStore('db', () => {
         new Parse.Query(CategoryObject).find(),
         new Parse.Query(ActivityObject).find(),
       ])
-      plans.value = planObjs.map(planToRecord)
+      plans.value = planObjs
+        .map(planToRecord)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt))
       categories.value = categoryObjs.length
         ? categoryObjs.map(categoryToRecord)
         : await seedDefaultCategoriesIfEmpty()
@@ -131,8 +133,36 @@ export const useDbStore = defineStore('db', () => {
   async function createPlan(name: string): Promise<void> {
     const obj = new PlanObject()
     obj.set('name', name)
+    // 新計畫排在最後；就算刪除計畫後跟既有值重複，fetchAll 也會再依建立時間排在後面
+    obj.set('sortOrder', plans.value.length)
     await obj.save()
     plans.value.push(planToRecord(obj))
+  }
+
+  /** 依 orderedIds 的順序重新排列計畫，只寫入位置有變動（或還沒有 sortOrder）的計畫，
+   * 避免每次排序都改動所有計畫的「最後修改者」與稽核紀錄。 */
+  async function reorderPlans(orderedIds: string[]): Promise<void> {
+    const byId = new Map(plans.value.map((p) => [p.id, p]))
+    const ordered = orderedIds.map((id) => byId.get(id)).filter((p): p is PlanRecord => !!p)
+    // 排序途中才新增的計畫不在 orderedIds 裡，接在最後面，避免從清單消失
+    ordered.push(...plans.value.filter((p) => !orderedIds.includes(p.id)))
+    const changed = ordered
+      .map((p, index) => ({ p, index }))
+      .filter(({ p, index }) => p.sortOrder !== index)
+    const objs = await Promise.all(
+      changed.map(({ p, index }) => {
+        const obj = PlanObject.createWithoutData(p.id)
+        // 一併帶 name，確保 cloud/main.js 的 beforeSave 名稱檢查一定拿得到值
+        obj.set('name', p.name)
+        obj.set('sortOrder', index)
+        return obj.save()
+      }),
+    )
+    changed.forEach(({ p, index }, i) => {
+      p.sortOrder = index
+      mergeUpdateStamp(p, objs[i])
+    })
+    plans.value = ordered
   }
 
   async function renamePlan(id: string, name: string): Promise<void> {
@@ -507,6 +537,7 @@ export const useDbStore = defineStore('db', () => {
     createPlan,
     renamePlan,
     deletePlan,
+    reorderPlans,
     createCategory,
     renameCategory,
     setCategoryPlans,

@@ -155,6 +155,8 @@ export interface HeadcountStat {
 export interface PlanRecord extends ActorStamp {
   id: string
   name: string
+  /** 計畫清單的顯示順序，數字小的排前面；舊資料沒有這個欄位時排在最後 */
+  sortOrder: number
 }
 
 export interface ActivityRecord extends ActorStamp {
