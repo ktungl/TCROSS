@@ -238,7 +238,7 @@ async function duplicateActivity() {
     <p class="sub mono">
       {{ activity.date || '未定日期' }}<template v-if="activity.time">　{{ activity.time }}<template v-if="activity.timeEnd && activity.timeEnd !== activity.time">～{{ activity.timeEnd }}</template></template>
       <template v-if="activity.placeMode === 'online'">　線上<template v-if="activity.meetingUrl">（<a :href="activity.meetingUrl" target="_blank" rel="noopener">會議連結</a>）</template></template>
-      <template v-else>　<template v-if="activity.venue">{{ activity.venue }}　</template><a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template></template>
+      <template v-else>　<template v-if="activity.venue">{{ activity.venue }}　</template><a v-if="activity.place" :href="googleMapsUrl(activity.place)" target="_blank" rel="noopener">{{ activity.place }}</a><template v-else>—</template><template v-if="activity.placeMode === 'hybrid'">＋線上<template v-if="activity.meetingUrl">（<a :href="activity.meetingUrl" target="_blank" rel="noopener">會議連結</a>）</template></template></template>
       　{{ activity.categories.length ? activity.categories.join('、') : '未分類' }}　負責人 {{ activity.owner || '未指定' }}
       　男 {{ activity.headcount.male }}／女 {{ activity.headcount.female }}／合計 {{ activity.headcount.total }} 人
     </p>

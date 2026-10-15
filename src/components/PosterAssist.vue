@@ -61,7 +61,7 @@ const rows = computed(() =>
 )
 
 function display(key: PosterField, value: string): string {
-  if (key === 'placeMode') return value === 'online' ? '線上' : value === 'physical' ? '實體' : ''
+  if (key === 'placeMode') return value === 'online' ? '線上' : value === 'physical' ? '實體' : value === 'hybrid' ? '實體＋線上' : ''
   return value
 }
 

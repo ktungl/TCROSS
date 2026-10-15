@@ -439,7 +439,9 @@ export async function buildOfficialLetterDocx(a: ActivityRecord, opts: OfficialL
   const basis = opts.basisPlans.length ? `依據${opts.basisPlans.map((n) => `「${n}」`).join('、')}辦理。` : ''
   // 線上活動不能寫「假線上辦理」（「假」是借用場地），改成「以線上方式辦理」並附會議連結
   const online = a.placeMode === 'online'
-  const venue = online ? '以線上方式' : `假${a.place || '（地點）'}`
+  const hybrid = a.placeMode === 'hybrid'
+  const meetingLink = a.meetingUrl ? `，會議連結：${a.meetingUrl}` : '（會議連結另行通知）'
+  const venue = online ? '以線上方式' : `假${a.place || '（地點）'}${hybrid ? '（同步線上進行）' : ''}`
 
   const subject =
     opts.purpose === '邀請參加'
@@ -451,8 +453,10 @@ export async function buildOfficialLetterDocx(a: ActivityRecord, opts: OfficialL
           basis,
           `活動時間：${when}。`,
           online
-            ? `活動方式：線上辦理${a.meetingUrl ? `，會議連結：${a.meetingUrl}` : '（會議連結另行通知）'}。`
-            : `活動地點：${a.place || '（地點）'}。`,
+            ? `活動方式：線上辦理${meetingLink}。`
+            : hybrid
+              ? `活動地點：${a.place || '（地點）'}，並同步線上進行${meetingLink}。`
+              : `活動地點：${a.place || '（地點）'}。`,
           a.participantDesc ? `參加對象：${a.participantDesc}。` : '',
           a.summary ? `活動內容：${a.summary}` : '',
           `聯絡人：${a.owner || '（聯絡人）'}。`,

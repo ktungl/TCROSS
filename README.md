@@ -47,7 +47,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 
 - **Plan**：`name`
 - **Activity**（欄位依《需求訪談》規格，2026-09-03）
-  - 基本資料：`name`（活動名稱／事由）/ `categories`（活動分類，可複選）/ `date`（活動日期）/ `time`＋`timeEnd`（開始／結束時間，選填）/ `placeMode`（`physical` 實體／`online` 線上）/ `place`（地址；線上活動固定為「線上」）/ `venue`（實體活動的場地名稱，選填，領據摘要優先用它）/ `meetingUrl`（線上活動的會議連結）/ `owner`（負責人，產生公文時作為聯絡人）/ `plans`（對應多個 Plan）
+  - 基本資料：`name`（活動名稱／事由）/ `categories`（活動分類，可複選）/ `date`（活動日期）/ `time`＋`timeEnd`（開始／結束時間，選填）/ `placeMode`（`physical` 實體／`online` 線上／`hybrid` 實體＋線上）/ `place`（地址；純線上活動固定為「線上」）/ `venue`（實體活動的場地名稱，選填，領據摘要優先用它）/ `meetingUrl`（線上活動的會議連結）/ `owner`（負責人，產生公文時作為聯絡人）/ `plans`（對應多個 Plan）
   - 與會資訊：`attendees`（與會單位或成員）/ `participantDesc`（參加對象說明）/ `maleCount`＋`femaleCount`＋`totalCount`（與會人數統計）
   - 成果：`summary`（成果摘要）/ `kpis` / `remark`（備註）
   - 附件（9 分類，各存一個 `{name, size, url, caption?, featured?, deletedAt?, uploadedById?, uploadedByName?, uploadedAt?, deletedById?, deletedByName?}` 陣列；`uploaded*`／`deleted*` 是上傳者／移到垃圾桶的人，由 Cloud Code 以 url 比對前後陣列後寫入）：`registrationFiles`（參與者名單／報名表）/ `photoFiles`（活動照片，`caption` 為圖說、`featured` 為大事紀精選標記）/ `signInFiles`（簽到表）/ `recordFiles`（成果紀錄）/ `agendaFiles`（活動流程）/ `documentFiles`（公文）/ `receiptFiles`（領據）/ `socialFiles`（社群貼文）/ `mediaFiles`（影音檔）

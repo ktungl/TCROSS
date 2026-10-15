@@ -520,8 +520,8 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   }
 
   const placeMode = object.get('placeMode');
-  if (placeMode !== undefined && placeMode !== null && placeMode !== 'physical' && placeMode !== 'online') {
-    fail('placeMode 必須是 physical 或 online');
+  if (placeMode !== undefined && placeMode !== null && !['physical', 'online', 'hybrid'].includes(placeMode)) {
+    fail('placeMode 必須是 physical、online 或 hybrid');
   }
   checkOptionalString(object, 'place', 200);
   checkOptionalString(object, 'venue', 100);

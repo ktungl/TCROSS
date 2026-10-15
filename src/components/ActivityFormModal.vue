@@ -6,7 +6,7 @@ import { errorMessage, pushToast } from '../composables/useToast'
 import { confirm } from '../composables/useConfirm'
 import { useEscape } from '../composables/useEscape'
 import { checkBasicInfo, consistencyConfirmMessage } from '../utils/activity'
-import { ONLINE_PLACE_LABEL } from '../types'
+import { ONLINE_PLACE_LABEL, hasOnline, hasPhysical } from '../types'
 import type { ActivityCategory, ActivityRecord, PlaceMode } from '../types'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 import PlaceAutocompleteInput from './PlaceAutocompleteInput.vue'
@@ -33,6 +33,20 @@ const address = ref(props.activity?.placeMode === 'online' ? '' : (props.activit
 const venue = ref(props.activity?.venue ?? '')
 const meetingUrl = ref(props.activity?.meetingUrl ?? '')
 const meetingUrlError = ref('')
+
+// 實體、線上可以複選（實體＋線上同時進行就是 hybrid），至少要勾一個
+const isPhysical = computed({
+  get: () => hasPhysical(placeMode.value),
+  set: (on) => setPlaceMode(on, isOnline.value),
+})
+const isOnline = computed({
+  get: () => hasOnline(placeMode.value),
+  set: (on) => setPlaceMode(isPhysical.value, on),
+})
+function setPlaceMode(physical: boolean, online: boolean) {
+  if (!physical && !online) return
+  placeMode.value = physical && online ? 'hybrid' : physical ? 'physical' : 'online'
+}
 const owner = ref(props.activity?.owner ?? '')
 const attendees = ref(props.activity?.attendees ?? '')
 const participantDesc = ref(props.activity?.participantDesc ?? '')
@@ -177,7 +191,7 @@ async function submit() {
     return
   }
   const url = meetingUrl.value.trim()
-  if (placeMode.value === 'online' && url && !/^https?:\/\//i.test(url)) {
+  if (isOnline.value && url && !/^https?:\/\//i.test(url)) {
     meetingUrlError.value = '會議連結要以 http:// 或 https:// 開頭'
     return
   }
@@ -185,7 +199,7 @@ async function submit() {
   if (issues.length && !(await confirm(consistencyConfirmMessage(issues), '仍要儲存'))) {
     return
   }
-  const online = placeMode.value === 'online'
+  const physical = isPhysical.value
   const input = {
     name: trimmed,
     categories: categories.value,
@@ -193,9 +207,9 @@ async function submit() {
     time: time.value,
     timeEnd: timeEnd.value,
     placeMode: placeMode.value,
-    place: online ? ONLINE_PLACE_LABEL : address.value.trim(),
-    venue: online ? '' : venue.value.trim(),
-    meetingUrl: online ? url : '',
+    place: physical ? address.value.trim() : ONLINE_PLACE_LABEL,
+    venue: physical ? venue.value.trim() : '',
+    meetingUrl: isOnline.value ? url : '',
     owner: owner.value.trim(),
     attendees: attendees.value.trim(),
     participantDesc: participantDesc.value.trim(),
@@ -261,17 +275,19 @@ async function submit() {
       <div class="field">
         <label>地點</label>
         <div class="row" style="gap:16px;margin-bottom:6px">
-          <label class="chk"><input type="radio" value="physical" v-model="placeMode">實體</label>
-          <label class="chk"><input type="radio" value="online" v-model="placeMode">線上</label>
+          <label class="chk"><input type="checkbox" v-model="isPhysical" :disabled="isPhysical && !isOnline">實體</label>
+          <label class="chk"><input type="checkbox" v-model="isOnline" :disabled="isOnline && !isPhysical">線上</label>
+          <span class="hint" style="margin:0">可複選（實體＋線上同時進行）</span>
         </div>
-        <template v-if="placeMode === 'physical'">
+        <template v-if="isPhysical">
           <PlaceAutocompleteInput v-model="address" placeholder="輸入地址，會自動帶出建議" />
           <input v-model="venue" class="field" maxlength="100" placeholder="場地名稱（選填），例如：南投清流部落共生之家">
           <p class="hint">場地名稱會用在領據摘要；沒填就改用地址。</p>
         </template>
-        <template v-else>
+        <template v-if="isOnline">
           <input
             v-model="meetingUrl"
+            :class="{ field: isPhysical }"
             type="url"
             inputmode="url"
             placeholder="會議連結，例如：https://meet.google.com/xxx-xxxx-xxx"

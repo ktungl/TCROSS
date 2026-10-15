@@ -1,5 +1,5 @@
-import { ATTACHMENT_TYPES, PHOTO_MIN } from '../types'
-import type { ActivityRecord } from '../types'
+import { ATTACHMENT_TYPES, PHOTO_MIN, hasOnline } from '../types'
+import type { ActivityRecord, PlaceMode } from '../types'
 
 /** 用地點文字產生 Google 地圖搜尋連結（不需要地理編碼 API，直接讓 Google 用文字搜尋）。 */
 export function googleMapsUrl(place: string): string {
@@ -110,7 +110,7 @@ export interface BasicInfoInput {
   date: string
   time: string
   timeEnd: string
-  placeMode: 'physical' | 'online'
+  placeMode: PlaceMode
   address: string
   meetingUrl: string
   participantDesc: string
@@ -146,8 +146,8 @@ export function checkBasicInfo(input: BasicInfoInput, today = new Date()): strin
   if (input.placeMode === 'physical' && ONLINE_HINT.test(input.address)) {
     issues.push('地址看起來是線上會議，是否應改選「線上」？')
   }
-  if (input.placeMode === 'online' && !input.meetingUrl.trim()) {
-    issues.push('線上活動還沒填會議連結')
+  if (hasOnline(input.placeMode) && !input.meetingUrl.trim()) {
+    issues.push(input.placeMode === 'hybrid' ? '實體＋線上活動還沒填會議連結' : '線上活動還沒填會議連結')
   }
   return issues
 }

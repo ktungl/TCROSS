@@ -52,7 +52,7 @@ export function splitAttachments(
 /** 舊資料沒有 placeMode：地點寫「線上」的視為線上活動，其餘當實體。 */
 function placeModeOf(obj: Parse.Object): PlaceMode {
   const mode = obj.get('placeMode')
-  if (mode === 'physical' || mode === 'online') return mode
+  if (mode === 'physical' || mode === 'online' || mode === 'hybrid') return mode
   return (obj.get('place') ?? '').trim() === ONLINE_PLACE_LABEL ? 'online' : 'physical'
 }
 
