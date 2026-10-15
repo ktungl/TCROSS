@@ -502,7 +502,7 @@ async function batchHardDeleteJobs() {
   <h2>各計畫已有生成的匯出檔案</h2>
   <div class="card">
     <p class="sub card-intro">
-      這裡列出 AI 自動生成的成果報告（活動詳情頁「AI 自動生成成果報告」建立的工作）。
+      這裡列出 AI 自動生成的成果報告與會議紀錄（活動詳情頁「AI 自動生成成果報告」「AI 會議紀錄」建立的工作）。
       「匯出成果」頁的大事紀 Excel／內政部結案 Word，以及活動詳情頁產生的簽到表、領據、公文等，都是即時產生、不會保存在伺服器，因此不會出現在這裡。
     </p>
     <div class="row toolbar">
@@ -752,7 +752,7 @@ async function batchHardDeleteJobs() {
           :disabled="downloadingId === viewingJob.job.id"
           @click="download(viewingJob.job.id, viewingJob.job.resultFile)"
         >
-          {{ downloadingId === viewingJob.job.id ? '取得中…' : '下載成果報告' }}
+          {{ downloadingId === viewingJob.job.id ? '取得中…' : `下載${viewingJob.job.kind}` }}
         </button>
         <button class="btn ghost" @click="closeJobView">關閉</button>
       </div>

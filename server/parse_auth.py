@@ -106,6 +106,23 @@ def get_activity(session_token: str, activity_id: str) -> dict | None:
     return resp.json()
 
 
+def readable_activity_ids(session_token: str, activity_ids: set[str]) -> set[str]:
+    """Which of activity_ids the caller can currently read — one $in query under the
+    caller's own session (same ACL/CLP semantics as activity_exists) instead of one
+    GET per activity."""
+    ids = [i for i in activity_ids if i]
+    if not ids:
+        return set()
+    resp = _client.get(
+        f"{PARSE_SERVER_URL}/classes/Activity",
+        headers=_user_headers(session_token),
+        params={"where": json.dumps({"objectId": {"$in": ids}}), "keys": "objectId", "limit": len(ids)},
+    )
+    if resp.status_code != 200:
+        return set()
+    return {r["objectId"] for r in resp.json().get("results", [])}
+
+
 def get_plan_names(session_token: str, plan_ids: list[str]) -> list[str]:
     """用呼叫者自己的 session 查計畫名稱（依 plan_ids 順序），讀不到的略過。"""
     if not plan_ids:
@@ -182,7 +199,7 @@ def write_with_master_key(class_name: str, object_id: str, fields: dict) -> dict
 # Activity 上存附件的欄位，對應 cloud/main.js 的 FOLDER_FIELDS（含舊版 3 個欄位）。
 ATTACHMENT_FIELDS = (
     "photoFiles", "audioFiles", "videoFiles", "docFiles", "signInFiles", "recordFiles",
-    "agendaFiles", "documentFiles", "receiptFiles", "socialFiles", "mediaFiles",
+    "agendaFiles", "documentFiles", "receiptFiles", "socialFiles", "mediaFiles", "registrationFiles",
 )
 
 

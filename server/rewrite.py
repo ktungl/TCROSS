@@ -4,11 +4,9 @@
 
 各格式的寫法集中在 FORMATS；團隊提供正式範本後，改這裡的 instruction 即可。"""
 
-import json
-
 from google.genai import types
 
-from report import GEMINI_MODEL, _get_client
+from report import generate_json
 
 FORMATS: dict[str, str] = {
     "新聞稿": (
@@ -92,15 +90,7 @@ def activity_context(activity: dict, plan_names: list[str]) -> str:
 def rewrite_activity(fmt: str, activity: dict, plan_names: list[str]) -> dict:
     instruction = FORMATS[fmt]
     prompt = f"{_RULES}\n\n任務：{instruction}\n\n活動資料：\n{activity_context(activity, plan_names)}"
-    response = _get_client().models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_RESPONSE_SCHEMA,
-        ),
-    )
-    data = json.loads(response.text)
+    data = generate_json([types.Part.from_text(text=prompt)], _RESPONSE_SCHEMA)
     return {
         "format": fmt,
         "title": str(data.get("title") or ""),

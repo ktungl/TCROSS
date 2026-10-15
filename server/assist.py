@@ -15,7 +15,7 @@ import json
 
 from google.genai import types
 
-from report import GEMINI_MODEL, _get_client
+from report import generate_json
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 # 前端會先縮圖（長邊 2400px、JPEG），正常一張只有幾百 KB；這裡是防濫用的上限
@@ -58,13 +58,7 @@ def decode_document(data: str, mime_type: str) -> bytes:
 
 def _generate(parts: list, schema: dict, media_resolution: str | None = None) -> dict:
     extra = {"media_resolution": f"MEDIA_RESOLUTION_{media_resolution}"} if media_resolution else {}
-    config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=schema, **extra)
-    response = _get_client().models.generate_content(
-        model=GEMINI_MODEL,
-        contents=types.Content(role="user", parts=parts),
-        config=config,
-    )
-    return json.loads(response.text)
+    return generate_json(parts, schema, **extra)
 
 
 # ── 簽到表辨識 ──

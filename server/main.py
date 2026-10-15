@@ -17,6 +17,7 @@ from parse_auth import (
     get_generation_job,
     get_plan_names,
     list_names,
+    readable_activity_ids,
     verify_session_token,
     write_with_master_key,
 )
@@ -323,32 +324,40 @@ def attachment_view_urls(body: AttachmentViewRequest, user: dict = Depends(enfor
     gone — some activity that still references it."""
     if len(body.items) > MAX_ATTACHMENT_VIEWS_PER_REQUEST:
         raise HTTPException(400, f"一次最多 {MAX_ATTACHMENT_VIEWS_PER_REQUEST} 個檔案")
+    # 前端把同一輪畫面的所有附件併成一個請求：單一路徑不合法或無權讀取時只略過那一個
+    # （回應裡不給它網址），不讓整批 400/403 拖累畫面上其他附件。
     parsed = {}
+    invalid = []
     for item in body.items:
         info = parse_attachment_path(item.path)
-        if not info:
-            raise HTTPException(400, "path 不合法")
-        parsed[item.path] = info
+        if info:
+            parsed[item.path] = info
+        else:
+            invalid.append(item.path)
 
-    readable: dict[str, bool] = {}
-
-    def can_read(activity_id: str) -> bool:
-        if activity_id not in readable:
-            readable[activity_id] = activity_exists(user["sessionToken"], activity_id)
-        return readable[activity_id]
-
-    denied = [p for p, (activity_id, _) in parsed.items() if not can_read(activity_id)]
+    readable = readable_activity_ids(user["sessionToken"], {a for a, _ in parsed.values()})
+    denied = [p for p, (activity_id, _) in parsed.items() if activity_id not in readable]
+    still_denied: list[str] = []
     if denied:
         refs = activities_referencing({ATTACHMENT_URL_PREFIX + p for p in denied})
+        readable |= readable_activity_ids(
+            user["sessionToken"], set().union(*(refs.get(ATTACHMENT_URL_PREFIX + p, set()) for p in denied))
+        )
         still_denied = [
             p for p in denied
-            if not any(can_read(a) for a in refs.get(ATTACHMENT_URL_PREFIX + p, ()))
+            if not any(a in readable for a in refs.get(ATTACHMENT_URL_PREFIX + p, ()))
         ]
-        if still_denied:
-            audit_log.warning("rejected: unauthorized attachment paths user=%s paths=%s", user.get("username"), still_denied)
-            raise HTTPException(403, "部分附件不存在或無權存取")
-
-    urls = {item.path: generate_signed_download_url(item.path, item.name) for item in body.items}
+    if invalid or still_denied:
+        audit_log.warning(
+            "rejected: attachment paths user=%s invalid=%s unauthorized=%s",
+            user.get("username"), invalid, still_denied,
+        )
+    skip = set(still_denied)
+    urls = {
+        item.path: generate_signed_download_url(item.path, item.name)
+        for item in body.items
+        if item.path in parsed and item.path not in skip
+    }
     audit_log.info("attachment view-urls issued user=%s count=%d", user.get("username"), len(urls))
     return {"urls": urls}
 

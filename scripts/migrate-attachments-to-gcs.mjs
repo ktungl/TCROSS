@@ -168,8 +168,16 @@ for (const p of plan) {
   if (++n % 10 === 0 || n === uniqueUrls.size) console.log(`  已處理 ${n}/${uniqueUrls.size}（沿用既有 ${reused} 個）`)
 }
 
-for (const a of activities) {
-  if (!touched.has(a.objectId)) continue
+for (const snapshot of activities) {
+  if (!touched.has(snapshot.objectId)) continue
+  // 下載／上傳全部檔案可能要很久，期間使用者可能又改了附件：寫回前重讀一次最新的陣列再換網址，
+  // 不拿一開始的快照整個蓋回去（否則這段時間新增／刪除的附件會被吃掉）
+  const latest = await fetch(
+    `${SERVER_URL}/classes/Activity/${snapshot.objectId}?${new URLSearchParams({ keys: ['name', ...Object.keys(FIELD_FOLDER)].join(',') })}`,
+    { headers },
+  )
+  if (!latest.ok) throw new Error(`重讀活動 ${snapshot.objectId} 失敗：HTTP ${latest.status} ${await latest.text()}`)
+  const a = await latest.json()
   const body = {}
   let moved = 0
   for (const field of Object.keys(FIELD_FOLDER)) {

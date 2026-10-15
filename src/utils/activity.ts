@@ -81,7 +81,8 @@ export function dateMentionMismatches(text: string, date: string, fieldLabel: st
   const issues = new Set<string>()
   const actual = `${date}（${weekdayLabel(d)}）`
 
-  for (const m of text.matchAll(/(?:週|周|星期|禮拜)([日天一二三四五六])|[(（]([日一二三四五六])[)）]/g)) {
+  // 括號裡的星期只認緊接在日期後面的（10/18(六)、10月18日（六）），「（一）」「（二）」這類條列編號不算
+  for (const m of text.matchAll(/(?:週|周|星期|禮拜)([日天一二三四五六])|(?<=[\d日號]\s*)[(（]([日一二三四五六])[)）]/g)) {
     const ch = (m[1] ?? m[2]).replace('天', '日')
     if (WEEKDAY_CHARS.indexOf(ch) !== d.getDay()) {
       issues.add(`${fieldLabel}寫「${m[0]}」，但活動日期是 ${actual}`)

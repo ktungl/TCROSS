@@ -82,26 +82,39 @@ _PROMPT = (
 )
 
 
-def analyze_sources(object_paths: list[str]) -> dict:
-    """Feed the job's uploaded files to Gemini directly as GCS URIs (no need to
-    download them into this service first) and ask for structured JSON back."""
-    if not object_paths:
-        raise ValueError("沒有任何素材檔案")
-    parts = [
-        types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
-        for path in object_paths
-    ]
-    parts.append(types.Part.from_text(text=_PROMPT))
+def generate_json(parts: list, schema: dict, **config) -> dict:
+    """Call Gemini with structured-JSON output; shared by report / assist / rewrite."""
     response = _get_client().models.generate_content(
         model=GEMINI_MODEL,
         contents=types.Content(role="user", parts=parts),
         config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_RESPONSE_SCHEMA,
-            media_resolution=f"MEDIA_RESOLUTION_{GEMINI_MEDIA_RESOLUTION}",
+            response_mime_type="application/json", response_schema=schema, **config
         ),
     )
-    data = json.loads(response.text)
+    # 被安全過濾擋下或輸出被截斷時 response.text 是 None，直接 json.loads 只會留下看不懂的 TypeError
+    if not response.text:
+        raise ValueError("AI 沒有回傳內容（可能被內容過濾擋下），請換一份素材再試")
+    return json.loads(response.text)
+
+
+def _generate_json(object_paths: list[str], prompt: str, schema: dict, **config) -> dict:
+    """Feed the job's uploaded files to Gemini directly as GCS URIs (no need to
+    download them into this service first) and ask for structured JSON back."""
+    parts = [
+        types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
+        for path in object_paths
+    ]
+    parts.append(types.Part.from_text(text=prompt))
+    return generate_json(parts, schema, **config)
+
+
+def analyze_sources(object_paths: list[str]) -> dict:
+    if not object_paths:
+        raise ValueError("沒有任何素材檔案")
+    data = _generate_json(
+        object_paths, _PROMPT, _RESPONSE_SCHEMA,
+        media_resolution=f"MEDIA_RESOLUTION_{GEMINI_MEDIA_RESOLUTION}",
+    )
     return {
         "summary": str(data.get("summary") or ""),
         "highlights": [str(h) for h in (data.get("highlights") or [])],
@@ -197,17 +210,7 @@ def analyze_meeting(object_paths: list[str]) -> dict:
     """錄音直接以 GCS URI 給 Gemini（同 analyze_sources），只回結構化紀錄、不做逐字稿，輸出 token 少。"""
     if not object_paths:
         raise ValueError("沒有任何錄音檔")
-    parts = [
-        types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
-        for path in object_paths
-    ]
-    parts.append(types.Part.from_text(text=_MEETING_PROMPT))
-    response = _get_client().models.generate_content(
-        model=GEMINI_MODEL,
-        contents=types.Content(role="user", parts=parts),
-        config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=_MEETING_SCHEMA),
-    )
-    data = json.loads(response.text)
+    data = _generate_json(object_paths, _MEETING_PROMPT, _MEETING_SCHEMA)
 
     def strings(values) -> list[str]:
         return [s for s in (str(v).strip() for v in values or []) if s]

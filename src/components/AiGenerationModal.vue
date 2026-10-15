@@ -55,28 +55,39 @@ const totalSelected = computed(() =>
   FOLDERS.reduce((n, [key]) => n + selected[key].length, 0),
 )
 
-/** 錄音長度（秒）；瀏覽器讀不出長度的格式記 null，會議紀錄不收（無法確認有沒有超過上限） */
-const durations = reactive(new Map<File, number | null>())
+/** 錄音長度（秒）；瀏覽器讀不出長度的檔案不會加進來，會議紀錄不收（無法確認有沒有超過上限） */
+const durations = reactive(new Map<File, number>())
+/** 讀長度的等待上限：有些瀏覽器／格式 loadedmetadata 與 error 都不觸發，不設上限會讓檔案永遠加不進來 */
+const READ_DURATION_TIMEOUT_MS = 10_000
 function readDuration(file: File): Promise<number | null> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file)
     const audio = new Audio()
+    let settled = false
     const done = (v: number | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      audio.removeAttribute('src')
       URL.revokeObjectURL(url)
       resolve(v)
     }
+    const timer = setTimeout(() => done(null), READ_DURATION_TIMEOUT_MS)
     audio.preload = 'metadata'
     audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? audio.duration : null)
     audio.onerror = () => done(null)
     audio.src = url
   })
 }
+/** 還在讀長度的檔案數；讀完前不能送出，避免送出後才讀完的檔案又跑回「已選」清單 */
+const measuring = ref(0)
 const totalMinutes = computed(() =>
   selected.audio.reduce((sum, f) => sum + (durations.get(f) ?? 0), 0) / 60,
 )
 function minutesLabel(file: File): string {
   const sec = durations.get(file)
-  return sec == null ? '' : `${Math.round(sec / 60)} 分鐘`
+  if (sec == null) return ''
+  return sec < 60 ? '不到 1 分鐘' : `${Math.round(sec / 60)} 分鐘`
 }
 
 const pastJobs = computed(() =>
@@ -133,32 +144,48 @@ onMounted(async () => {
 })
 
 async function addFiles(folder: FolderKey, files: File[]) {
+  // 上傳中加進來的檔案不在這次送出的清單裡，送出成功清空「已選」時會被默默丟掉
+  if (submitting.value) {
+    pushToast('素材上傳中，請等這次送出完成再加入檔案', 'error')
+    return
+  }
   const accepted: File[] = []
   for (const file of files) {
     const reason = fileUploadRejectionReason(file)
     if (reason) pushToast(reason, 'error')
     else accepted.push(file)
   }
-  if (isMeeting.value) {
-    const measured: File[] = []
-    for (const file of accepted) {
-      const sec = await readDuration(file)
+  if (!isMeeting.value) {
+    selected[folder] = [...selected[folder], ...accepted]
+    return
+  }
+  measuring.value += accepted.length
+  try {
+    const secs = await Promise.all(accepted.map(readDuration))
+    const measured = accepted.filter((file, i) => {
+      const sec = secs[i]
       if (sec == null) {
         pushToast(`讀不出「${file.name}」的長度，請轉成 MP3 或 M4A 再上傳`, 'error')
-        continue
+        return false
       }
       durations.set(file, sec)
-      measured.push(file)
-    }
-    accepted.splice(0, accepted.length, ...measured)
+      return true
+    })
+    selected[folder] = [...selected[folder], ...measured]
+  } finally {
+    measuring.value -= accepted.length
   }
-  selected[folder] = [...selected[folder], ...accepted]
 }
 function removeSelected(folder: FolderKey, i: number) {
+  durations.delete(selected[folder][i])
   selected[folder] = selected[folder].filter((_, idx) => idx !== i)
 }
 
 async function startGeneration() {
+  if (measuring.value) {
+    pushToast('還在讀取錄音長度，請稍候再送出', 'error')
+    return
+  }
   if (!totalSelected.value) {
     pushToast('請先選擇至少一個檔案', 'error')
     return
@@ -168,7 +195,7 @@ async function startGeneration() {
     return
   }
   if (isMeeting.value && totalMinutes.value > MAX_MEETING_MINUTES) {
-    pushToast(`錄音合計約 ${Math.round(totalMinutes.value)} 分鐘，目前上限 ${MAX_MEETING_MINUTES} 分鐘，請剪短或分次整理`, 'error')
+    pushToast(`錄音合計約 ${Math.ceil(totalMinutes.value)} 分鐘，目前上限 ${MAX_MEETING_MINUTES} 分鐘，請剪短或分次整理`, 'error')
     return
   }
   submitting.value = true
@@ -229,6 +256,7 @@ async function startGeneration() {
     const job = await db.createGenerationJob(props.activity.id, props.kind, objectPaths as string[])
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))
+    durations.clear()
     startPolling(job.id, (r) => (activeJob.value = r))
     // 素材已上傳、job 已建立；觸發失敗時工作會停在「待處理」，可以按「重新觸發」再送一次。
     fireGeneration(job.id)
@@ -380,8 +408,8 @@ useEscape(close)
       </div>
 
       <div class="row actions">
-        <button class="btn" :disabled="submitting || !totalSelected" @click="startGeneration">
-          {{ submitting ? '上傳中…' : '開始生成' }}
+        <button class="btn" :disabled="submitting || measuring > 0 || !totalSelected" @click="startGeneration">
+          {{ submitting ? '上傳中…' : measuring ? '讀取錄音長度中…' : '開始生成' }}
         </button>
         <button class="btn ghost" @click="close">關閉</button>
       </div>
