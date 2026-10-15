@@ -110,6 +110,7 @@ export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
 const PDF_TEXT_HINT =
   '可上傳格式：PDF、JPG、PNG、Word。PDF 匯出時會自動轉成文字放進報告；掃描成圖片的 PDF 無法轉文字，只會列出檔名。'
 export const ATTACHMENT_HINTS: Partial<Record<AttachmentKey, string>> = {
+  photo: '勾選「精選照片」的照片會依「呈現順序」放進成果報告。',
   content: PDF_TEXT_HINT,
   agenda: PDF_TEXT_HINT,
   signIn: PDF_TEXT_HINT,

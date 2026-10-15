@@ -29,6 +29,26 @@ const db = useDbStore()
 
 const activity = computed(() => db.activities.find((a) => a.id === props.id))
 const ledgerCount = computed(() => activity.value?.files.photo.filter((f) => f.ledger).length ?? 0)
+/** 精選照片依目前的呈現順序（= 照片陣列裡的先後） */
+const featuredUrls = computed(() => activity.value?.files.photo.filter((f) => f.featured).map((f) => f.url) ?? [])
+const savingOrder = ref(false)
+
+/** 把這張精選照片移到第 position 位（1 起算），其他精選照片依序往前或往後挪 */
+async function onFeaturedOrderChange(url: string, e: Event) {
+  if (!activity.value) return
+  const position = Number((e.target as HTMLSelectElement).value)
+  const order = featuredUrls.value.filter((u) => u !== url)
+  order.splice(position - 1, 0, url)
+  savingOrder.value = true
+  try {
+    await db.reorderFeaturedPhotos(activity.value.id, order)
+    pushToast('已更新呈現順序')
+  } catch (e2) {
+    pushToast(errorMessage(e2), 'error')
+  } finally {
+    savingOrder.value = false
+  }
+}
 
 const summaryDraft = ref('')
 const kpisDraft = ref<Kpi[]>([])
@@ -446,6 +466,16 @@ async function duplicateActivity() {
                       :disabled="archived"
                       @change="onFeaturedToggle(key, i, $event)"
                     >精選照片
+                  </label>
+                  <label v-if="f.featured" class="chk nowrap" title="成果報告依這個順序放精選照片">呈現順序
+                    <select
+                      class="order-select"
+                      :value="featuredUrls.indexOf(f.url) + 1"
+                      :disabled="archived || savingOrder"
+                      @change="onFeaturedOrderChange(f.url, $event)"
+                    >
+                      <option v-for="n in featuredUrls.length" :key="n" :value="n">{{ n }}</option>
+                    </select>
                   </label>
                   <label class="chk nowrap" title="勾選的照片會放進大紀事 Excel，最多 3 張">
                     <input

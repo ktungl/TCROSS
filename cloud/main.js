@@ -287,6 +287,11 @@ function attachmentSummaries(object, original) {
     if (restored.length) lines.push(`從垃圾桶復原「${label}」的 ${restored.length} 個檔案：${fileNames(restored)}`);
     if (removed.length) lines.push(`永久刪除「${label}」的 ${removed.length} 個檔案：${fileNames(removed)}`);
     if (edited.length) lines.push(`修改「${label}」的 ${edited.length} 個檔案圖說／精選：${fileNames(edited)}`);
+    // 精選照片的「呈現順序」：檔案沒有增減、勾選也沒變，只有精選照片的先後變了
+    const featuredOrder = (files) => files.filter((f) => f.featured && !f.deletedAt).map((f) => f.url).join('\n');
+    if (!added.length && !removed.length && !edited.length && featuredOrder(before) !== featuredOrder(after)) {
+      lines.push(`調整「${label}」精選照片的呈現順序`);
+    }
   }
   return lines;
 }

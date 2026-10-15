@@ -505,6 +505,20 @@ export const useDbStore = defineStore('db', () => {
     })
   }
 
+  /** 調整精選照片的呈現順序：原本放精選照片的位置，依 orderedUrls 的順序重新填入，
+   * 非精選照片的位置不動。匯出時依陣列順序挑精選照片，所以報告會照這個順序放圖。
+   * orderedUrls 跟目前的精選照片對不上（例如剛好有人改了勾選）就不存。 */
+  async function reorderFeaturedPhotos(id: string, orderedUrls: string[]): Promise<void> {
+    await patchFiles(id, 'photo', (files, trash) => {
+      const slots = files.flatMap((f, i) => (f.featured ? [i] : []))
+      const byUrl = new Map(files.filter((f) => f.featured).map((f) => [f.url, f]))
+      if (slots.length !== orderedUrls.length || orderedUrls.some((u) => !byUrl.has(u))) return null
+      const next = [...files]
+      slots.forEach((slot, i) => (next[slot] = byUrl.get(orderedUrls[i])!))
+      return { files: next, trash }
+    })
+  }
+
   /** findAll() 不能搭配排序（分批靠 objectId），撈完再自己依建立時間由新到舊排。 */
   function newestFirst(records: GenerationJobRecord[]): GenerationJobRecord[] {
     return records.sort((x, y) => (y.createdAt || '').localeCompare(x.createdAt || ''))
@@ -634,6 +648,7 @@ export const useDbStore = defineStore('db', () => {
     restoreFile,
     hardDeleteFile,
     updateFileMeta,
+    reorderFeaturedPhotos,
     fetchGenerationJobs,
     fetchAllGenerationJobs,
     createGenerationJob,
