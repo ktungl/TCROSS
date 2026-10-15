@@ -96,13 +96,15 @@ export function activityToRecord(obj: Parse.Object): ActivityRecord {
     kpis: normalizeKpis(obj.get('kpis')),
     files,
     trash,
+    archivedAt: obj.get('archivedAt') ?? '',
+    archivedByName: obj.get('archivedByName') ?? '',
     ...actorStampOf(obj),
   }
 }
 
 export function applyActivityRecord(
   obj: Parse.Object,
-  record: Omit<ActivityRecord, 'id' | 'files' | 'trash' | ActorStampKey>,
+  record: Omit<ActivityRecord, 'id' | 'files' | 'trash' | 'archivedAt' | 'archivedByName' | ActorStampKey>,
 ): void {
   obj.set('name', record.name)
   obj.set('categories', record.categories)

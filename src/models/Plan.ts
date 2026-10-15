@@ -14,6 +14,7 @@ export function planToRecord(obj: Parse.Object): PlanRecord {
   return {
     id: obj.id!,
     name: obj.get('name') ?? '',
+    sortOrder: obj.get('sortOrder') ?? Number.MAX_SAFE_INTEGER,
     ...actorStampOf(obj),
   }
 }

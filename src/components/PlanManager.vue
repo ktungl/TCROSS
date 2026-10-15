@@ -6,6 +6,7 @@ import { gaps } from '../utils/activity'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import StampLine from './StampLine.vue'
+import type { PlanRecord } from '../types'
 
 const router = useRouter()
 const db = useDbStore()
@@ -55,6 +56,63 @@ async function saveRename() {
   }
 }
 
+// 排序模式：先在 draftOrder 上調整，按「儲存排序」才寫入資料庫，取消就直接丟掉
+const sorting = ref(false)
+const savingOrder = ref(false)
+const draftOrder = ref<PlanRecord[]>([])
+const dragIndex = ref(-1)
+
+function startSorting() {
+  cancelRename()
+  draftOrder.value = [...db.plans]
+  sorting.value = true
+}
+
+function cancelSorting() {
+  sorting.value = false
+  draftOrder.value = []
+  dragIndex.value = -1
+}
+
+function movePlan(from: number, to: number) {
+  if (to < 0 || to >= draftOrder.value.length || from === to) return
+  const list = [...draftOrder.value]
+  const [item] = list.splice(from, 1)
+  list.splice(to, 0, item)
+  draftOrder.value = list
+}
+
+function onDragStart(index: number, e: DragEvent) {
+  dragIndex.value = index
+  // Firefox 沒設資料就不會開始拖移
+  e.dataTransfer?.setData('text/plain', String(index))
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+
+// 拖到別張卡片上就即時換位，讓使用者看到放下後的結果
+function onDragEnter(index: number) {
+  if (dragIndex.value < 0 || dragIndex.value === index) return
+  movePlan(dragIndex.value, index)
+  dragIndex.value = index
+}
+
+function onDragEnd() {
+  dragIndex.value = -1
+}
+
+async function saveSorting() {
+  savingOrder.value = true
+  try {
+    await db.reorderPlans(draftOrder.value.map((p) => p.id))
+    pushToast('已更新計畫排序')
+    cancelSorting()
+  } catch (e) {
+    pushToast(errorMessage(e), 'error')
+  } finally {
+    savingOrder.value = false
+  }
+}
+
 async function removePlan(id: string, name: string) {
   if (!(await confirm(`確定要刪除計畫「${name}」嗎？旗下活動不會被刪除，只會解除歸屬。`, '刪除計畫', true))) return
   try {
@@ -73,6 +131,42 @@ async function removePlan(id: string, name: string) {
       <input class="grow" ref="planNameInput" v-model="planName" placeholder="計畫名稱，例如：2026 社區共好計畫" @keyup.enter="addPlan">
       <button class="btn" @click="addPlan">新增計畫</button>
     </div>
+  </div>
+
+  <template v-if="sorting">
+    <p class="sub" style="margin-bottom:10px">拖移卡片左側的「⠿」調整順序（手機請用 ↑ ↓），完成後按「儲存排序」。</p>
+    <div
+      v-for="(p, i) in draftOrder"
+      :key="p.id"
+      class="card"
+      :style="{ marginBottom: '10px', opacity: dragIndex === i ? 0.4 : 1 }"
+      draggable="true"
+      @dragstart="onDragStart(i, $event)"
+      @dragenter.prevent="onDragEnter(i)"
+      @dragover.prevent
+      @drop.prevent
+      @dragend="onDragEnd"
+    >
+      <div class="row" style="justify-content:space-between;flex-wrap:nowrap">
+        <div class="row" style="gap:10px;flex-wrap:nowrap;min-width:0">
+          <span aria-hidden="true" style="cursor:grab;color:var(--ink-soft);font-size:18px;user-select:none">⠿</span>
+          <strong>{{ p.name }}</strong>
+        </div>
+        <div class="row" style="gap:6px;flex-wrap:nowrap">
+          <button class="btn ghost sm" title="上移" :disabled="i === 0" @click="movePlan(i, i - 1)">↑</button>
+          <button class="btn ghost sm" title="下移" :disabled="i === draftOrder.length - 1" @click="movePlan(i, i + 1)">↓</button>
+        </div>
+      </div>
+    </div>
+    <div class="row" style="gap:6px">
+      <button class="btn" :disabled="savingOrder" @click="saveSorting">{{ savingOrder ? '儲存中…' : '儲存排序' }}</button>
+      <button class="btn ghost" :disabled="savingOrder" @click="cancelSorting">取消</button>
+    </div>
+  </template>
+
+  <template v-else>
+  <div v-if="db.plans.length > 1" class="row" style="justify-content:flex-end;margin-bottom:10px">
+    <button class="btn ghost sm" @click="startSorting">編輯排序</button>
   </div>
 
   <div v-for="p in db.plans" :key="p.id" class="card item-gap">
@@ -100,4 +194,5 @@ async function removePlan(id: string, name: string) {
     </div>
   </div>
   <p v-if="!db.plans.length" class="empty flush">還沒有計畫。</p>
+  </template>
 </template>

@@ -65,6 +65,9 @@ const WANTED_BY_CLASS = {
     placeMode: 'String',
     meetingUrl: 'String',
     venue: 'String',
+    // 封存（DetailView 的「封存此活動」），archivedByName 由 cloud/main.js 寫入
+    archivedAt: 'String',
+    archivedByName: 'String',
     ...ACTOR_FIELDS,
   },
   // src/models/Category.ts —— plans 是分類所屬的計畫（Pointer<Plan> 陣列，可複選可留空）
@@ -78,7 +81,11 @@ const WANTED_BY_CLASS = {
     deletedAt: 'Date',
     ...ACTOR_FIELDS,
   },
-  Plan: { ...ACTOR_FIELDS },
+  // src/models/Plan.ts —— sortOrder 是計畫清單的顯示順序（「編輯排序」寫入）
+  Plan: {
+    sortOrder: 'Number',
+    ...ACTOR_FIELDS,
+  },
   // 顯示名稱（登入歡迎畫面、操作者紀錄用），由 scripts/setup-users.mjs 寫入
   _User: {
     displayName: 'String',

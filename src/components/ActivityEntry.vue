@@ -7,7 +7,7 @@ defineProps<{
   activity: ActivityRecord
   planName: (id: string) => string
 }>()
-defineEmits<{ duplicate: [] }>()
+defineEmits<{ duplicate: []; archive: [] }>()
 
 const root = ref<HTMLElement | null>(null)
 </script>
@@ -16,7 +16,7 @@ const root = ref<HTMLElement | null>(null)
   <div ref="root" class="entry" role="button" tabindex="0" @keydown.enter="root?.click()">
     <span class="date mono">{{ activity.date || '未定日期' }}</span>
     <span>
-      <span class="name">{{ activity.name }}</span>
+      <span class="name">{{ activity.name }}</span><span v-if="activity.archivedAt" class="tag" style="margin-left:6px">已封存</span>
       <span class="meta">{{ activity.place || '—' }}　·　{{ activity.owner || '未指定負責人' }}　·　檔案 {{ nFiles(activity) }} 個</span>
     </span>
     <span class="plans">
@@ -31,6 +31,9 @@ const root = ref<HTMLElement | null>(null)
       </div>
       <span class="pct mono">{{ score(activity) }}%</span>
     </div>
-    <button class="btn ghost sm dup" @click.stop="$emit('duplicate')">複製此活動</button>
+    <span class="entry-actions">
+      <button class="btn ghost sm dup" @click.stop="$emit('duplicate')">複製此活動</button>
+      <button class="btn ghost sm dup" @click.stop="$emit('archive')">{{ activity.archivedAt ? '解除封存' : '封存' }}</button>
+    </span>
   </div>
 </template>

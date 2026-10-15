@@ -19,12 +19,13 @@ import {
   VerticalAlign,
   WidthType,
 } from 'docx'
-import { ATTACHMENT_TYPES } from '../types'
+import { ATTACHMENT_TYPES, LEDGER_PHOTO_MAX } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
 import { resolveAttachmentUrl } from '../lib/attachments'
 import type { Participant } from './registration'
 import { isAgendaReadable, readAgenda } from './agenda'
 import { renderPdfPages } from './pdfPages'
+import { attachmentTextsToPlain, readAttachmentTexts } from './pdfText'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -225,8 +226,10 @@ function rowHeightForWrappedText(text: string, columnWidthChars: number, minLine
   // Excel 單行預設列高剛好等於 15pt 文字本身的高度，配上格線邊框後完全沒有留白，
   // 視覺上會顯得被夾住；多留一點緩衝，避免文字看起來貼著上下邊框。
   const LINE_HEIGHT_PT = 18
+  // Excel 單列高度上限是 409pt，PDF 解析出的長文字不能超過
+  const MAX_ROW_HEIGHT_PT = 409
   const needed = text ? estimateWrappedLines(text, columnWidthChars) : minLines
-  return Math.max(minLines, needed) * LINE_HEIGHT_PT
+  return Math.min(MAX_ROW_HEIGHT_PT, Math.max(minLines, needed) * LINE_HEIGHT_PT)
 }
 
 export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: string): Promise<Blob> {
@@ -248,9 +251,11 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
   })
 
   const startRow = 2 + infoLines.length + 1
+  // 活動流程附件是 PDF 就放解析出的文字；掃描檔或其他格式列檔名（詳附件）
+  const agendaText = attachmentTextsToPlain(await readAttachmentTexts(a.files.agenda ?? []))
   const fields: [string, string, number][] = [
     ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 2],
-    ['活動流程', '', 5],
+    ['活動流程', agendaText, 5],
     ['執行情形', a.summary, 5],
     ['檢討與建議', '', 5],
     ['附件', ATTACHMENT_TYPES.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0} 件`).join('　'), 2],
@@ -731,8 +736,8 @@ export const LEDGER_PHOTO_SIZES: Record<LedgerPhotoSize, { label: string; widthC
   large: { label: '大（8 × 6 公分）', widthCm: 8, heightCm: 6 },
 }
 
-/** 每場活動最多放幾張精選照片（範例檔最多 3 張並排） */
-export const LEDGER_MAX_PHOTOS = 3
+/** 每場活動最多放幾張大紀事照片（範例檔最多 3 張並排），同 types 的 LEDGER_PHOTO_MAX／伺服器端檢查 */
+export const LEDGER_MAX_PHOTOS = LEDGER_PHOTO_MAX
 
 /** 照片與格線之間的留白（px） */
 const LEDGER_PHOTO_GAP_PX = 8
@@ -743,6 +748,13 @@ const pxToExcelColWidth = (px: number) => Math.ceil(((px - 5) / 7) * 100) / 100
 const pxToPt = (px: number) => Math.ceil(px * 0.75 * 10) / 10
 
 const LEDGER_FONT = { name: '微軟正黑體', size: 12 }
+
+/** 大紀事照片：有勾「大紀事照片」就照上傳順序取這些；一張都沒勾的舊資料沿用
+ * 精選優先／上傳順序的規則，不用回頭重新勾選也能匯出。 */
+function pickLedgerPhotos(files: FileMeta[], max: number): FileMeta[] {
+  const ledger = files.filter((f) => f.ledger)
+  return ledger.length ? ledger.slice(0, max) : pickPhotosForExport(files, max)
+}
 
 /** 大事紀 Excel，格式比照《114年大紀事_範例.xlsx》：
  * 專案名稱／計畫項目／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
@@ -818,7 +830,7 @@ export async function buildLedgerXlsx(
     })
     row.height = rowHeightPt
 
-    const photos = pickPhotosForExport(a.files.photo ?? [], slots)
+    const photos = pickLedgerPhotos(a.files.photo ?? [], slots)
     const assets: ImageAsset[] = []
     for (const photo of photos) {
       const asset = await loadImageAsset(photo)
@@ -854,6 +866,10 @@ export async function buildLedgerXlsx(
 
 /** 主辦單位全銜（成果報告書封面「主辦單位」） */
 export const ORGANIZER_NAME = '社團法人臺灣合作社照顧聯盟'
+
+/** 報告裡最多放 12 張照片；超過 6 張時分頁，每頁 6 張（2 欄 × 3 列）。 */
+const PHOTOS_MAX_IN_REPORT = 12
+const PHOTOS_PER_PAGE = 6
 
 const CHINESE_DIGITS = '〇一二三四五六七八九'
 const LEGAL_DIGITS = ['', '壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖', '拾']
@@ -953,7 +969,7 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     ...(benefits.length ? benefits : [reportBody('（尚未填寫成果摘要與效益指標）')]),
   ]
 
-  const photos = pickPhotosForExport(a.files.photo ?? [], 6)
+  const photos = pickPhotosForExport(a.files.photo ?? [], PHOTOS_MAX_IN_REPORT)
   const photoAssets: ImageAsset[] = []
   const photoCaptions: string[] = []
   for (const photo of photos) {
@@ -962,9 +978,15 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     photoAssets.push(asset)
     photoCaptions.push(photo.caption || '')
   }
-  // 範本的活動照片都從新的一頁開始，照片表格才不會被切到兩頁
+  // 範本的活動照片都從新的一頁開始，照片表格才不會被切到兩頁；超過 6 張時每 6 張再換一頁
   children.push(reportItem(7, '活動照片：', photoAssets.length > 0))
-  children.push(photoAssets.length ? buildPhotoTable(photoAssets, photoCaptions) : reportBody('（尚未上傳活動照片）'))
+  if (!photoAssets.length) children.push(reportBody('（尚未上傳活動照片）'))
+  for (let i = 0; i < photoAssets.length; i += PHOTOS_PER_PAGE) {
+    if (i > 0) children.push(new Paragraph({ pageBreakBefore: true, children: [] }))
+    children.push(
+      buildPhotoTable(photoAssets.slice(i, i + PHOTOS_PER_PAGE), photoCaptions.slice(i, i + PHOTOS_PER_PAGE)),
+    )
+  }
 
   children.push(
     ...(await buildAttachmentSection(8, '活動流程表', a.files.agenda ?? [], {
@@ -973,6 +995,17 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     })),
     ...(await buildAttachmentSection(9, '簽到表', a.files.signIn ?? [])),
   )
+
+  // 簽到表是有文字層的 PDF 時，把抽出的文字接在嵌入的頁面後面，方便複製與搜尋；
+  // 掃描檔沒有文字，頁面圖片已經嵌在上面，不另外處理
+  const signInTexts = (await readAttachmentTexts(a.files.signIn ?? [])).filter((t) => t.text)
+  if (signInTexts.length) {
+    children.push(reportBody('簽到表文字內容：'))
+    for (const t of signInTexts) {
+      if (signInTexts.length > 1) children.push(reportBody(`〈${t.name}〉`))
+      children.push(...t.text!.split('\n').map((line) => reportBody(line)))
+    }
+  }
   return children
 }
 

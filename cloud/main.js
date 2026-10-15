@@ -28,6 +28,8 @@ const ACTIVITY_CATEGORY_MAX_LENGTH = 50;
 // 前端 src/types.ts 的 fileUploadRejectionReason() 有同樣規則做即時提示，但那邊能被繞過
 // （直打 REST API），這裡才是真正擋得住的最後防線。
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+// 大紀事 Excel 每場活動最多放幾張照片，同 src/types.ts 的 LEDGER_PHOTO_MAX
+const LEDGER_PHOTO_MAX = 3;
 const BLOCKED_EXTENSIONS = [
   'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
   'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
@@ -118,6 +120,8 @@ const FIELD_LABELS = {
   resultFile: '產出檔案',
   errorMessage: '錯誤訊息',
   deletedAt: '移到垃圾桶',
+  archivedAt: '封存',
+  archivedByName: '封存人',
 };
 
 // 同一個欄位在不同資料類型的畫面上叫法不同：活動是「對應計畫」，分類是「所屬計畫」。
@@ -268,7 +272,12 @@ function attachmentSummaries(object, original) {
     const restored = after.filter((f) => !f.deletedAt && beforeMap.has(f.url) && beforeMap.get(f.url).deletedAt);
     const edited = after.filter((f) => {
       const prev = beforeMap.get(f.url);
-      return prev && ((prev.caption || '') !== (f.caption || '') || !!prev.featured !== !!f.featured);
+      return (
+        prev &&
+        ((prev.caption || '') !== (f.caption || '') ||
+          !!prev.featured !== !!f.featured ||
+          !!prev.ledger !== !!f.ledger)
+      );
     });
 
     if (added.length) lines.push(`新增 ${added.length} 個檔案到「${label}」：${fileNames(added)}`);
@@ -431,6 +440,10 @@ Parse.Cloud.beforeSave('Plan', (request) => {
     fail('計畫名稱過長（上限 100 字）');
   }
   object.set('name', name.trim());
+  const sortOrder = object.get('sortOrder');
+  if (sortOrder !== undefined && (typeof sortOrder !== 'number' || !Number.isFinite(sortOrder))) {
+    fail('排序值格式錯誤');
+  }
   stampActor(request, 'Plan');
 });
 
@@ -459,8 +472,19 @@ Parse.Cloud.beforeSave('Category', (request) => {
 Parse.Cloud.afterSave('Category', (request) => auditSave('Category', request));
 Parse.Cloud.afterDelete('Category', (request) => auditDelete('Category', request));
 
+// 封存只動這兩個欄位，其他欄位一律要先解除封存才能改
+const ARCHIVE_FIELDS = new Set(['archivedAt', 'archivedByName']);
+
 Parse.Cloud.beforeSave('Activity', (request) => {
   const object = request.object;
+
+  // 已封存、這次也沒有解除封存的話，不接受任何其他欄位的修改（Master Key 的系統操作放行）
+  const { original } = request;
+  if (!request.master && original && original.get('archivedAt') && object.get('archivedAt')) {
+    if (object.dirtyKeys().some((k) => !ARCHIVE_FIELDS.has(k))) {
+      fail('此活動已封存，請先解除封存再編輯');
+    }
+  }
 
   const name = object.get('name');
   if (typeof name !== 'string' || !name.trim()) {
@@ -587,6 +611,9 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       if (file.featured !== undefined && typeof file.featured !== 'boolean') {
         fail(`${field} 的 featured 必須是布林值`);
       }
+      if (file.ledger !== undefined && typeof file.ledger !== 'boolean') {
+        fail(`${field} 的 ledger 必須是布林值`);
+      }
       if (file.size > MAX_FILE_SIZE_BYTES) {
         fail(`「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
       }
@@ -599,6 +626,15 @@ Parse.Cloud.beforeSave('Activity', (request) => {
         fail(`${field} 的 deletedAt 必須是字串`);
       }
     }
+    // 同 src/types.ts 的 LEDGER_PHOTO_MAX；垃圾桶裡的不算
+    if (files.filter((f) => f.ledger && !f.deletedAt).length > LEDGER_PHOTO_MAX) {
+      fail(`大紀事照片最多 ${LEDGER_PHOTO_MAX} 張`);
+    }
+  }
+
+  const archivedAt = object.get('archivedAt');
+  if (archivedAt !== undefined && archivedAt !== null && typeof archivedAt !== 'string') {
+    fail('archivedAt 必須是字串');
   }
 
   // 附件從 Back4App 搬到 GCS（scripts/migrate-attachments-to-gcs.mjs）只是換網址，
@@ -606,6 +642,20 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   if (isAttachmentMigration(request)) return;
   const actor = stampActor(request, 'Activity');
   stampAttachments(request, actor);
+
+  // 封存人一律由伺服器寫入，前端送來的值不採用
+  if (object.dirtyKeys().includes('archivedAt')) {
+    if (object.get('archivedAt')) object.set('archivedByName', actor.name);
+    else object.unset('archivedByName');
+  } else {
+    copyOrUnset(object, original, 'archivedByName');
+  }
+});
+
+Parse.Cloud.beforeDelete('Activity', (request) => {
+  if (!request.master && request.object.get('archivedAt')) {
+    fail('此活動已封存，請先解除封存再刪除');
+  }
 });
 
 /** 只有 Master Key 才能帶這個 context，前端（JS Key＋session）帶了也不算數。 */

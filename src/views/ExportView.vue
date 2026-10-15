@@ -185,7 +185,7 @@ async function doExport() {
       </div>
     </div>
     <p v-if="wantLedger" class="hint">
-      優先放標記為精選的照片；一張照片一個格子，每列列高固定，照片不會超出格子
+      放活動頁勾選「大紀事照片」的照片（沒勾的活動改放精選照片）；一張照片一個格子，每列列高固定，照片不會超出格子
     </p>
 
     <div class="row actions">
