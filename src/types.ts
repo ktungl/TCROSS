@@ -10,8 +10,10 @@ export interface FileMeta {
   url: string
   /** 圖說（照片類型必填每張圖說） */
   caption?: string
-  /** 精選照片標記（作為大紀事精選照片） */
+  /** 精選照片標記（成果報告／內政部結案報告優先放這些照片） */
   featured?: boolean
+  /** 大紀事照片標記（大紀事 Excel 放這些照片，每場活動最多 LEDGER_PHOTO_MAX 張） */
+  ledger?: boolean
   /** 軟刪除時間戳記（ISO 字串）。有值代表在垃圾桶裡，正常畫面（含匯出、缺漏檢核）都會濾掉，
    * 只有「歷史檔案」頁的垃圾桶會列出，可以復原或從那裡永久刪除。 */
   deletedAt?: string
@@ -99,6 +101,17 @@ export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
   ['social', '社群貼文'],
   ['media', '影音檔'],
 ]
+
+/** 上傳框旁的格式說明；PDF 會在匯出時解析成文字（見 src/utils/pdfText.ts） */
+const PDF_TEXT_HINT =
+  '可上傳格式：PDF、JPG、PNG、Word。PDF 匯出時會自動轉成文字放進報告；掃描成圖片的 PDF 無法轉文字，只會列出檔名。'
+export const ATTACHMENT_HINTS: Partial<Record<AttachmentKey, string>> = {
+  agenda: PDF_TEXT_HINT,
+  signIn: PDF_TEXT_HINT,
+}
+
+/** 大紀事 Excel 每場活動最多放幾張照片（同 cloud/main.js 的伺服器端檢查） */
+export const LEDGER_PHOTO_MAX = 3
 
 export const PHOTO_MIN = 3
 export const PHOTO_MAX = 15
@@ -190,6 +203,11 @@ export interface ActivityRecord extends ActorStamp {
   /** 軟刪除的附件（各分類裡 deletedAt 有值的項目），只給「歷史檔案」頁的垃圾桶用；
    * files 已經濾掉這些，其他畫面（缺漏檢核、匯出、附件統計……）不用另外處理。 */
   trash: ActivityFiles
+  /** 封存時間（ISO 字串），空字串代表未封存。封存後只能檢視，cloud/main.js 會擋下
+   * 封存狀態下的任何修改與刪除，要先解除封存。 */
+  archivedAt: string
+  /** 封存人，由 cloud/main.js 在伺服器端寫入 */
+  archivedByName: string
 }
 
 export type GenerationJobKind = '成果報告' | '其他'

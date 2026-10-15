@@ -223,15 +223,38 @@ export const useDbStore = defineStore('db', () => {
   /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。
    * 存檔後再用伺服器回傳的值補上最後修改者，以及附件陣列裡 Cloud Code 蓋上的
    * 上傳者／刪除者（這些只有伺服器知道，mutateLocal 算不出來）。 */
-  async function patchActivity(
+  /** 每場活動一條存檔佇列。附件欄位每次都整個陣列覆寫，兩個存檔同時在跑的話，
+   * 晚存完的會把先存完的改動蓋回舊值（例如連續編輯兩張照片的圖說），所以同一場
+   * 活動的存檔一律排隊，一次只跑一個。 */
+  const saveQueues = new Map<string, Promise<void>>()
+
+  function patchActivity(
     id: string,
-    apply: (obj: ActivityObject, existing: ActivityRecord) => void,
+    apply: (obj: ActivityObject, existing: ActivityRecord) => void | false,
+    mutateLocal: (existing: ActivityRecord) => void,
+  ): Promise<void> {
+    const prev = saveQueues.get(id) ?? Promise.resolve()
+    // 前一個存檔失敗不影響後面的；錯誤仍由前一個呼叫端自己處理
+    const run = prev.catch(() => {}).then(() => runPatchActivity(id, apply, mutateLocal))
+    saveQueues.set(id, run)
+    const cleanup = () => {
+      if (saveQueues.get(id) === run) saveQueues.delete(id)
+    }
+    run.then(cleanup, cleanup)
+    return run
+  }
+
+  /** apply 在輪到這個存檔時才執行，讀到的 existing 已經是前面存檔完成後的最新資料；
+   * apply 回傳 false 代表目標已不存在，略過不存。 */
+  async function runPatchActivity(
+    id: string,
+    apply: (obj: ActivityObject, existing: ActivityRecord) => void | false,
     mutateLocal: (existing: ActivityRecord) => void,
   ): Promise<void> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) return
     const obj = ActivityObject.createWithoutData(id) as ActivityObject
-    apply(obj, existing)
+    if (apply(obj, existing) === false) return
     await obj.save()
     mutateLocal(existing)
     mergeUpdateStamp(existing, obj)
@@ -292,6 +315,26 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
+  /** 封存／解除封存。封存人由 cloud/main.js 寫入，存檔回傳後再讀回本地。 */
+  async function setActivityArchived(id: string, archived: boolean): Promise<void> {
+    let saved: ActivityObject | null = null
+    const archivedAt = archived ? new Date().toISOString() : ''
+    await patchActivity(
+      id,
+      (obj) => {
+        saved = obj
+        if (archived) obj.set('archivedAt', archivedAt)
+        else obj.unset('archivedAt')
+      },
+      (existing) => {
+        existing.archivedAt = archivedAt
+        existing.archivedByName = archived
+          ? ((saved?.get('archivedByName') as string | undefined) ?? '')
+          : ''
+      },
+    )
+  }
+
   /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
   const UPLOAD_CONCURRENCY = 4
 
@@ -333,14 +376,29 @@ export const useDbStore = defineStore('db', () => {
     await Promise.all(
       Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, worker),
     )
-    // Parse 的 `${folder}Files` 欄位一次寫入整個陣列，會連垃圾桶裡的項目一起蓋掉，
-    // 所以每次寫入都要把 files（現存）＋ trash（垃圾桶）兩邊都併回去。
-    const nextFull = [...existing.files[folder], ...existing.trash[folder], ...uploaded]
+    await patchFiles(id, folder, (files, trash) => ({ files: [...files, ...uploaded], trash }))
+  }
+
+  /** 附件陣列的共用寫入流程。Parse 的 `${folder}Files` 欄位一次寫入整個陣列，會連垃圾桶
+   * 裡的項目一起蓋掉，所以每次都把 files（現存）＋ trash（垃圾桶）兩邊併回去。
+   * compute 在存檔佇列輪到時才執行，拿到的是最新的陣列；回傳 null 代表目標已不存在。 */
+  async function patchFiles(
+    id: string,
+    folder: AttachmentKey,
+    compute: (files: FileMeta[], trash: FileMeta[]) => { files: FileMeta[]; trash: FileMeta[] } | null,
+  ): Promise<void> {
+    let next: { files: FileMeta[]; trash: FileMeta[] } | null = null
     await patchActivity(
       id,
-      (obj) => obj.set(`${folder}Files`, nextFull),
+      (obj, existing) => {
+        next = compute(existing.files[folder], existing.trash[folder])
+        if (!next) return false
+        obj.set(`${folder}Files`, [...next.files, ...next.trash])
+      },
       (existing) => {
-        existing.files[folder] = [...existing.files[folder], ...uploaded]
+        if (!next) return
+        existing.files[folder] = next.files
+        existing.trash[folder] = next.trash
       },
     )
   }
@@ -356,85 +414,67 @@ export const useDbStore = defineStore('db', () => {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !files.length) return
     const clean: FileMeta[] = files.map((f) => ({ name: f.name, size: f.size, url: f.url }))
-    const nextFull = [...existing.files[folder], ...existing.trash[folder], ...clean]
-    await patchActivity(
-      id,
-      (obj) => obj.set(`${folder}Files`, nextFull),
-      (existing) => {
-        existing.files[folder] = [...existing.files[folder], ...clean]
-      },
-    )
+    await patchFiles(id, folder, (current, trash) => ({ files: [...current, ...clean], trash }))
   }
+
+  // 以下各函式的 index 只在呼叫當下換成檔案 url，實際寫入時再用 url 找目標：
+  // 排隊等存檔的期間就算有檔案被刪掉、位置移動，也不會改到別的檔案。
 
   /** 軟刪除：把檔案標上 deletedAt 移進垃圾桶，不會真的從 Back4App 刪掉。
    * index 是在「目前顯示中」的 files[folder] 陣列裡的位置。 */
   async function trashFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing || !existing.files[folder][index]) return
-    const target = { ...existing.files[folder][index], deletedAt: new Date().toISOString() }
-    const remainingActive = existing.files[folder].filter((_, i) => i !== index)
-    const nextFull = [...remainingActive, ...existing.trash[folder], target]
-    await patchActivity(
-      id,
-      (obj) => obj.set(`${folder}Files`, nextFull),
-      (existing) => {
-        existing.files[folder] = remainingActive
-        existing.trash[folder] = [...existing.trash[folder], target]
-      },
-    )
+    const url = activities.value.find((a) => a.id === id)?.files[folder][index]?.url
+    if (!url) return
+    await patchFiles(id, folder, (files, trash) => {
+      const found = files.find((f) => f.url === url)
+      if (!found) return null
+      // 移到垃圾桶時取消大紀事標記，之後復原才不會讓大紀事照片超過上限而存檔失敗
+      const { ledger: _ledger, ...rest } = found
+      return {
+        files: files.filter((f) => f !== found),
+        trash: [...trash, { ...rest, deletedAt: new Date().toISOString() }],
+      }
+    })
   }
 
   /** 從垃圾桶復原。index 是在 trash[folder] 陣列裡的位置。 */
   async function restoreFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing || !existing.trash[folder][index]) return
-    const restored = { ...existing.trash[folder][index] }
-    delete restored.deletedAt
-    const remainingTrash = existing.trash[folder].filter((_, i) => i !== index)
-    const nextFull = [...existing.files[folder], restored, ...remainingTrash]
-    await patchActivity(
-      id,
-      (obj) => obj.set(`${folder}Files`, nextFull),
-      (existing) => {
-        existing.files[folder] = [...existing.files[folder], restored]
-        existing.trash[folder] = remainingTrash
-      },
-    )
+    const url = activities.value.find((a) => a.id === id)?.trash[folder][index]?.url
+    if (!url) return
+    await patchFiles(id, folder, (files, trash) => {
+      const found = trash.find((f) => f.url === url)
+      if (!found) return null
+      const restored = { ...found }
+      delete restored.deletedAt
+      return { files: [...files, restored], trash: trash.filter((f) => f !== found) }
+    })
   }
 
   /** 永久刪除：只能對垃圾桶裡的項目做，做了就真的從 Back4App 的陣列裡拿掉，無法復原。
    * index 是在 trash[folder] 陣列裡的位置。 */
   async function hardDeleteFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing || !existing.trash[folder][index]) return
-    const remainingTrash = existing.trash[folder].filter((_, i) => i !== index)
-    const nextFull = [...existing.files[folder], ...remainingTrash]
-    await patchActivity(
-      id,
-      (obj) => obj.set(`${folder}Files`, nextFull),
-      (existing) => {
-        existing.trash[folder] = remainingTrash
-      },
-    )
+    const url = activities.value.find((a) => a.id === id)?.trash[folder][index]?.url
+    if (!url) return
+    await patchFiles(id, folder, (files, trash) => {
+      const found = trash.find((f) => f.url === url)
+      if (!found) return null
+      return { files, trash: trash.filter((f) => f !== found) }
+    })
   }
 
   async function updateFileMeta(
     id: string,
     folder: AttachmentKey,
     index: number,
-    patch: Partial<Pick<FileMeta, 'caption' | 'featured'>>,
+    patch: Partial<Pick<FileMeta, 'caption' | 'featured' | 'ledger'>>,
   ): Promise<void> {
-    const existing = activities.value.find((a) => a.id === id)
-    if (!existing || !existing.files[folder][index]) return
-    const nextActive = existing.files[folder].map((f, i) => (i === index ? { ...f, ...patch } : f))
-    const nextFull = [...nextActive, ...existing.trash[folder]]
-    await patchActivity(
-      id,
-      (obj) => obj.set(`${folder}Files`, nextFull),
-      (existing) => {
-        existing.files[folder] = nextActive
-      },
-    )
+    const url = activities.value.find((a) => a.id === id)?.files[folder][index]?.url
+    if (!url) return
+    await patchFiles(id, folder, (files, trash) => {
+      const found = files.find((f) => f.url === url)
+      if (!found) return null
+      return { files: files.map((f) => (f === found ? { ...f, ...patch } : f)), trash }
+    })
   }
 
   async function fetchGenerationJobs(activityId: string): Promise<void> {
@@ -548,6 +588,7 @@ export const useDbStore = defineStore('db', () => {
     deleteActivity,
     setActivityPlans,
     saveActivityResults,
+    setActivityArchived,
     uploadFiles,
     attachExistingFiles,
     trashFile,

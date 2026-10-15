@@ -61,6 +61,9 @@ const WANTED_BY_CLASS = {
     receiptFiles: 'Array',
     socialFiles: 'Array',
     mediaFiles: 'Array',
+    // 封存（DetailView 的「封存此活動」），archivedByName 由 cloud/main.js 寫入
+    archivedAt: 'String',
+    archivedByName: 'String',
     ...ACTOR_FIELDS,
   },
   // src/models/Category.ts —— plans 是分類所屬的計畫（Pointer<Plan> 陣列，可複選可留空）

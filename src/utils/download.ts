@@ -12,8 +12,9 @@ import {
   TableRow,
   WidthType,
 } from 'docx'
-import { ATTACHMENT_TYPES } from '../types'
+import { ATTACHMENT_TYPES, LEDGER_PHOTO_MAX } from '../types'
 import type { ActivityRecord, FileMeta } from '../types'
+import { attachmentTextsToPlain, readAttachmentTexts } from './pdfText'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -123,8 +124,10 @@ function rowHeightForWrappedText(text: string, columnWidthChars: number, minLine
   // Excel 單行預設列高剛好等於 15pt 文字本身的高度，配上格線邊框後完全沒有留白，
   // 視覺上會顯得被夾住；多留一點緩衝，避免文字看起來貼著上下邊框。
   const LINE_HEIGHT_PT = 18
+  // Excel 單列高度上限是 409pt，PDF 解析出的長文字不能超過
+  const MAX_ROW_HEIGHT_PT = 409
   const needed = text ? estimateWrappedLines(text, columnWidthChars) : minLines
-  return Math.max(minLines, needed) * LINE_HEIGHT_PT
+  return Math.min(MAX_ROW_HEIGHT_PT, Math.max(minLines, needed) * LINE_HEIGHT_PT)
 }
 
 export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: string): Promise<Blob> {
@@ -146,9 +149,11 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
   })
 
   const startRow = 2 + infoLines.length + 1
+  // 活動流程附件是 PDF 就放解析出的文字；掃描檔或其他格式列檔名（詳附件）
+  const agendaText = attachmentTextsToPlain(await readAttachmentTexts(a.files.agenda ?? []))
   const fields: [string, string, number][] = [
     ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 2],
-    ['活動流程', '', 5],
+    ['活動流程', agendaText, 5],
     ['執行情形', a.summary, 5],
     ['檢討與建議', '', 5],
     ['附件', ATTACHMENT_TYPES.map(([k, l]) => `${l} ${a.files[k]?.length ?? 0} 件`).join('　'), 2],
@@ -397,11 +402,19 @@ function buildPhotoTable(photos: ImageAsset[], captions: string[]): Table {
   return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: PHOTO_TABLE_BORDERS, rows })
 }
 
-/** 大紀事 Excel：分類／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／精選照片 */
+/** 大紀事照片：有勾「大紀事照片」就照上傳順序取這些；一張都沒勾的舊資料沿用
+ * 精選優先／上傳順序的規則，不用回頭重新勾選也能匯出。 */
+function pickLedgerPhotos(files: FileMeta[]): FileMeta[] {
+  const ledger = files.filter((f) => f.ledger)
+  return ledger.length ? ledger.slice(0, LEDGER_PHOTO_MAX) : pickPhotosForExport(files, LEDGER_PHOTO_MAX)
+}
+
+/** 大紀事 Excel：分類／日期／地點／出席事由／與會單位或成員／備註／與會人數統計／照片1–3 */
 export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blob> {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('大紀事')
-  const headers = ['分類', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', '精選照片']
+  const photoHeaders = Array.from({ length: LEDGER_PHOTO_MAX }, (_, i) => `照片${i + 1}`)
+  const headers = ['分類', '日期', '地點', '出席事由', '與會單位或成員', '備註', '與會人數統計', ...photoHeaders]
   sheet.columns = [
     { width: 10 },
     { width: 14 },
@@ -410,9 +423,10 @@ export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blo
     { width: 20 },
     { width: 20 },
     { width: 12 },
-    { width: 14 },
+    ...photoHeaders.map(() => ({ width: 14 })),
   ]
-  const PHOTO_COL = headers.length
+  // 第一個照片欄的欄號（1 起算）
+  const FIRST_PHOTO_COL = headers.length - LEDGER_PHOTO_MAX + 1
 
   const headerRow = sheet.getRow(1)
   headers.forEach((h, i) => {
@@ -442,16 +456,18 @@ export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blo
       cell.border = THIN_BORDER
       cell.alignment = { vertical: 'top', wrapText: true }
     })
-    row.getCell(PHOTO_COL).border = THIN_BORDER
+    for (let p = 0; p < LEDGER_PHOTO_MAX; p++) row.getCell(FIRST_PHOTO_COL + p).border = THIN_BORDER
     row.height = 60
 
-    const [photo] = pickPhotosForExport(a.files.photo ?? [], 1)
-    const asset = photo ? await loadImageAsset(photo) : null
-    if (asset) {
+    const photos = pickLedgerPhotos(a.files.photo ?? [])
+    for (let p = 0; p < photos.length; p++) {
+      // 載入失敗的照片那格留空，不往前遞補，維持「照片N」對應第 N 張勾選的照片
+      const asset = await loadImageAsset(photos[p])
+      if (!asset) continue
       const { width, height } = scaleToBox(asset.width, asset.height, 70, 55)
       const imageId = workbook.addImage({ base64: asset.dataUrl, extension: asset.xlsxExt })
       sheet.addImage(imageId, {
-        tl: { col: PHOTO_COL - 1 + 0.05, row: rowIdx - 1 + 0.05 },
+        tl: { col: FIRST_PHOTO_COL - 1 + p + 0.05, row: rowIdx - 1 + 0.05 },
         ext: { width, height },
       })
     }
@@ -461,6 +477,10 @@ export async function buildLedgerXlsx(activities: ActivityRecord[]): Promise<Blo
   return new Blob([buffer], { type: XLSX_MIME })
 }
 
+/** 報告裡最多放 12 張照片；超過 6 張時分成兩頁，每頁 6 張（2 欄 × 3 列）。 */
+const PHOTOS_MAX_IN_REPORT = 12
+const PHOTOS_PER_PAGE = 6
+
 /** 單場活動的內容區塊：活動內容／照片／簽到表／日期／地點／參加對象及人數／效益。
  * 內政部結案報告（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
@@ -469,7 +489,7 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
   children.push(new Paragraph({ text: '二、活動內容', spacing: { before: 100 } }))
   children.push(new Paragraph({ text: a.summary || '（活動內容待補）' }))
 
-  const photos = pickPhotosForExport(a.files.photo ?? [], 6)
+  const photos = pickPhotosForExport(a.files.photo ?? [], PHOTOS_MAX_IN_REPORT)
   const photoAssets: ImageAsset[] = []
   const photoCaptions: string[] = []
   for (const photo of photos) {
@@ -478,17 +498,33 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     photoAssets.push(asset)
     photoCaptions.push(photo.caption || '')
   }
-  if (photoAssets.length) {
+  if (photoAssets.length > PHOTOS_PER_PAGE) {
+    // 超過一頁的量就固定每頁 6 張：每組照片各自從新的一頁開始
+    for (let i = 0; i < photoAssets.length; i += PHOTOS_PER_PAGE) {
+      children.push(new Paragraph({ text: '', pageBreakBefore: true }))
+      children.push(
+        buildPhotoTable(photoAssets.slice(i, i + PHOTOS_PER_PAGE), photoCaptions.slice(i, i + PHOTOS_PER_PAGE)),
+      )
+    }
+  } else if (photoAssets.length) {
     children.push(buildPhotoTable(photoAssets, photoCaptions))
   }
 
-  const signInFiles = a.files.signIn ?? []
+  // 簽到表是 PDF 就把解析出的文字接在後面；掃描檔或其他格式維持列檔名（詳附件）
+  const signIns = await readAttachmentTexts(a.files.signIn ?? [])
+  const signInNoText = signIns.filter((s) => !s.text).map((s) => `${s.name}（詳附件）`)
   children.push(
     new Paragraph({
-      text: `簽到表：${signInFiles.length ? `${signInFiles.map((f) => f.name).join('、')}（詳附件）` : '未附'}`,
+      text: `簽到表：${signIns.length ? signInNoText.join('、') : '未附'}`,
       spacing: { before: 120 },
     }),
   )
+  for (const s of signIns) {
+    if (!s.text) continue
+    if (signIns.length > 1) children.push(new Paragraph({ text: `〈${s.name}〉` }))
+    // docx 的 Paragraph 不吃 \n，逐行拆成段落才會換行
+    children.push(...s.text.split('\n').map((line) => new Paragraph({ text: line })))
+  }
 
   children.push(
     new Paragraph({
