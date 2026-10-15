@@ -83,6 +83,7 @@ export const FOLDERS: [FolderKey, string][] = [
 /** 活動正式歸檔附件分類（需求訪談規格） */
 export type AttachmentKey =
   | 'registration'
+  | 'content'
   | 'photo'
   | 'signIn'
   | 'record'
@@ -94,6 +95,7 @@ export type AttachmentKey =
 
 export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
   ['registration', '參與者名單（報名表）'],
+  ['content', '活動內容'],
   ['agenda', '活動流程'],
   ['photo', '活動照片'],
   ['signIn', '簽到表'],
@@ -108,6 +110,7 @@ export const ATTACHMENT_TYPES: [AttachmentKey, string][] = [
 const PDF_TEXT_HINT =
   '可上傳格式：PDF、JPG、PNG、Word。PDF 匯出時會自動轉成文字放進報告；掃描成圖片的 PDF 無法轉文字，只會列出檔名。'
 export const ATTACHMENT_HINTS: Partial<Record<AttachmentKey, string>> = {
+  content: PDF_TEXT_HINT,
   agenda: PDF_TEXT_HINT,
   signIn: PDF_TEXT_HINT,
 }

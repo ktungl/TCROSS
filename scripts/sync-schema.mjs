@@ -62,6 +62,7 @@ const WANTED_BY_CLASS = {
     socialFiles: 'Array',
     mediaFiles: 'Array',
     registrationFiles: 'Array',
+    contentFiles: 'Array',
     placeMode: 'String',
     meetingUrl: 'String',
     venue: 'String',

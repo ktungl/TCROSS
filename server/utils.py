@@ -42,7 +42,7 @@ def is_extension_blocked(filename: str) -> bool:
 # 活動附件（照片、簽到表等 8 類）的 GCS 路徑：attachments/{activityId}/{分類}/{亂數}_{檔名}。
 # 跟 AI 生成素材的 activities/ 分開，因為 activities/ 底下的照片／影音有 30 天自動刪除規則。
 # 分類對應 src/types.ts 的 AttachmentKey。
-ATTACHMENT_FOLDERS = {"registration", "photo", "signIn", "record", "agenda", "document", "receipt", "social", "media"}
+ATTACHMENT_FOLDERS = {"registration", "content", "photo", "signIn", "record", "agenda", "document", "receipt", "social", "media"}
 # 檔名段不能含「/」，所以檔名裡的「..」（例如 sanitize_filename 留下的「v1..2.pdf」）不會造成路徑穿越，
 # 只擋整段都是點的名稱。
 _ATTACHMENT_PATH = re.compile(r"^attachments/([A-Za-z0-9]{1,32})/([A-Za-z]+)/(?!\.+$)[A-Za-z0-9._-]+$")

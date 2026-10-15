@@ -24,8 +24,9 @@ import type { ActivityRecord, FileMeta } from '../types'
 import { resolveAttachmentUrl } from '../lib/attachments'
 import type { Participant } from './registration'
 import { isAgendaReadable, readAgenda } from './agenda'
+import type { AgendaBlock } from './agenda'
 import { renderPdfPages } from './pdfPages'
-import { attachmentTextsToPlain, readAttachmentTexts } from './pdfText'
+import { attachmentTextsToPlain, extractPdfText, isPdf, readAttachmentTexts } from './pdfText'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -252,9 +253,11 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
 
   const startRow = 2 + infoLines.length + 1
   // 活動流程附件是 PDF 就放解析出的文字；掃描檔或其他格式列檔名（詳附件）
+  const contentText = attachmentTextsToPlain(await readAttachmentTexts(a.files.content ?? []))
   const agendaText = attachmentTextsToPlain(await readAttachmentTexts(a.files.agenda ?? []))
   const fields: [string, string, number][] = [
     ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 2],
+    ['活動內容', contentText, 5],
     ['活動流程', agendaText, 5],
     ['執行情形', a.summary, 5],
     ['檢討與建議', '', 5],
@@ -944,14 +947,48 @@ function buildAgendaTable(rows: string[][]): Table {
   })
 }
 
+/** 把「活動內容」「活動流程」附件讀成報告段落，依上傳順序串接：Word／Excel／CSV／純文字
+ * 讀出段落與表格（agenda.ts），有文字層的 PDF 抽出文字（pdfText.ts）。圖片、掃描檔等讀不出
+ * 文字的檔案回傳檔名，由呼叫端註明。 */
+async function readReportSection(files: FileMeta[]): Promise<{ blocks: AgendaBlock[]; unreadable: string[] }> {
+  const blocks: AgendaBlock[] = []
+  const unreadable: string[] = []
+  for (const file of files) {
+    const read = isAgendaReadable(file)
+      ? await readAgenda([file])
+      : isPdf(file.name)
+        ? await extractPdfText(file.url, file.name).then((text): AgendaBlock[] => (text ? [{ type: 'text', text }] : []))
+        : []
+    if (read.length) blocks.push(...read)
+    else unreadable.push(file.name)
+  }
+  return { blocks, unreadable }
+}
+
+/** 條列項目底下的內容：段落逐行、行程表照原樣；都沒有時顯示 emptyNote。 */
+function reportSectionBody(
+  section: { blocks: AgendaBlock[]; unreadable: string[] },
+  emptyNote: string,
+  unreadableNote: string,
+): (Paragraph | Table)[] {
+  const body = section.blocks.flatMap((b) =>
+    b.type === 'text'
+      ? b.text.split('\n').filter((line) => line.trim()).map((line) => reportBody(line))
+      : [buildAgendaTable(b.rows)],
+  )
+  if (section.unreadable.length) body.push(reportBody(`（${section.unreadable.join('、')}：${unreadableNote}）`))
+  return body.length ? body : [reportBody(emptyNote)]
+}
+
 /** 單場活動的內容區塊（比照《成果報告書範本》）：
- * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動效益 七、活動照片，
- * 再附上 八、活動流程表 九、簽到表 的原始檔（PDF／圖片逐頁嵌入）。
- * 活動內容取自「活動流程」附件的文字與行程表；活動效益是成果摘要加上 KPI。
+ * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動流程 七、活動效益
+ * 八、活動照片，再附上 九、活動流程表 十、簽到表 的原始檔（PDF／圖片逐頁嵌入）。
+ * 活動內容、活動流程分別取自「活動內容」「活動流程」附件的文字與表格；活動效益是成果摘要加上 KPI。
  * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
   const hc = a.headcount
-  const agenda = await readAgenda(a.files.agenda ?? [])
+  const content = await readReportSection(a.files.content ?? [])
+  const agenda = await readReportSection(a.files.agenda ?? [])
   const benefits = [
     ...(a.summary.trim() ? a.summary.trim().split(/\r?\n/).filter(Boolean).map(reportBody) : []),
     ...a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`)),
@@ -962,10 +999,10 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     reportItem(3, `活動地點：${a.place || '（地點待補）'}。`),
     reportItem(4, `參與人數：男${hc.male}人、女${hc.female}人，合計${hc.total}人。`),
     reportItem(5, '活動內容：'),
-    ...(agenda.length
-      ? agenda.map((b) => (b.type === 'text' ? reportBody(b.text) : buildAgendaTable(b.rows)))
-      : [reportBody('（活動內容待補：請上傳 Word／Excel 格式的活動流程）')]),
-    reportItem(6, '活動效益：'),
+    ...reportSectionBody(content, '（活動內容待補：請在「活動內容」上傳 Word 或 PDF 檔）', '無法讀取文字，請另行附上'),
+    reportItem(6, '活動流程：'),
+    ...reportSectionBody(agenda, '（活動流程待補：請在「活動流程」上傳 Word／Excel 或 PDF 檔）', '無法讀取文字，原始檔見「九、活動流程表」'),
+    reportItem(7, '活動效益：'),
     ...(benefits.length ? benefits : [reportBody('（尚未填寫成果摘要與效益指標）')]),
   ]
 
@@ -979,7 +1016,7 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     photoCaptions.push(photo.caption || '')
   }
   // 範本的活動照片都從新的一頁開始，照片表格才不會被切到兩頁；超過 6 張時每 6 張再換一頁
-  children.push(reportItem(7, '活動照片：', photoAssets.length > 0))
+  children.push(reportItem(8, '活動照片：', photoAssets.length > 0))
   if (!photoAssets.length) children.push(reportBody('（尚未上傳活動照片）'))
   for (let i = 0; i < photoAssets.length; i += PHOTOS_PER_PAGE) {
     if (i > 0) children.push(new Paragraph({ pageBreakBefore: true, children: [] }))
@@ -989,11 +1026,11 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
   }
 
   children.push(
-    ...(await buildAttachmentSection(8, '活動流程表', a.files.agenda ?? [], {
+    ...(await buildAttachmentSection(9, '活動流程表', a.files.agenda ?? [], {
       isInlined: isAgendaReadable,
-      inlinedNote: '內容已整理於「五、活動內容」',
+      inlinedNote: '內容已整理於「六、活動流程」',
     })),
-    ...(await buildAttachmentSection(9, '簽到表', a.files.signIn ?? [])),
+    ...(await buildAttachmentSection(10, '簽到表', a.files.signIn ?? [])),
   )
 
   // 簽到表是有文字層的 PDF 時，把抽出的文字接在嵌入的頁面後面，方便複製與搜尋；

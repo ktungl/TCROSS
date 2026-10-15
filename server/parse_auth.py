@@ -200,6 +200,7 @@ def write_with_master_key(class_name: str, object_id: str, fields: dict) -> dict
 ATTACHMENT_FIELDS = (
     "photoFiles", "audioFiles", "videoFiles", "docFiles", "signInFiles", "recordFiles",
     "agendaFiles", "documentFiles", "receiptFiles", "socialFiles", "mediaFiles", "registrationFiles",
+    "contentFiles",
 )
 
 

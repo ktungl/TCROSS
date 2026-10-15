@@ -100,7 +100,7 @@ async function saveResults() {
 }
 
 const uploadingFiles = reactive<Record<AttachmentKey, { name: string; progress: number }[]>>({
-  registration: [], photo: [], signIn: [], record: [], agenda: [], document: [], receipt: [], social: [], media: [],
+  registration: [], content: [], photo: [], signIn: [], record: [], agenda: [], document: [], receipt: [], social: [], media: [],
 })
 
 async function upload(folder: AttachmentKey, files: File[]) {

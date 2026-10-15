@@ -19,6 +19,7 @@ const FOLDER_FIELDS = [
   'socialFiles',
   'mediaFiles',
   'registrationFiles',
+  'contentFiles',
 ];
 // 分類已改成使用者可在「分類管理」頁面自訂（見 Category class），不再是寫死的
 // 5 個選項，這裡只驗證格式（非空字串、長度上限），不再檢查是否落在某個固定清單。
@@ -79,6 +80,7 @@ const FOLDER_LABELS = {
   photoFiles: '活動照片',
   signInFiles: '簽到表',
   recordFiles: '成果紀錄',
+  contentFiles: '活動內容',
   agendaFiles: '活動流程',
   documentFiles: '公文',
   receiptFiles: '領據',
