@@ -9,7 +9,7 @@
 ## 目前狀態
 
 - **程式碼**：`main`、`Donna` 與 origin 同步（10-05），`Ching` 分支已合併。
-- **前端（Firebase Hosting）**：`https://tacc-iip.web.app`（10-09 起；舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 301 轉址過來）。push 到 main 自動部署（GitHub Actions＋WIF）。Netlify 09-29 起停用。
+- **前端（Firebase Hosting）**：`https://tacc-iip.web.app`（10-09 起；舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 10-16 起與新網址同步部署、內容相同）。push 到 main 自動部署（GitHub Actions＋WIF）。Netlify 09-29 起停用。
 - **後端（Cloud Run）**：`tcross-middleware` revision `00022-jmz`（10-14），`/status` 200。
 - **資料庫（Back4App，Free 方案）**：`cloud/main.js` 最後一次貼回為 10-14。10-05 用量：請求 596／25K、檔案 275 MB／1 GB、資料庫 1.58 MB／0.25 GB；方案頁顯示「Valid until 10/29/2026」。
 - **備份**：每天 02:00 自動備份到 GCS（保留 90 天），10-05 首次執行成功並完成還原演練。
