@@ -36,14 +36,19 @@ const savingOrder = ref(false)
 /** 把這張精選照片移到第 position 位（1 起算），其他精選照片依序往前或往後挪 */
 async function onFeaturedOrderChange(url: string, e: Event) {
   if (!activity.value) return
-  const position = Number((e.target as HTMLSelectElement).value)
+  const select = e.target as HTMLSelectElement
+  const position = Number(select.value)
   const order = featuredUrls.value.filter((u) => u !== url)
   order.splice(position - 1, 0, url)
   savingOrder.value = true
   try {
     await db.reorderFeaturedPhotos(activity.value.id, order)
+    // 精選勾選剛好被改掉時 store 會略過不存，不能顯示成功
+    if (featuredUrls.value.join('\n') !== order.join('\n')) throw new Error('精選照片剛有變動，請重新調整順序')
     pushToast('已更新呈現順序')
   } catch (e2) {
+    // 沒存成功時資料沒變，Vue 不會重畫下拉選單，要自己把顯示值改回目前的位置
+    select.value = String(featuredUrls.value.indexOf(url) + 1)
     pushToast(errorMessage(e2), 'error')
   } finally {
     savingOrder.value = false

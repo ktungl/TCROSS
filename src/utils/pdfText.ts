@@ -1,9 +1,8 @@
 import { resolveAttachmentUrl } from '../lib/attachments'
 import type { FileMeta } from '../types'
 
-/** 跟 package.json 的 pdfjs-dist 版本一致；中文 PDF 常用的 CJK 字型編碼需要這份 cMap 才解得出字。 */
-const PDFJS_VERSION = '6.4.299'
-const CMAP_URL = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/cmaps/`
+/** 中文 PDF 常用的 CJK 字型編碼需要 cMap 才解得出字；版本取自實際載入的 pdfjs，升級套件不用跟著改。 */
+const cmapUrl = (version: string) => `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/cmaps/`
 
 /** 單一檔案放進報告的文字上限，避免一份很長的 PDF 把 Excel 儲存格／Word 版面撐爆。 */
 const MAX_TEXT_LENGTH = 3000
@@ -31,20 +30,24 @@ export async function extractPdfText(url: string, name = ''): Promise<string | n
     const res = await fetch(await resolveAttachmentUrl(url, name))
     if (!res.ok) return null
     const data = await res.arrayBuffer()
-    const task = pdfjs.getDocument({ data, cMapUrl: CMAP_URL, cMapPacked: true })
-    const pdf = await task.promise
+    const task = pdfjs.getDocument({ data, cMapUrl: cmapUrl(pdfjs.version), cMapPacked: true })
     const pages: string[] = []
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const content = await (await pdf.getPage(i)).getTextContent()
-      let pageText = ''
-      for (const item of content.items) {
-        if (!('str' in item)) continue
-        pageText += item.str
-        if (item.hasEOL) pageText += '\n'
+    // 解析到一半失敗也要釋放 worker 端的文件，同 pdfPages.ts
+    try {
+      const pdf = await task.promise
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const content = await (await pdf.getPage(i)).getTextContent()
+        let pageText = ''
+        for (const item of content.items) {
+          if (!('str' in item)) continue
+          pageText += item.str
+          if (item.hasEOL) pageText += '\n'
+        }
+        pages.push(pageText.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim())
       }
-      pages.push(pageText.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim())
+    } finally {
+      await task.destroy()
     }
-    await task.destroy()
     const text = pages.filter(Boolean).join('\n\n')
     if (!text) return null
     return text.length > MAX_TEXT_LENGTH ? `${text.slice(0, MAX_TEXT_LENGTH)}…（全文詳附件）` : text

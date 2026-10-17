@@ -122,6 +122,7 @@ const FIELD_LABELS = {
   resultFile: '產出檔案',
   errorMessage: '錯誤訊息',
   deletedAt: '移到垃圾桶',
+  sortOrder: '排序',
   archivedAt: '封存',
   archivedByName: '封存人',
 };
@@ -274,8 +275,10 @@ function attachmentSummaries(object, original) {
     const restored = after.filter((f) => !f.deletedAt && beforeMap.has(f.url) && beforeMap.get(f.url).deletedAt);
     const edited = after.filter((f) => {
       const prev = beforeMap.get(f.url);
+      // 移到垃圾桶／復原時前端會一併拿掉大紀事標記，那些已列在上面，不算「修改」
       return (
         prev &&
+        !!prev.deletedAt === !!f.deletedAt &&
         ((prev.caption || '') !== (f.caption || '') ||
           !!prev.featured !== !!f.featured ||
           !!prev.ledger !== !!f.ledger)
@@ -286,10 +289,17 @@ function attachmentSummaries(object, original) {
     if (trashed.length) lines.push(`將「${label}」的 ${trashed.length} 個檔案移到垃圾桶：${fileNames(trashed)}`);
     if (restored.length) lines.push(`從垃圾桶復原「${label}」的 ${restored.length} 個檔案：${fileNames(restored)}`);
     if (removed.length) lines.push(`永久刪除「${label}」的 ${removed.length} 個檔案：${fileNames(removed)}`);
-    if (edited.length) lines.push(`修改「${label}」的 ${edited.length} 個檔案圖說／精選：${fileNames(edited)}`);
+    if (edited.length) lines.push(`修改「${label}」的 ${edited.length} 個檔案圖說／精選／大紀事：${fileNames(edited)}`);
     // 精選照片的「呈現順序」：檔案沒有增減、勾選也沒變，只有精選照片的先後變了
     const featuredOrder = (files) => files.filter((f) => f.featured && !f.deletedAt).map((f) => f.url).join('\n');
-    if (!added.length && !removed.length && !edited.length && featuredOrder(before) !== featuredOrder(after)) {
+    if (
+      !added.length &&
+      !removed.length &&
+      !trashed.length &&
+      !restored.length &&
+      !edited.length &&
+      featuredOrder(before) !== featuredOrder(after)
+    ) {
       lines.push(`調整「${label}」精選照片的呈現順序`);
     }
   }

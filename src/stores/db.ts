@@ -138,8 +138,11 @@ export const useDbStore = defineStore('db', () => {
   async function createPlan(name: string): Promise<void> {
     const obj = new PlanObject()
     obj.set('name', name)
-    // 新計畫排在最後；就算刪除計畫後跟既有值重複，fetchAll 也會再依建立時間排在後面
-    obj.set('sortOrder', plans.value.length)
+    // 新計畫排在最後：取現有最大值＋1（刪除計畫後 length 可能比既有值還小）。
+    // 還有舊計畫沒排序值（排在最後）的話就不設，同樣排在最後，fetchAll 再依建立時間排
+    if (plans.value.every((p) => p.sortOrder !== Number.MAX_SAFE_INTEGER)) {
+      obj.set('sortOrder', plans.value.reduce((max, p) => Math.max(max, p.sortOrder + 1), 0))
+    }
     await obj.save()
     plans.value.push(planToRecord(obj))
   }
@@ -183,7 +186,8 @@ export const useDbStore = defineStore('db', () => {
 
   async function deletePlan(id: string): Promise<void> {
     await PlanObject.createWithoutData(id).destroy()
-    const affectedActivities = activities.value.filter((a) => a.plans.includes(id))
+    // 已封存的活動不能修改（cloud/main.js 會擋），留著指向已刪除計畫的參照，畫面顯示為「—」
+    const affectedActivities = activities.value.filter((a) => a.plans.includes(id) && !a.archivedAt)
     const affectedCategories = categories.value.filter((c) => c.planIds.includes(id))
     await Promise.all([
       ...affectedActivities.map((a) => setActivityPlans(a.id, a.plans.filter((p) => p !== id))),
@@ -235,9 +239,6 @@ export const useDbStore = defineStore('db', () => {
     }
   }
 
-  /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。
-   * 存檔後再用伺服器回傳的值補上最後修改者，以及附件陣列裡 Cloud Code 蓋上的
-   * 上傳者／刪除者（這些只有伺服器知道，mutateLocal 算不出來）。 */
   /** 每場活動一條存檔佇列。附件欄位每次都整個陣列覆寫，兩個存檔同時在跑的話，
    * 晚存完的會把先存完的改動蓋回舊值（例如連續編輯兩張照片的圖說），所以同一場
    * 活動的存檔一律排隊，一次只跑一個。 */
@@ -259,7 +260,10 @@ export const useDbStore = defineStore('db', () => {
     return run
   }
 
-  /** apply 在輪到這個存檔時才執行，讀到的 existing 已經是前面存檔完成後的最新資料；
+  /** 共用的「找本地紀錄 → 建指標 → set 欄位 → save → 同步本地」流程，找不到就靜默略過。
+   * 存檔後再用伺服器回傳的值補上最後修改者，以及附件陣列裡 Cloud Code 蓋上的
+   * 上傳者／刪除者（這些只有伺服器知道，mutateLocal 算不出來）。
+   * apply 在輪到這個存檔時才執行，讀到的 existing 已經是前面存檔完成後的最新資料；
    * apply 回傳 false 代表目標已不存在，略過不存。 */
   async function runPatchActivity(
     id: string,
@@ -439,7 +443,13 @@ export const useDbStore = defineStore('db', () => {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing || !files.length) return
     const clean: FileMeta[] = files.map((f) => ({ name: f.name, size: f.size, url: f.url }))
-    await patchFiles(id, folder, (current, trash) => ({ files: [...current, ...clean], trash }))
+    // 附件的移到垃圾桶、圖說、精選等操作都用 url 找目標，同一分類裡不能有重複的 url
+    // （同一個檔案從兩場活動各選一次，或垃圾桶裡已經有它）
+    await patchFiles(id, folder, (current, trash) => {
+      const seen = new Set([...current, ...trash].map((f) => f.url))
+      const added = clean.filter((f) => !seen.has(f.url) && seen.add(f.url))
+      return { files: [...current, ...added], trash }
+    })
   }
 
   // 以下各函式的 index 只在呼叫當下換成檔案 url，實際寫入時再用 url 找目標：

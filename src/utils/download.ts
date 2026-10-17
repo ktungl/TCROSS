@@ -252,9 +252,10 @@ export async function buildActivityRecordXlsx(a: ActivityRecord, planNames: stri
   })
 
   const startRow = 2 + infoLines.length + 1
-  // 活動流程附件是 PDF 就放解析出的文字；掃描檔或其他格式列檔名（詳附件）
-  const contentText = attachmentTextsToPlain(await readAttachmentTexts(a.files.content ?? []))
-  const agendaText = attachmentTextsToPlain(await readAttachmentTexts(a.files.agenda ?? []))
+  // 活動內容／活動流程附件是 PDF 就放解析出的文字；掃描檔或其他格式列檔名（詳附件）
+  const [contentText, agendaText] = (
+    await Promise.all([readAttachmentTexts(a.files.content ?? []), readAttachmentTexts(a.files.agenda ?? [])])
+  ).map(attachmentTextsToPlain)
   const fields: [string, string, number][] = [
     ['參與人數', `男性 ${a.headcount.male} 人、女性 ${a.headcount.female} 人，合計 ${a.headcount.total} 人`, 2],
     ['活動內容', contentText, 5],
@@ -987,8 +988,10 @@ function reportSectionBody(
  * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
   const hc = a.headcount
-  const content = await readReportSection(a.files.content ?? [])
-  const agenda = await readReportSection(a.files.agenda ?? [])
+  const [content, agenda] = await Promise.all([
+    readReportSection(a.files.content ?? []),
+    readReportSection(a.files.agenda ?? []),
+  ])
   const benefits = [
     ...(a.summary.trim() ? a.summary.trim().split(/\r?\n/).filter(Boolean).map(reportBody) : []),
     ...a.kpis.map((k) => reportBody(`${k.k}：${k.v}${k.u ? ` ${k.u}` : ''}`)),
