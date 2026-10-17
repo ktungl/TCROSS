@@ -77,6 +77,8 @@ interface FileRow {
   uploadedByName?: string
   uploadedAt?: string
   deletedByName?: string
+  /** 所屬活動已封存：伺服器會擋下任何修改，畫面上不提供刪除／復原，只能開啟或下載 */
+  archived: boolean
 }
 
 /** 選取狀態用 url 當 key，不用 index：單筆刪除／復原後陣列會位移，用 index 的話
@@ -105,6 +107,7 @@ function buildFileRows(source: (a: ActivityRecord) => ActivityFiles): FileRow[] 
           uploadedByName: f.uploadedByName,
           uploadedAt: f.uploadedAt,
           deletedByName: f.deletedByName,
+          archived: !!a.archivedAt,
         })
       })
     }
@@ -126,6 +129,13 @@ const trashedFileRows = computed<FileRow[]>(() =>
 
 const uploadedSel = useSelection()
 const trashedFileSel = useSelection()
+
+// 已上傳的檔案：封存活動的檔案仍可勾選來下載，但勾到的話就不提供「移到垃圾桶」
+const selectionHasArchived = computed(() =>
+  uploadedRows.value.some((r) => r.archived && uploadedSel.isSelected(fileRowKey(r))),
+)
+// 垃圾桶：封存活動的檔案不能復原或永久刪除，所以不能勾選，全選也不含它們
+const selectableTrashedKeys = computed(() => trashedFileRows.value.filter((r) => !r.archived).map(fileRowKey))
 
 /** 方格檢視一次只渲染這麼多張，其餘按「顯示更多」再載入。原圖動輒數 MB，
  * 一次把幾十張都丟給瀏覽器下載會讓整頁卡住很久。 */
@@ -433,7 +443,8 @@ async function batchHardDeleteJobs() {
           :disabled="!!downloadingSelected"
           @click="batchDownloadUploaded"
         >{{ downloadingSelected || (uploadedSel.selected.value.size > 1 ? '下載（打包成 zip）' : '下載') }}</button>
-        <button class="btn ghost sm" @click="batchTrashUploaded">移到垃圾桶</button>
+        <button v-if="!selectionHasArchived" class="btn ghost sm" @click="batchTrashUploaded">移到垃圾桶</button>
+        <span v-else class="hint flush-m">選取的檔案含已封存活動，只能下載，不能移到垃圾桶</span>
         <button class="btn ghost sm" @click="uploadedSel.clear()">取消選取</button>
       </template>
     </div>
@@ -445,7 +456,10 @@ async function batchHardDeleteJobs() {
       <tbody>
         <tr v-for="r in uploadedRows" :key="`${fileRowKey(r)}:${r.index}`">
           <td><input type="checkbox" :checked="uploadedSel.isSelected(fileRowKey(r))" @change="uploadedSel.toggle(fileRowKey(r))"></td>
-          <td><button class="link" @click="openDetail(r.activityId)">{{ r.activityName || '（未命名活動）' }}</button></td>
+          <td>
+            <button class="link" @click="openDetail(r.activityId)">{{ r.activityName || '（未命名活動）' }}</button>
+            <span v-if="r.archived" class="tag" style="margin-left:6px">已封存</span>
+          </td>
           <td>
             <span class="plans">
               <span v-for="pid in r.planIds" :key="pid" class="tag">{{ planName(pid) }}</span>
@@ -459,7 +473,7 @@ async function batchHardDeleteJobs() {
           <td>
             <div class="row" style="gap:10px;flex-wrap:nowrap">
               <a :href="attachmentSrc(r.url, r.name)" target="_blank" rel="noopener">開啟</a>
-              <button class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
+              <button v-if="!r.archived" class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
             </div>
           </td>
         </tr>
@@ -480,12 +494,12 @@ async function batchHardDeleteJobs() {
             <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy" decoding="async">
             <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
           </a>
-          <button class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
+          <button v-if="!r.archived" class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
         </span>
         <span class="file-cell-body">
           <span class="file-cell-name">{{ r.name }}</span>
           <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ kb(r.size) }}</span>
-          <span class="file-cell-meta">{{ r.activityName || '（未命名活動）' }}</span>
+          <span class="file-cell-meta">{{ r.activityName || '（未命名活動）' }}<template v-if="r.archived">（已封存）</template></span>
           <span class="file-cell-meta">上傳：{{ r.uploadedByName || UNRECORDED }}</span>
         </span>
       </div>
@@ -592,8 +606,9 @@ async function batchHardDeleteJobs() {
       <label class="chk">
         <input
           type="checkbox"
-          :checked="trashedFileSel.allSelected(trashedFileRows.map(fileRowKey))"
-          @change="($event.target as HTMLInputElement).checked ? trashedFileSel.selectAll(trashedFileRows.map(fileRowKey)) : trashedFileSel.clear()"
+          :checked="trashedFileSel.allSelected(selectableTrashedKeys)"
+          :disabled="!selectableTrashedKeys.length"
+          @change="($event.target as HTMLInputElement).checked ? trashedFileSel.selectAll(selectableTrashedKeys) : trashedFileSel.clear()"
         >全選
       </label>
       <template v-if="trashedFileSel.selected.value.size">
@@ -610,8 +625,11 @@ async function batchHardDeleteJobs() {
       </thead>
       <tbody>
         <tr v-for="r in trashedFileRows" :key="`${fileRowKey(r)}:${r.index}`">
-          <td><input type="checkbox" :checked="trashedFileSel.isSelected(fileRowKey(r))" @change="trashedFileSel.toggle(fileRowKey(r))"></td>
-          <td>{{ r.activityName || '（未命名活動）' }}</td>
+          <td><input v-if="!r.archived" type="checkbox" :checked="trashedFileSel.isSelected(fileRowKey(r))" @change="trashedFileSel.toggle(fileRowKey(r))"></td>
+          <td>
+            {{ r.activityName || '（未命名活動）' }}
+            <span v-if="r.archived" class="tag" style="margin-left:6px">已封存</span>
+          </td>
           <td>
             <span class="plans">
               <span v-for="pid in r.planIds" :key="pid" class="tag">{{ planName(pid) }}</span>
@@ -625,7 +643,8 @@ async function batchHardDeleteJobs() {
             <span class="actor-stamp block">刪除者：{{ r.deletedByName || UNRECORDED }}</span>
           </td>
           <td>
-            <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <span v-if="r.archived" class="hint flush-m">活動已封存，解除封存後才能復原或刪除</span>
+            <div v-else class="row" style="gap:8px;flex-wrap:nowrap">
               <button class="btn ghost sm" @click="restoreUploadedFile(r)">復原</button>
               <button class="btn ghost sm danger" @click="hardDeleteUploadedFile(r)">永久刪除</button>
             </div>
@@ -638,6 +657,7 @@ async function batchHardDeleteJobs() {
       <div v-for="r in visibleTrashedFileRows" :key="`${fileRowKey(r)}:${r.index}`" class="file-cell">
         <span class="thumb-wrap file-thumb-wrap">
           <input
+            v-if="!r.archived"
             type="checkbox"
             class="select-check"
             :checked="trashedFileSel.isSelected(fileRowKey(r))"
@@ -651,10 +671,11 @@ async function batchHardDeleteJobs() {
         </span>
         <span class="file-cell-body">
           <span class="file-cell-name">{{ r.name }}</span>
-          <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ r.activityName || '（未命名活動）' }}</span>
+          <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ r.activityName || '（未命名活動）' }}<template v-if="r.archived">（已封存）</template></span>
           <span class="file-cell-meta">{{ r.deletedAt ? formatDateTime(r.deletedAt) : '—' }}</span>
           <span class="file-cell-meta">刪除者：{{ r.deletedByName || UNRECORDED }}</span>
-          <span class="file-cell-actions">
+          <span v-if="r.archived" class="file-cell-meta">解除封存後才能復原或刪除</span>
+          <span v-else class="file-cell-actions">
             <button class="btn ghost sm" @click="restoreUploadedFile(r)">復原</button>
             <button class="btn ghost sm danger" @click="hardDeleteUploadedFile(r)">永久刪除</button>
           </span>
