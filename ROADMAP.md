@@ -32,18 +32,18 @@
 | 7 | 🟠 初始密碼可猜 | — | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
 | 8 | ⬜ PDF／Excel 輸出 | — | AI 報告目前只產 `.docx`。 |
 | 9 | ⬜ `Autocomplete` 換新版 | — | 目前可用；主控台警告 `google.maps.places.Autocomplete` 是舊版（Google 停用前至少提前 12 個月通知），之後換成 `PlaceAutocompleteElement`。 |
-| 10 | 🔴 刪除 `B4aVehicle` | 儘快 | Back4App 建 app 時附的範例 class（1 筆），與本專案無關。**10-19 資安審查**：CLP 全開（`*` 可讀／建立／修改／刪除／加欄位），前端公開的 App ID＋JS Key 不用登入就能讀寫（已實測未登入可讀），可被拿來塞資料、耗用量。到後台刪除，並確認 App Settings「Allow client class creation」關閉。 |
+| 10 | 🟡 刪除 `B4aVehicle` | 儘快 | Back4App 建 app 時附的範例 class（1 筆），與本專案無關。**10-19 資安審查**：CLP 全開（`*` 可讀／建立／修改／刪除／加欄位），前端公開的 App ID＋JS Key 不用登入就能讀寫（已實測未登入可讀），可被拿來塞資料、耗用量。到後台刪除，並確認 App Settings「Allow client class creation」關閉。 ✅ 10-19 已刪除（資料 1 筆＋class），`/schemas` 確認不再出現。⬜ 到 App Settings 確認「Allow client class creation」已關閉。 |
 | 12 | ⬜ Back4App 擁有者帳號開 MFA | — | Back4App 後台安全建議：擁有者帳號未啟用兩步驟驗證。 |
 | 13 | 🟡 上傳 Content-Type 白名單 | — | 10-19 資安審查。`server/main.py` 簽上傳網址時直接採用前端送的 `contentType`，`server/utils.py` 黑名單沒有 `html`／`htm`／`svg`／`xhtml`，下載網址又是 `inline`：有帳號的人可在 `storage.googleapis.com` 放 HTML 頁當釣魚連結。改成伺服器端白名單（圖片、影音、PDF、Office），非圖片／影音一律 `attachment`；三層黑名單同步補上述副檔名。 ✅ 10-19 程式已改：Cloud Run 只簽白名單類型（前端白名單外改送 `application/octet-stream`）；下載網址只有圖片／影音／PDF 用 inline 並依副檔名強制 Content-Type，其餘 attachment；三層黑名單已補。⬜ 待部署。 |
 | 14 | 🟡 GenerationJob 欄位防偽造 | — | 10-19 資安審查。`cloud/main.js` 只檢查型別，前端可自己寫 `status`／`resultFile`／`errorMessage`，偽造一筆 job 就能通過 `/download-url`、`/delete-objects` 授權，刪掉別人的 AI 報告。非 Master Key 只能建立 `status=pending`、不能寫 `resultFile`／`errorMessage`。 ✅ 10-19 程式已改：另外限制素材只能是同活動 `photo|audio|video|doc` 底下的路徑、建立後除 `deletedAt` 外不能改；`/delete-objects` 帶 `activityId` 時也只能刪素材資料夾、不能刪 `generated/`。⬜ 待部署。 |
 | 15 | 🟡 `/attachments/delete` 補活動權限檢查 | — | 10-19 資安審查。目前只檢查「沒有活動引用」，沒檢查呼叫者能否讀該活動；別人剛上傳、還沒存進活動的檔案可能被提早刪掉。補 `readable_activity_ids` 檢查。 ✅ 10-19 程式已改：要能讀該活動，或活動已刪除（刪整個活動時是先刪紀錄再清檔）。⬜ 待部署。 |
 | 16 | 🟡 Cloud Code 清孤兒檔限定 Back4App 網址 | — | 10-19 資安審查。`cloud/main.js` afterSave 從使用者可改的 `url` 取檔名刪 `Parse.File`，可藉此刪任何沒被活動引用的 Back4App 檔案。只處理 Back4App 檔案網域的網址。 ✅ 10-19 程式已改：清檔只處理 `https://parsefiles.back4app.com/<appId>/` 網址；前端新加的附件只能是 `gcs:attachments/`（既有舊網址照常保留）。⬜ 待貼回 Cloud Code。 |
 | 17 | 🟡 AI 生成錯誤訊息不回傳內部細節 | — | 10-19 資安審查。`server/main.py` `_run_generation()` 把 `str(exc)` 寫進 `errorMessage`，使用者看得到內部例外內容。改成通用訊息，細節只留 Cloud Logging。 ✅ 10-19 程式已改：訊息附工作編號，到 log 搜 `generation failed jobId=…`。⬜ 待部署。 |
-| 18 | 🟡 `_User` 關閉自行刪除帳號 | — | 10-19 資安審查。`scripts/setup-users.mjs` 的 `_User` CLP 是 `delete: { '*': true }`，使用者可刪自己帳號，之後稽核紀錄對不到人。改 `delete: {}` 後重跑 `--apply --clp`。 ✅ 10-19 程式已改，⬜ 待重跑 `--apply --clp`。 |
+| 18 | ✅ `_User` 關閉自行刪除帳號 | — | 10-19 資安審查。`scripts/setup-users.mjs` 的 `_User` CLP 是 `delete: { '*': true }`，使用者可刪自己帳號，之後稽核紀錄對不到人。改 `delete: {}` 後重跑 `--apply --clp`。 ✅ 10-19 程式已改，並已用 Master Key 直接套用 `_User` CLP（`delete: {}`）。 |
 | 19 | ✅ npm 套件漏洞（10-19） | — | `npm audit --omit=dev` 6 項（高 4：`@vue/server-renderer`、`brace-expansion`、`source-map-js`；中 2：`uuid`），多為建置／SSR 用、實際影響小。✅ 10-19 `npm audit fix` 修掉 4 項高風險，只剩 `uuid`（中，已接受風險）。 |
 | 20 | 🟡 CSV 公式注入 | — | 10-19 資安審查第二輪。「成果清單 CSV」欄位以 `=`／`+`／`-`／`@` 開頭時，Excel 開啟會當公式執行。✅ 10-19 `src/utils/download.ts` `buildCsv()` 對這類文字補 `'` 當純文字。⬜ 隨前端部署。 |
 
-**待辦 13～18 部署順序**：① 前端先上（push main 自動部署；Cloud Run 改完後白名單外的類型會被擋，要先讓前端改送 octet-stream）② Cloud Run 重新部署 ③ `cloud/main.js` 貼回 Back4App ④ `node scripts/setup-users.mjs --apply --clp`。
+**待辦 13～18 部署順序**：① 前端先上（push main 自動部署；Cloud Run 改完後白名單外的類型會被擋，要先讓前端改送 octet-stream）② Cloud Run 重新部署 ③ `cloud/main.js` 貼回 Back4App （#18 的 CLP 已於 10-19 套用，不必再跑 `setup-users.mjs`）。
 
 **接受風險**：npm `uuid`（中，經 `exceljs`），官方修法是降到 `exceljs@3.4.0`，不建議。
 
@@ -173,7 +173,7 @@
 | --- | --- |
 | Cloud Run 物件層級授權 | ✅ 依呼叫者 session 查活動／job 權限 |
 | Parse CLP 角色分級 | ✅ 09-27：只開放 `member`／`developer`；`AuditLog` 唯讀；`_Role`、公開註冊已關閉；建立／修改者由伺服器寫入 |
-| Parse 未使用的 class | 🔴 `B4aVehicle` CLP 全開、未登入可讀寫，見待辦 10 |
+| Parse 未使用的 class | ✅ 10-19 刪除 `B4aVehicle`（原本 CLP 全開、未登入可讀寫）；待確認關閉 client class creation，見待辦 10 |
 | 上傳型別／大小限制 | 🟡 前端、Cloud Run、Cloud Code 三層（50MB、副檔名黑名單）；Content-Type 白名單與下載 attachment 已改、待部署，見待辦 13 |
 | 伺服器端欄位防偽造 | 🟡 操作者／附件上傳者由伺服器寫入；GenerationJob 防偽造已改、待部署，見待辦 14 |
 | 稽核紀錄 | ✅ Cloud Run `audit_log`＋Parse `AuditLog` |
