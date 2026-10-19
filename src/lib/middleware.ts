@@ -39,13 +39,14 @@ export async function requestSignedUploadUrls(
   return body.files
 }
 
-export async function requestDownloadUrl(objectPath: string): Promise<string> {
+/** pdf：AI 報告的 PDF 版，objectPath 仍傳 resultFile（.docx）。 */
+export async function requestDownloadUrl(objectPath: string, pdf = false): Promise<string> {
   const token = Parse.User.current()?.getSessionToken()
   if (!token) throw new Error('請重新登入')
   const res = await fetch(`${baseUrl()}/download-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ objectPath }),
+    body: JSON.stringify({ objectPath, pdf }),
   })
   if (!res.ok) throw new Error(await readErrorMessage(res, '無法取得下載網址'))
   const body = (await res.json()) as { downloadUrl: string }
