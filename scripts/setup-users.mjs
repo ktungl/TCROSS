@@ -221,7 +221,8 @@ const CLP_BY_CLASS = {
     get: { requiresAuthentication: true },
     create: {},
     update: { '*': true },
-    delete: { '*': true },
+    // 帳號刪掉後稽核紀錄就對不到人，刪帳號一律由管理者用 Master Key 做
+    delete: {},
     addField: {},
     protectedFields: { '*': ['email'] },
   },

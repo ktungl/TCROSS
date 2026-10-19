@@ -7,6 +7,8 @@ from google.api_core.exceptions import NotFound
 from google.auth import impersonated_credentials
 from google.cloud import storage
 
+from utils import inline_content_type
+
 GCS_BUCKET = os.environ["GCS_BUCKET"]
 SIGNING_SERVICE_ACCOUNT = os.environ["GCS_SIGNING_SERVICE_ACCOUNT"]
 SIGNED_URL_TTL_MINUTES = int(os.environ.get("SIGNED_URL_TTL_MINUTES", "15"))
@@ -70,14 +72,23 @@ def generate_signed_download_url(object_path: str, filename: str | None = None) 
     """Mint a v4 signed URL for a direct browser GET download from GCS. See
     generate_signed_upload_url() for why signing is delegated via self-impersonation.
     filename (the original, possibly non-ASCII name) becomes the name the browser
-    shows/saves instead of the sanitized object name."""
+    shows/saves instead of the sanitized object name.
+
+    Only images/video/audio/PDF are served inline, with the response Content-Type
+    forced from the extension; everything else is an attachment download, so an
+    object stored as text/html can never render as a page (see utils.inline_content_type)."""
     signing_credentials = _impersonated_credentials("https://www.googleapis.com/auth/devstorage.read_only")
     blob = _client().bucket(GCS_BUCKET).blob(object_path)
+    forced_type = inline_content_type(object_path)
+    disposition = "inline" if forced_type else "attachment"
+    if filename:
+        disposition += f"; filename*=UTF-8''{quote(filename)}"
     return blob.generate_signed_url(
         version="v4",
         expiration=datetime.timedelta(minutes=SIGNED_URL_TTL_MINUTES),
         method="GET",
-        response_disposition=f"inline; filename*=UTF-8''{quote(filename)}" if filename else None,
+        response_disposition=disposition,
+        response_type=forced_type,
         credentials=signing_credentials,
     )
 

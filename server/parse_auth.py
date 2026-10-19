@@ -196,6 +196,24 @@ def write_with_master_key(class_name: str, object_id: str, fields: dict) -> dict
     return resp.json()
 
 
+def existing_activity_ids(activity_ids: set[str]) -> set[str]:
+    """Which of activity_ids still exist at all, regardless of the caller's ACL
+    (Master Key). Used by /attachments/delete to tell "activity already deleted"
+    apart from "activity the caller can't read"."""
+    ids = [i for i in activity_ids if i]
+    if not ids:
+        return set()
+    if not PARSE_MASTER_KEY:
+        raise RuntimeError("PARSE_MASTER_KEY 未設定")
+    resp = _client.get(
+        f"{PARSE_SERVER_URL}/classes/Activity",
+        headers={"X-Parse-Application-Id": PARSE_APP_ID, "X-Parse-Master-Key": PARSE_MASTER_KEY},
+        params={"where": json.dumps({"objectId": {"$in": ids}}), "keys": "objectId", "limit": len(ids)},
+    )
+    resp.raise_for_status()
+    return {r["objectId"] for r in resp.json().get("results", [])}
+
+
 # Activity 上存附件的欄位，對應 cloud/main.js 的 FOLDER_FIELDS（含舊版 3 個欄位）。
 ATTACHMENT_FIELDS = (
     "photoFiles", "audioFiles", "videoFiles", "docFiles", "signInFiles", "recordFiles",

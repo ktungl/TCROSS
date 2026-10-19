@@ -35,6 +35,8 @@ const BLOCKED_EXTENSIONS = [
   'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
   'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
   'pif', 'wsf', 'wsh', 'hta', 'lnk', 'reg',
+  // 瀏覽器會當成網頁執行的格式
+  'html', 'htm', 'xhtml', 'xht', 'shtml', 'svg', 'svgz', 'mht', 'mhtml',
 ];
 const GENERATION_JOB_KINDS = ['成果報告', '會議紀錄', '其他'];
 const GENERATION_JOB_STATUSES = ['pending', 'processing', 'done', 'error'];
@@ -601,6 +603,10 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     }
   }
 
+  // 附件 10 月起一律上傳到 GCS；前端新加進來的項目只能是 gcs: 路徑（含從「歷史檔案」
+  // 重用的），不能塞任意外部連結，也不能塞 Back4App 檔案網址再移除、藉 afterSave 的孤兒檔
+  // 清理刪掉別的檔案。既有的舊網址照常保留。
+  const knownUrls = request.master || !original ? new Set() : referencedUrls(original);
   for (const field of FOLDER_FIELDS) {
     const files = object.get(field);
     if (files === undefined) continue;
@@ -621,6 +627,9 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       // gcs:attachments/… 是存在 GCS 的附件，畫面上一律先換成 Cloud Run 簽的臨時網址
       if (!/^https?:\/\//i.test(file.url) && !file.url.startsWith('gcs:attachments/')) {
         fail(`${field} 的 url 必須是 http(s) 網址或 gcs:attachments/ 路徑`);
+      }
+      if (!request.master && !file.url.startsWith('gcs:attachments/') && !knownUrls.has(file.url)) {
+        fail(`「${file.name}」不是透過系統上傳的檔案`);
       }
       if (file.caption !== undefined && typeof file.caption !== 'string') {
         fail(`${field} 的 caption 必須是字串`);
@@ -680,6 +689,13 @@ function isAttachmentMigration(request) {
   return !!(request.master && request.context && request.context.attachmentMigration);
 }
 
+/** 本 app 在 Back4App 的檔案網址：https://parsefiles.back4app.com/<appId>/<檔名>。
+ * 孤兒檔清理只處理這種網址，不會依任意網址推出檔名去刪檔。 */
+function isBack4AppFileUrl(url) {
+  const prefix = `https://parsefiles.back4app.com/${Parse.applicationId}/`;
+  return url.startsWith(prefix) && !url.slice(prefix.length).includes('/');
+}
+
 /** 這個物件所有附件欄位裡還引用到的檔案網址。 */
 function referencedUrls(object) {
   const urls = new Set();
@@ -722,7 +738,7 @@ Parse.Cloud.afterSave('Activity', async (request) => {
   const stillHere = referencedUrls(request.object);
   const candidates = new Set();
   for (const url of referencedUrls(request.original)) {
-    if (!url.startsWith('gcs:') && !stillHere.has(url)) candidates.add(url);
+    if (isBack4AppFileUrl(url) && !stillHere.has(url)) candidates.add(url);
   }
   if (!candidates.size) return;
 
@@ -794,6 +810,29 @@ Parse.Cloud.beforeSave('GenerationJob', (request) => {
   const errorMessage = object.get('errorMessage');
   if (errorMessage !== undefined && typeof errorMessage !== 'string') {
     fail('errorMessage 必須是字串');
+  }
+
+  // Cloud Run 的 /download-url、/delete-objects 以「路徑掛在某筆讀得到的工作上」授權，所以
+  // 前端不能自己填狀態／產出檔，也不能讓素材指到別的活動或 generated/ 底下的 AI 報告。
+  // 狀態與產出檔只由 Cloud Run 用 Master Key 寫入。
+  if (!request.master) {
+    const { original } = request;
+    if (original) {
+      // 建立後前端只會改 deletedAt（移到垃圾桶／復原）
+      for (const field of ['activity', 'kind', 'status', 'sourceFiles', 'resultFile', 'errorMessage']) {
+        if (JSON.stringify(plain(object.get(field))) !== JSON.stringify(plain(original.get(field)))) {
+          fail(`${FIELD_LABELS[field]}建立後不能修改`);
+        }
+      }
+    } else {
+      if ((status ?? 'pending') !== 'pending' || resultFile || errorMessage) {
+        fail('新建立的工作只能是待處理狀態');
+      }
+      const sourcePath = new RegExp(`^activities/${activity.id}/(photo|audio|video|doc)/[A-Za-z0-9._-]+$`);
+      if ((sourceFiles || []).some((p) => !sourcePath.test(p))) {
+        fail('素材檔案必須是這個活動上傳的檔案');
+      }
+    }
   }
 
   stampActor(request, 'GenerationJob');

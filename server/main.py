@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from parse_auth import (
     activities_referencing,
     activity_exists,
+    existing_activity_ids,
     find_generation_jobs_for_object_paths,
     get_activity,
     get_generation_job,
@@ -35,6 +36,7 @@ from assist import (
 from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
 from utils import (
     ATTACHMENT_FOLDERS,
+    is_content_type_allowed,
     is_extension_blocked,
     is_valid_object_path,
     parse_attachment_path,
@@ -218,7 +220,7 @@ def signed_url(body: SignedUrlRequest, user: dict = Depends(enforce_rate_limit))
     for f in body.files:
         if f.folder not in ALLOWED_FOLDERS:
             raise HTTPException(400, f"folder 必須是 {sorted(ALLOWED_FOLDERS)} 其中之一")
-        if is_extension_blocked(f.filename):
+        if is_extension_blocked(f.filename) or not is_content_type_allowed(f.contentType):
             raise HTTPException(400, "此檔案類型不允許上傳")
     if not activity_exists(user["sessionToken"], body.activityId):
         audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
@@ -265,8 +267,9 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
         if not activity_exists(user["sessionToken"], body.activityId):
             audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
             raise HTTPException(403, "activityId 不存在或無權存取")
-        prefix = f"activities/{body.activityId}/"
-        mismatched = [p for p in body.objectPaths if not p.startswith(prefix)]
+        # 只限素材資料夾：這條路是清剛上傳的素材，不能拿來刪 generated/ 底下別人的 AI 報告
+        prefixes = tuple(f"activities/{body.activityId}/{folder}/" for folder in ALLOWED_FOLDERS)
+        mismatched = [p for p in body.objectPaths if not p.startswith(prefixes)]
         if mismatched:
             raise HTTPException(400, "objectPath 與 activityId 不符")
     else:
@@ -293,7 +296,7 @@ def attachment_upload_urls(body: AttachmentUploadRequest, user: dict = Depends(e
     if len(body.files) > MAX_ATTACHMENT_UPLOADS_PER_REQUEST:
         raise HTTPException(400, f"一次最多只能上傳 {MAX_ATTACHMENT_UPLOADS_PER_REQUEST} 個檔案")
     for f in body.files:
-        if is_extension_blocked(f.filename):
+        if is_extension_blocked(f.filename) or not is_content_type_allowed(f.contentType):
             raise HTTPException(400, f"「{f.filename}」的檔案類型不允許上傳")
         if f.size > MAX_ATTACHMENT_BYTES:
             raise HTTPException(400, f"「{f.filename}」超過上傳大小上限（50MB）")
@@ -367,13 +370,26 @@ def attachment_delete(body: AttachmentDeleteRequest, user: dict = Depends(enforc
     """Delete attachment objects that no activity references any more. Called by the
     frontend after it has removed the item from the activity (「永久刪除」, or deleting
     the whole activity). Anything still referenced — e.g. the same file attached to
-    another activity via「歷史檔案」, or still in some activity's trash — is kept."""
+    another activity via「歷史檔案」, or still in some activity's trash — is kept.
+
+    Authorization: the caller must be able to read the activity each path was
+    uploaded under, or that activity must already be gone (deleting a whole activity
+    destroys the record first, then calls this to clean up its files)."""
     parsed = {}
     for path in body.paths:
         info = parse_attachment_path(path)
         if not info:
             raise HTTPException(400, "path 不合法")
         parsed[path] = info
+    activity_ids = {a for a, _ in parsed.values()}
+    allowed = readable_activity_ids(user["sessionToken"], activity_ids)
+    unreadable = activity_ids - allowed
+    if unreadable:
+        allowed |= unreadable - existing_activity_ids(unreadable)
+    denied = [p for p, (activity_id, _) in parsed.items() if activity_id not in allowed]
+    if denied:
+        audit_log.warning("rejected: unauthorized attachment delete user=%s paths=%s", user.get("username"), denied)
+        raise HTTPException(403, "部分檔案無權刪除")
     refs = activities_referencing({ATTACHMENT_URL_PREFIX + p for p in parsed})
     deleted, kept = [], []
     for path in parsed:
@@ -556,7 +572,12 @@ def _run_generation(job_id: str, activity_id: str, kind: str, activity: dict, so
         # 耗時記下來，用來確認長錄音能否在 Cloud Run timeout（900 秒）內跑完
         audit_log.info("generation done jobId=%s kind=%s seconds=%.1f resultFile=%s", job_id, kind, time.monotonic() - started, result_path)
         return "done"
-    except Exception as exc:  # noqa: BLE001 — any failure here must still flip status away from "processing"
+    except Exception:  # noqa: BLE001 — any failure here must still flip status away from "processing"
         audit_log.exception("generation failed jobId=%s kind=%s seconds=%.1f", job_id, kind, time.monotonic() - started)
-        write_with_master_key("GenerationJob", job_id, {"status": "error", "errorMessage": str(exc)[:500]})
+        # 例外內容（桶名、服務帳號、模型回應等）只留在 Cloud Logging，使用者只看到通用訊息；
+        # 查錯時用工作編號到 log 搜 "generation failed jobId=…"。
+        write_with_master_key(
+            "GenerationJob", job_id,
+            {"status": "error", "errorMessage": f"AI 生成失敗，請稍後再試；持續失敗請聯絡管理者（工作編號 {job_id}）"},
+        )
         return "error"

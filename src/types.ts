@@ -131,6 +131,8 @@ export const BLOCKED_EXTENSIONS = [
   'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
   'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
   'pif', 'wsf', 'wsh', 'hta', 'lnk', 'reg',
+  // 瀏覽器會當成網頁執行的格式
+  'html', 'htm', 'xhtml', 'xht', 'shtml', 'svg', 'svgz', 'mht', 'mhtml',
 ]
 
 /** 回傳不允許上傳的原因；允許則回傳 null。 */

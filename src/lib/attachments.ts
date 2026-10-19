@@ -67,8 +67,25 @@ export async function requestAttachmentUploadUrls(
   return out
 }
 
+/** 跟 server/utils.py 的 ALLOWED_CONTENT_TYPES 一致，Cloud Run 只簽這些類型的上傳網址。 */
+const ALLOWED_CONTENT_TYPES = new Set([
+  'application/octet-stream', 'application/pdf', 'text/csv', 'text/plain',
+  'application/zip', 'application/x-zip-compressed', 'application/rtf', 'text/rtf',
+  'application/msword',
+])
+const ALLOWED_CONTENT_TYPE_PREFIXES = [
+  'image/', 'video/', 'audio/',
+  'application/vnd.openxmlformats-officedocument.', 'application/vnd.ms-',
+  'application/vnd.oasis.opendocument.',
+]
+
+/** 白名單外（或瀏覽器認不出）的類型一律用 octet-stream 上傳：檔案照存，只是開啟時改成下載。 */
 export function contentTypeOf(file: File): string {
-  return file.type || 'application/octet-stream'
+  const type = file.type.toLowerCase()
+  const allowed =
+    type !== 'image/svg+xml' &&
+    (ALLOWED_CONTENT_TYPES.has(type) || ALLOWED_CONTENT_TYPE_PREFIXES.some((p) => type.startsWith(p)))
+  return allowed ? type : 'application/octet-stream'
 }
 
 /** 用 XHR 而非 fetch，才能取得上傳進度。Content-Type 與 x-goog-content-length-range

@@ -10,6 +10,7 @@ import {
   uploadToSignedUrl,
   type SignedUrlResponse,
 } from '../lib/middleware'
+import { contentTypeOf } from '../lib/attachments'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
@@ -213,7 +214,7 @@ async function startGeneration() {
       allFiles.map(({ folder, file }) => ({
         folder,
         filename: file.name,
-        contentType: file.type || 'application/octet-stream',
+        contentType: contentTypeOf(file),
       })),
     )
   } catch (e) {
@@ -232,7 +233,7 @@ async function startGeneration() {
       const { uploadUrl, objectPath } = signedUrls[i]
       fileStates.set(file, 'uploading')
       try {
-        const contentType = file.type || 'application/octet-stream'
+        const contentType = contentTypeOf(file)
         await uploadToSignedUrl(uploadUrl, file, contentType, (fraction) => {
           fileProgress.set(file, fraction)
         })
