@@ -55,7 +55,12 @@ export function downloadBlob(name: string, blob: Blob): void {
 }
 
 export function buildCsv(rows: (string | number)[][]): string {
-  const q = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  // 文字開頭是 = + - @ 或 Tab／換行時，Excel 開啟會當成公式執行（CSV 公式注入），前面補 ' 當純文字
+  const q = (v: string | number) => {
+    let s = String(v ?? '')
+    if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
+    return `"${s.replace(/"/g, '""')}"`
+  }
   return rows.map((row) => row.map(q).join(',')).join('\n')
 }
 

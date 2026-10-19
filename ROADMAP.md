@@ -40,7 +40,8 @@
 | 16 | 🟡 Cloud Code 清孤兒檔限定 Back4App 網址 | — | 10-19 資安審查。`cloud/main.js` afterSave 從使用者可改的 `url` 取檔名刪 `Parse.File`，可藉此刪任何沒被活動引用的 Back4App 檔案。只處理 Back4App 檔案網域的網址。 ✅ 10-19 程式已改：清檔只處理 `https://parsefiles.back4app.com/<appId>/` 網址；前端新加的附件只能是 `gcs:attachments/`（既有舊網址照常保留）。⬜ 待貼回 Cloud Code。 |
 | 17 | 🟡 AI 生成錯誤訊息不回傳內部細節 | — | 10-19 資安審查。`server/main.py` `_run_generation()` 把 `str(exc)` 寫進 `errorMessage`，使用者看得到內部例外內容。改成通用訊息，細節只留 Cloud Logging。 ✅ 10-19 程式已改：訊息附工作編號，到 log 搜 `generation failed jobId=…`。⬜ 待部署。 |
 | 18 | 🟡 `_User` 關閉自行刪除帳號 | — | 10-19 資安審查。`scripts/setup-users.mjs` 的 `_User` CLP 是 `delete: { '*': true }`，使用者可刪自己帳號，之後稽核紀錄對不到人。改 `delete: {}` 後重跑 `--apply --clp`。 ✅ 10-19 程式已改，⬜ 待重跑 `--apply --clp`。 |
-| 19 | 🟡 npm 套件漏洞（10-19） | — | `npm audit --omit=dev` 6 項（高 4：`@vue/server-renderer`、`brace-expansion`、`source-map-js`；中 2：`uuid`），多為建置／SSR 用、實際影響小。跑 `npm audit fix`（不加 `--force`）。 |
+| 19 | ✅ npm 套件漏洞（10-19） | — | `npm audit --omit=dev` 6 項（高 4：`@vue/server-renderer`、`brace-expansion`、`source-map-js`；中 2：`uuid`），多為建置／SSR 用、實際影響小。✅ 10-19 `npm audit fix` 修掉 4 項高風險，只剩 `uuid`（中，已接受風險）。 |
+| 20 | 🟡 CSV 公式注入 | — | 10-19 資安審查第二輪。「成果清單 CSV」欄位以 `=`／`+`／`-`／`@` 開頭時，Excel 開啟會當公式執行。✅ 10-19 `src/utils/download.ts` `buildCsv()` 對這類文字補 `'` 當純文字。⬜ 隨前端部署。 |
 
 **待辦 13～18 部署順序**：① 前端先上（push main 自動部署；Cloud Run 改完後白名單外的類型會被擋，要先讓前端改送 octet-stream）② Cloud Run 重新部署 ③ `cloud/main.js` 貼回 Back4App ④ `node scripts/setup-users.mjs --apply --clp`。
 
@@ -180,14 +181,14 @@
 | 容器 root | ✅ `USER appuser` |
 | 速率限制 | ✅ 每人每分鐘 30 次（記憶體內，多 instance 非精確上限） |
 | Python 套件漏洞 | ✅ 已上線（見部署紀錄） |
-| npm 套件漏洞 | 🟡 高風險 `ws` 已修；10-19 又出現 4 項高風險，見待辦 19；`uuid`（中）接受風險 |
+| npm 套件漏洞 | ✅ 高風險 `ws` 已修；10-19 新出現的 4 項高風險已修（待辦 19）；`uuid`（中）接受風險 |
 | 初始密碼可猜 | ⬜ 見待辦 7 |
 | HTTP 安全標頭 | 🟡 10-01 上線 `X-Frame-Options`／`nosniff`／`Referrer-Policy`／`Permissions-Policy`（HSTS 由 Firebase 預設提供），10-05 確認線上生效；CSP 仍是 Report-Only，見待辦 5 |
 | 資料備份 | ✅ 每日備份到獨立 GCS 桶，上傳帳號不能刪改既有備份；10-05 還原演練通過 |
 
 已符合：Master Key 存 Secret Manager；Signed URL 15 分鐘效期；`.env` 未進 git；`objectPath` 防路徑穿越；前端無 `v-html`。
 
-10-19 資安審查另外確認：Master Key 不在 git 歷史與 `dist` 打包檔；線上 CLP 與 `setup-users.mjs` 一致，未登入存取資料 class 全部被拒；GitHub Actions 無長期金鑰。發現的問題列在待辦 10、13～19。
+10-19 資安審查另外確認：Master Key 不在 git 歷史與 `dist` 打包檔；線上 CLP 與 `setup-users.mjs` 一致，未登入存取資料 class 全部被拒；GitHub Actions 無長期金鑰。發現的問題列在待辦 10、13～19；第二輪（AI 輔助端點、前端下載／匯出）另發現待辦 20。
 
 ---
 
