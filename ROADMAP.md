@@ -14,7 +14,6 @@
 
 | # | 項目 | 期限 | 說明 |
 | --- | --- | --- | --- |
-| 1 | 🟠 部署 10-19 資安修正 | 儘快 | 程式已改並 commit 在 `Donna`（`e3470e9`、`336564f`），還沒上線。內容：上傳 Content-Type 白名單＋下載只有圖片／影音／PDF inline、副檔名黑名單補 `html`／`svg` 等；GenerationJob 狀態／產出檔前端不能寫、素材限同活動素材資料夾；`/attachments/delete` 要能讀該活動；Cloud Code 清孤兒檔只處理 Back4App 網址、新附件只能是 `gcs:attachments/`；AI 生成失敗只回通用訊息；成果清單 CSV 防公式注入。**順序**：① 合併到 `main`，前端自動部署（要比 Cloud Run 先上，否則白名單外的類型會被擋）② Cloud Run 重新部署 ③ `cloud/main.js` 貼回 Back4App。 |
 | 2 | ⬜ 確認關閉 client class creation | 儘快 | Back4App App Settings「Allow client class creation」要關閉，否則拿到公開 App ID＋JS Key 的人能自己建 class 塞資料（10-19 已刪除權限全開的範例 class `B4aVehicle`）。 |
 | 3 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 4 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在正式網址上跑一次，排在場域測試時。 |
