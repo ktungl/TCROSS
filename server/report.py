@@ -102,9 +102,6 @@ def generate_json(parts: list, schema: dict, **config) -> dict:
     return json.loads(response.text)
 
 
-DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-
 def _docx_text(raw: bytes) -> str:
     """Word 檔的文字：段落在前、表格逐列接在後面（Gemini 只需要內容，不需要版面）。"""
     doc = Document(io.BytesIO(raw))
@@ -120,12 +117,13 @@ def _docx_text(raw: bytes) -> str:
 def _source_part(path: str) -> types.Part:
     """Gemini 不收 .docx（會回 400「The document has no pages」），先在這裡取出文字；
     其他格式直接用 GCS URI 給 Gemini 讀，不必先下載到這個服務。"""
-    mime = _guess_mime_type(path)
-    if mime == DOCX_MIME:
+    # 看副檔名，不靠 mimetypes：python:3.12-slim 沒有 /etc/mime.types，認不出 .docx，
+    # 會落到資料夾預設的 application/pdf
+    if path.lower().endswith(".docx"):
         name = path.rsplit("/", 1)[-1]
         text = _docx_text(download_bytes(path)) or "（這份 Word 檔沒有文字內容）"
         return types.Part.from_text(text=f"【文件：{name}】\n{text}")
-    return types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=mime)
+    return types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
 
 
 def _generate_json(object_paths: list[str], prompt: str, schema: dict, **config) -> dict:
