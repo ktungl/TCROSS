@@ -29,7 +29,7 @@
 - [ ] 分類推薦：建活動時按一次，看推薦合不合理
 - [ ] AI 改寫文案：挑一場成果摘要已填的活動，三種格式各產一次，核對有沒有杜撰
 - [ ] 成效統計表：實際下載一份，對照活動列表的數字
-- 測完把結果記到上方「進度」表與 ROADMAP「已完成」表（10-13 那列的 ⬜）
+- 測完把結果記到上方「進度」表，並把 ROADMAP 待辦 7 對應的項目刪掉
 
 **2. 未完成的雜項**
 - [x] ~~`cloud/main.js` 的 `venue` 長度檢查貼回 Back4App~~（10-14 與會議紀錄 kind 一起貼回，已記入 ROADMAP）
@@ -117,7 +117,7 @@
 - `server/report.py`：每種 `kind` 各一組 `_PROMPT` + `_RESPONSE_SCHEMA` + 組檔函式（建議拆成 `server/generators/{kind}.py`，以字典註冊）。
 - `server/main.py` `_run_generation()` 依 `job["kind"]` 分派；輸出副檔名依種類（`.docx`／`.xlsx`／`.json`）。
 - 前端 `AiGenerationModal.vue` 加「產出類型」選單；結果除了下載檔案，文字類（社群文案、摘要）直接在 `GeneratedDocModal.vue` 預覽並可複製。
-- **同步改**：`src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 的 `GenerationJob` 驗證、`server/parse_auth.py` 預設值；`cloud/main.js` 改完要手動貼回 Back4App 並記入 ROADMAP 部署紀錄。
+- **同步改**：`src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 的 `GenerationJob` 驗證、`server/parse_auth.py` 預設值；`cloud/main.js` 改完要手動貼回 Back4App。
 
 ### 1-1 一鍵切換報告格式 ⭐ 第一批
 
@@ -161,7 +161,7 @@
 
 | | |
 | --- | --- |
-| 做法 | 純前端，不需 AI。`ExportView.vue` 加「成效統計表」：依篩選條件彙整場次、總人數、男女、各分類／計畫小計，用 `exceljs` 產出。另把 ROADMAP 待辦 8：AI 報告加 Excel 輸出一併處理。 |
+| 做法 | 純前端，不需 AI。`ExportView.vue` 加「成效統計表」：依篩選條件彙整場次、總人數、男女、各分類／計畫小計，用 `exceljs` 產出。另把 ROADMAP 待辦 13：AI 報告加 Excel 輸出一併處理。 |
 | 前置 | ⚠️ 需各單位**公版表格**，依公版欄位排版（同 `buildLedgerXlsx` 做法）。 |
 | 位置 | `src/utils/download.ts` 新增 `buildOutcomeStatsXlsx()`、`ExportView.vue` |
 
@@ -201,7 +201,7 @@
 | **第三批** | 1-3 會議紀錄、1-5 文件快讀、3-1 結案打包、3-3 週報 | 需評估費用與排程 |
 | **之後** | 1-4 影片亮點、2-3 照片標籤、3-2 智慧問答 | 檔案大／維護成本高，等資料累積後再做 |
 
-每批上線流程同 ROADMAP：Cloud Run 部署 → `cloud/main.js` 貼回 → schema 同步 → push main 自動部署前端 → 正式站實測 → 記入 ROADMAP 部署紀錄。
+每批上線流程：Cloud Run 部署 → `cloud/main.js` 貼回 → schema 同步 → push main 自動部署前端 → 正式站實測 → 從 ROADMAP 刪掉對應待辦。
 
 ---
 

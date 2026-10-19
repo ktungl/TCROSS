@@ -157,10 +157,36 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 | `PARSE_APP_ID`／`PARSE_JS_KEY` | Cloud Run 環境變數（明文，設計上本來就是公開資訊）＋前端 `.env`（`.gitignore` 已排除） | 這兩把本來就假設公開，不是機密；真要換要同時改前端 `.env` 與 Cloud Run 環境變數 |
 | `tcross-middleware-sa` 服務帳戶 | GCP IAM，無 JSON 金鑰檔（用 IAM 自我模擬簽 URL，見 [server/README.md](server/README.md)） | 沒有金鑰檔案可外洩，不需要輪替；如需撤銷存取直接在 IAM 移除該服務帳戶權限 |
 
+## 費用控制
+
+2026-09-28 時 30 天僅約 73 個請求、GCS 1.57 MB，多在免費額度內；以下是防止用量變大後失控的設定。
+
+- 每月預算警示（09-29 設定，帳單帳戶 `015911-92E019-179E03`，只寄信給帳單管理員、不會自動停用服務；`gcloud` 帳號 `tainanjade@gmail.com` 沒有帳單權限）。
+- Cloud Run 按請求計費、最多 2 個 instance。
+- Gemini 媒體解析度 `LOW`（token 約 1/4，09-29 實測辨識正常）；每筆工作最多 20 個素材。
+- Session 驗證快取 60 秒（登出後 token 最多仍可用 60 秒）。
+- Artifact Registry 只保留最新 3 份 image，其餘 7 天後刪除。
+- 備份桶 Nearline、90 天刪除：一份約 216 MB，滿 90 份約 20 GB，每月約 US$0.2（附件變多會跟著增加）。
+- GCS：建置用桶 30 天刪除；主桶 `activities/` 下的照片／影音等 AI 素材 30 天刪除，`.docx` 保留；活動附件在 `attachments/`，不受影響。30 天後舊的生成工作無法再「重新觸發」。
+- 活動附件存 GCS 約 US$0.02／GB／月（50 GB 約 US$1）；Back4App 維持 Free。
+
+## 帳號與帳單異動（換卡、換使用權人）
+
+只改後台設定，不動程式碼與 `.env`。
+
+- **GCP 換卡**：帳單 → 付款方式 → 新增卡片 → 設為預設 → 移除舊卡。
+- **GCP 換人**：IAM → 新增成員並給角色 → 移除舊帳號。帳單帳戶的「帳單帳戶管理員」角色要另外設定。
+- **Back4App 換卡**：Account Settings → Billing。
+- **Back4App 換人**：App Settings → Collaborators → 邀請新 email 設 Admin → 移除舊帳號。付費方案換卡前確認不會中斷服務。
+- 本機 `gcloud auth login` 若登入的是舊帳號，要改用新帳號重新登入。
+
+**換正式網域時**：同步更新 Cloud Run `ALLOWED_ORIGIN` 與 Google Maps 金鑰的網域白名單。
+
 ## 已知限制
 
 - **沒有自動化測試**：`server/` 沒有 CI/測試套件，每次部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
-- **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻（細節見 [ROADMAP.md](ROADMAP.md#資安iso-27001-annex-a-技術面)）
+- **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻
+- **npm `uuid` 中風險漏洞（接受風險）**：經 `exceljs` 引入，官方修法是降到 `exceljs@3.4.0`，不建議
 - **備份不含 GCS 主桶**：AI 生成素材與 `.docx` 產出不在每日備份範圍（素材本來就 30 天刪除）；還原後帳號需重設密碼、`createdAt` 會變成還原時間（見「資料備份」）
 - **正式網址**：`https://tacc-iip.web.app`（10-09 起，Firebase Hosting 網站 `tacc-iip`），尚未綁自訂網域。舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 是同專案的預設網站，10-16 起改為與新網址內容相同、同時部署（`firebase.json` 的第二個 hosting 設定與第一個相同，原本的 301 轉址會讓首頁 JS 被跨網域擋下而空白）。`ALLOWED_ORIGIN`、GCS 主桶 CORS、Maps 金鑰網站限制都同時列新舊兩組網域（Netlify 已於 09-29 停用並移除）
 
