@@ -103,6 +103,9 @@ def upload_bytes(object_path: str, data: bytes, content_type: str) -> None:
 def object_exists(object_path: str) -> bool:
     return _client().bucket(GCS_BUCKET).blob(object_path).exists()
 
+def download_bytes(object_path: str) -> bytes:
+    return _client().bucket(GCS_BUCKET).blob(object_path).download_as_bytes()
+
 
 def delete_object(object_path: str) -> None:
     """Delete a GCS object. No-op if it's already gone, so callers can retry a

@@ -144,6 +144,9 @@ onMounted(async () => {
   }
 })
 
+// Gemini 能讀的文件格式（.docx 由後端先取出文字，見 server/report.py _source_part）
+const AI_DOC_EXTENSIONS = /\.(pdf|docx|txt)$/i
+
 async function addFiles(folder: FolderKey, files: File[]) {
   // 上傳中加進來的檔案不在這次送出的清單裡，送出成功清空「已選」時會被默默丟掉
   if (submitting.value) {
@@ -152,7 +155,11 @@ async function addFiles(folder: FolderKey, files: File[]) {
   }
   const accepted: File[] = []
   for (const file of files) {
-    const reason = fileUploadRejectionReason(file)
+    const reason =
+      fileUploadRejectionReason(file) ??
+      (folder === 'doc' && !AI_DOC_EXTENSIONS.test(file.name)
+        ? `「${file.name}」AI 讀不了這種格式，文件請上傳 PDF、Word（.docx）或純文字檔`
+        : null)
     if (reason) pushToast(reason, 'error')
     else accepted.push(file)
   }
