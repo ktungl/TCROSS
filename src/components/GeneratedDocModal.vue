@@ -8,8 +8,10 @@ import {
   buildSignInSheetDocx,
   downloadBlob,
   generatedFormExtension,
+  missingImagesMessage,
   ORGANIZER_NAME,
   SIGN_IN_LAYOUTS,
+  takeImageLoadFailures,
   toChineseUpperAmount,
 } from '../utils/download'
 import type { GeneratedFormKind, OfficialLetterPurpose, ReceiptEntry, SignInLayout } from '../utils/download'
@@ -106,6 +108,7 @@ const summary = computed(() => {
 
 async function download() {
   downloading.value = true
+  takeImageLoadFailures()
   try {
     let blob: Blob
     switch (props.kind) {
@@ -146,6 +149,8 @@ async function download() {
         break
     }
     downloadBlob(`${props.activity.name}_${props.kind}.${generatedFormExtension(props.kind)}`, blob)
+    const missing = missingImagesMessage()
+    if (missing) pushToast(missing, 'error')
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   } finally {

@@ -627,8 +627,32 @@ interface ImageAsset {
   height: number
 }
 
+/** 這次產生檔案時沒能放進去的圖片檔名。產生前用 takeImageLoadFailures() 清空，
+ * 產生後再取一次提示使用者——以前抓不到（例如被限流）就默默少一張照片，使用者不會發現。 */
+let imageLoadFailures: string[] = []
+
+export function takeImageLoadFailures(): string[] {
+  const names = imageLoadFailures
+  imageLoadFailures = []
+  return names
+}
+
+/** 產生完檔案後呼叫：有圖片沒放進去就回傳提示文字，全部都有就回傳 null。 */
+export function missingImagesMessage(): string | null {
+  const names = takeImageLoadFailures()
+  if (!names.length) return null
+  const shown = names.slice(0, 3).map((n) => `「${n}」`).join('、')
+  return `有 ${names.length} 張圖片沒能放進檔案（${shown}${names.length > 3 ? ' 等' : ''}），請稍後重新下載`
+}
+
 async function loadImageAsset(file: FileMeta): Promise<ImageAsset | null> {
   if (!file.url) return null
+  const asset = await fetchImageAsset(file)
+  if (!asset) imageLoadFailures.push(file.name)
+  return asset
+}
+
+async function fetchImageAsset(file: FileMeta): Promise<ImageAsset | null> {
   try {
     const res = await fetch(await resolveAttachmentUrl(file.url, file.name))
     if (!res.ok) return null
@@ -1066,11 +1090,15 @@ async function loadAttachmentPages(file: FileMeta): Promise<ImageAsset[] | null>
   if (name.endsWith('.pdf')) {
     try {
       const res = await fetch(await resolveAttachmentUrl(file.url, file.name))
-      if (!res.ok) return []
+      if (!res.ok) {
+        imageLoadFailures.push(file.name)
+        return []
+      }
       const pages = await renderPdfPages(await res.arrayBuffer(), MAX_ATTACHMENT_PAGES)
       return pages.map((p) => ({ dataUrl: '', data: p.data, docxType: 'jpg', xlsxExt: 'jpeg', width: p.width, height: p.height }))
     } catch (err) {
       console.error(`轉換 PDF 失敗：${file.name}`, err)
+      imageLoadFailures.push(file.name)
       return []
     }
   }

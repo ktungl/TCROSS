@@ -6,6 +6,8 @@ import {
   buildCsv,
   buildLedgerXlsx,
   buildNeimuReportDocx,
+  missingImagesMessage,
+  takeImageLoadFailures,
   downloadBlob,
   downloadFile,
   LEDGER_MAX_PHOTOS,
@@ -105,6 +107,7 @@ async function doExport() {
   }
   const pn = xPlan.value ? planName(xPlan.value) : '全部計畫'
   exporting.value = true
+  takeImageLoadFailures()
   try {
     if (wantLedger.value) {
       const blob = await buildLedgerXlsx(picked.value, planName, {
@@ -126,6 +129,8 @@ async function doExport() {
       })
       downloadBlob('成效統計表.xlsx', blob)
     }
+    const missing = missingImagesMessage()
+    if (missing) pushToast(missing, 'error')
   } catch (e) {
     pushToast(errorMessage(e), 'error')
   } finally {

@@ -17,14 +17,25 @@ function baseUrl(): string {
   return url.replace(/\/$/, '')
 }
 
+/** 被 Cloud Run 限流（429，每人每分鐘 30 次、以 60 秒滑動計算）時依序等這麼久再重試，合計超過 60 秒。
+ * 429 是在處理請求前就擋下，重送不會重複執行。 */
+const RATE_LIMIT_RETRY_DELAYS_MS = [3_000, 10_000, 20_000, 30_000]
+
 async function post<T>(path: string, body: unknown, fallback: string): Promise<T> {
   const token = Parse.User.current()?.getSessionToken()
   if (!token) throw new Error('請重新登入')
-  const res = await fetch(`${baseUrl()}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  })
+  const send = () =>
+    fetch(`${baseUrl()}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    })
+  let res = await send()
+  for (const delay of RATE_LIMIT_RETRY_DELAYS_MS) {
+    if (res.status !== 429) break
+    await new Promise((r) => setTimeout(r, delay))
+    res = await send()
+  }
   if (!res.ok) {
     let message = fallback
     try {

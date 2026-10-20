@@ -20,7 +20,9 @@ const {
   buildReceiptXlsx,
   buildSignInSheetDocx,
   buildLedgerXlsx,
+  missingImagesMessage,
   SIGN_IN_LAYOUTS,
+  takeImageLoadFailures,
 } = await import('../../src/utils/download')
 const { computeOutcomeStats } = await import('../../src/utils/outcomeStats')
 
@@ -125,6 +127,14 @@ describe('大事紀照片挑選', () => {
   it('TC-09 沒標記精選時照上傳順序取前 3 張', async () => {
     const urls = await pickedUrls([photo('1.jpg'), photo('2.jpg'), photo('3.jpg'), photo('4.jpg')])
     expect(urls).toEqual(['gcs:attachments/1.jpg', 'gcs:attachments/2.jpg', 'gcs:attachments/3.jpg'])
+  })
+
+  it('抓不到的照片會列在提示裡，不會默默少一張', async () => {
+    takeImageLoadFailures()
+    await pickedUrls([photo('1.jpg'), photo('2.jpg')])
+    expect(missingImagesMessage()).toBe('有 2 張圖片沒能放進檔案（「1.jpg」、「2.jpg」），請稍後重新下載')
+    // 取過一次就清空，下一次產生檔案重新計算
+    expect(missingImagesMessage()).toBeNull()
   })
 })
 

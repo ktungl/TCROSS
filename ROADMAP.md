@@ -17,7 +17,6 @@
 | 2 | ⬜ 確認關閉 client class creation | 回滾才需要 | Back4App App Settings「Allow client class creation」要關閉，否則拿到公開 App ID＋JS Key 的人能自己建 class 塞資料（10-19 已刪除權限全開的範例 class `B4aVehicle`）。新伺服器已設 `allowClientClassCreation: false`，只剩回滾到 Back4App 時才需要。 |
 | 3 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 5 | ⬜ 附件搬到 GCS 收尾 | — | 10-20 已在正式站確認匯出檔含照片（大事紀 16 張）。只剩：清除 Back4App 上已搬走的原檔（對照表在 `backups/attachment-migration-2026-10-09T07-59-51.json`）；Back4App 10-20 起只當備份，不清也不影響使用。 |
-| 7 | ⬜ 正式站驗證 AI 新功能 | 10/15 | 登入後實際產生一次改寫文案（10-13 上線）；建立第一筆「會議紀錄」，確認 10-14 貼回的 Cloud Code 有生效。 |
 | 9 | ⬜ Back4App 方案到期 | 10/29 | 10-20 已切換到 GCP，Back4App 只當備份：到期後降回免費方案即可，不用續約付費。 |
 | 10 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
 | 11 | 🟠 初始密碼可猜 | — | 6 個帳號密碼都是「帳號＋1234」（`Test123` 是 `Test123`），規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
