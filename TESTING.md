@@ -6,7 +6,7 @@
 
 這份文件定義 TCROSS 活動平台要測什麼、用什麼方法測、誰來測，目標是讓每次上線前都有一套可重複執行的檢查，而不是靠記憶手動點過。
 
-涵蓋範圍是整個 `TCROSS/` 專案的四個部分：
+涵蓋範圍是整個 `TCROSS/` 專案的五個部分：
 
 | 部分 | 位置 | 技術 |
 | --- | --- | --- |
@@ -43,7 +43,7 @@
 
 - **部署後健康檢查**：curl `/status`，再帶 session token 打 `/signed-url`、`/download-url`（見 [OPERATIONS.md](OPERATIONS.md)、[server/README.md](server/README.md)）。
 - **範本修改**：`npm run dev` 後到「匯出成果」實際匯出，打開檔案核對。
-- **Cloud Code**：由 `parse-server/scripts/deploy.sh` 部署，`node parse-server/scripts/smoke-test.mjs <備份資料夾>` 會以成員身分跑 15 項檢查（登入、CLP、Cloud Code 驗證、稽核紀錄）。
+- **Cloud Code**：由 `parse-server/scripts/deploy.sh` 部署，部署後用 `Test123` 跑 `npm run test:e2e`。`node parse-server/scripts/smoke-test.mjs <備份資料夾>` 的 15 項檢查（登入、CLP、Cloud Code 驗證、稽核紀錄）用的是匯入時的臨時密碼，只在重新匯入後能用。
 - **備份還原演練**：10-05 還原到 `TCROSS-restore-test`，2058 個欄位 0 差異。
 - **搬家演練**：10-20 把 Back4App 備份匯入新伺服器，9606 個欄位 0 差異；`smoke-test.mjs` 15 項全過；瀏覽器在測試網址走過新增→改計畫→封存→解除封存→刪除活動、新增刪除計畫與分類，稽核紀錄全部正確。
 - **正式切換**：10-20 15:43 用當下備份重新匯入（9983 個欄位 0 差異）。切換後在正式站確認匯出檔有帶入照片（大事紀 16 張）、AI 成果報告 Word／PDF 都能下載。
