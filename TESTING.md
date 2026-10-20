@@ -1,6 +1,6 @@
 # TCROSS 測試計畫
 
-2026-10-19 · 雅婷（10-20 更新：資料庫搬到 GCP 期間的測試環境）　｜　線上協作版：[TCROSS 測試計畫](https://claude.ai/code/artifact/c0784b6e-b08a-46f0-ab04-0c049db17d0e)
+2026-10-19 · 雅婷（10-20 更新：15:43 已切換到 GCP）　｜　線上協作版：[TCROSS 測試計畫](https://claude.ai/code/artifact/c0784b6e-b08a-46f0-ab04-0c049db17d0e)
 
 ## 目的與範圍
 
@@ -12,36 +12,43 @@
 | --- | --- | --- |
 | 前端網站 | `src/` | Vue 3 + Vite + Pinia + TypeScript |
 | AI 中介層 | `server/` | Python，部署在 Cloud Run，呼叫 Vertex AI Gemini |
-| 雲端函式 | `cloud/main.js` | Parse Cloud Code（目前跑在 Back4App；切換後由自架 Parse Server 執行，同一份檔案） |
-| 自架 Parse Server | `parse-server/` | Node，部署在 Cloud Run `tcross-parse`，資料庫是 Firestore MongoDB 相容模式（搬移中，見 [parse-server/README.md](parse-server/README.md)） |
+| 雲端函式 | `cloud/main.js` | Parse Cloud Code（由自架 Parse Server 執行；Back4App 只當備份） |
+| 自架 Parse Server | `parse-server/` | Node，部署在 Cloud Run `tcross-parse`，資料庫是 Firestore MongoDB 相容模式（10-20 起為正式資料庫，見 [parse-server/README.md](parse-server/README.md)） |
 | 維運腳本 | `scripts/` | Node 腳本：備份、還原、附件搬移、帳號與 schema 同步 |
 
 不在範圍內：Back4App、Google Cloud、Google Maps 等第三方服務本身的可用性。
 
-## 測試環境（10-20 起，資料庫搬到 GCP 期間）
+## 測試環境（10-20 15:43 起）
 
 | 環境 | 網址 | 資料庫 | 用來測 |
 | --- | --- | --- | --- |
-| **測試網址** | `https://tacc-iip--parse-test-wsf5d7qa.web.app`（Firebase 預覽頻道，10/27 10:42 失效，要延長就重新部署） | 新伺服器 `tcross-parse`（正式切換後就是正式站） | 前端主線、端到端；寫入的資料切換時會清掉重匯，可以放心新增刪除 |
-| 正式站 | `https://tacc-iip.web.app` | Back4App（切換前） | 中介層、AI 功能；附件上傳 |
+| 正式站 | `https://tacc-iip.web.app` | `tcross-parse`（Firestore） | 全部項目，含附件與 AI |
+| 測試網址 | `https://tacc-iip--parse-test-wsf5d7qa.web.app`（10/27 10:42 自動失效） | 同上，**和正式站同一個資料庫** | 只用來試前端改版；寫入的資料就是正式資料 |
+| 備份 | Back4App | 停在 10-20 15:43 的資料 | 只有回滾時用，不再測 |
 
-測試網址目前**不能**測附件與 AI：前端會呼叫 Cloud Run 中介層，而中介層還在向 Back4App 驗證登入，也不認得預覽網址。這兩類要等正式切換後在正式站測（下方檢查表標「切換後」的項目）。
-
-為什麼前端以測試網址為主：切換後測試網址背後的伺服器就是正式站，現在在 Back4App 上測，切換後還得重測。單元測試不連任何網站，跟環境無關。
+切換後已經沒有獨立的測試資料庫，在任何網址新增的資料都會進正式資料庫。測試資料名稱請加「【測試】」並在結束時刪除。單元測試不連任何網站，跟環境無關。
 
 ## 現況
 
-全站目前沒有任何自動化測試，也沒有 CI。`package.json` 只有 `dev`、`build`、`preview` 三個指令，`server/` 沒有 pytest。唯一自動的把關是 `build` 時 `vue-tsc` 的型別檢查。
+單元測試已經補上，但都要手動執行，還沒有 CI。`build` 時另有 `vue-tsc` 型別檢查。10-20 全部執行一次的結果：
+
+| 測試 | 檔案 | 指令 | 10-20 結果 |
+| --- | --- | --- | --- |
+| 前端單元（Vitest） | `tests/unit/`（匯出、缺漏檢核、附件） | `npm test` | 23 項全過 |
+| Cloud Code | `cloud/tests/main.test.cjs`（假的 `Parse.Cloud` 載入 `cloud/main.js`） | `npm run test:cloud` | 30 項全過（TC-20 非字串日期原本沒擋，10-20 已在 `main.js` 補上） |
+| 後端（pytest） | `server/tests/`（工具函式、端點、報告） | 在 `server/` 執行 `.venv/Scripts/python.exe -m pytest`（系統 Python 沒裝 pytest；新環境先 `pip install -r requirements-dev.txt`） | 106 項全過 |
+| 端到端（Playwright） | `tests/e2e/`（目前只有 `auth-redirect.spec.ts`） | `npm run test:e2e`，要用 `E2E_ENV_FILE` 指定憑證檔 | 4 項全過（預設伺服器已改成 `tcross-parse`，即正式資料庫；憑證檔不進 git） |
 
 現在實際在用的手動把關：
 
 - **部署後健康檢查**：curl `/status`，再帶 session token 打 `/signed-url`、`/download-url`（見 [OPERATIONS.md](OPERATIONS.md)、[server/README.md](server/README.md)）。
 - **範本修改**：`npm run dev` 後到「匯出成果」實際匯出，打開檔案核對。
-- **Cloud Code**：手動貼到 Back4App，沒有任何驗證步驟。切換後改由 `parse-server/scripts/deploy.sh` 部署，`node parse-server/scripts/smoke-test.mjs <備份資料夾>` 會以成員身分跑 15 項檢查（登入、CLP、Cloud Code 驗證、稽核紀錄）。
+- **Cloud Code**：由 `parse-server/scripts/deploy.sh` 部署，`node parse-server/scripts/smoke-test.mjs <備份資料夾>` 會以成員身分跑 15 項檢查（登入、CLP、Cloud Code 驗證、稽核紀錄）。
 - **備份還原演練**：10-05 還原到 `TCROSS-restore-test`，2058 個欄位 0 差異。
 - **搬家演練**：10-20 把 Back4App 備份匯入新伺服器，9606 個欄位 0 差異；`smoke-test.mjs` 15 項全過；瀏覽器在測試網址走過新增→改計畫→封存→解除封存→刪除活動、新增刪除計畫與分類，稽核紀錄全部正確。
+- **正式切換**：10-20 15:43 用當下備份重新匯入（9983 個欄位 0 差異）。切換後在正式站確認匯出檔有帶入照片（大事紀 16 張）、AI 成果報告 Word／PDF 都能下載。
 
-[ROADMAP.md](ROADMAP.md) 裡跟測試有關的 #3、#4、#5、#7 都已過 10/15 期限、仍未完成，而 10/31 要驗收交付。所以這份計畫分兩步：先用手動檢查表撐過驗收，再逐步補上自動化測試。
+10/31 要驗收交付。資料庫已在 10-20 切換到 GCP。單元測試已涵蓋 P0 的匯出、缺漏檢核、Cloud Code 與中介層驗證；驗收前仍以下方手動檢查表為主，驗收後再補端到端測試與 CI。
 
 ## 測試對象與風險
 
@@ -68,27 +75,27 @@
 | 前端單元 | Vitest（與 Vite 共用設定） | `src/utils/`、`src/models/` 的純函式；匯出檔用 exceljs / JSZip 解開後斷言內容 | 每次 commit、部署前 |
 | 後端單元 | pytest | `server/utils.py`、`charts.py` 的純函式；`document.py` 產出後用 python-docx 讀回來比對 | 每次部署 Cloud Run 前 |
 | 後端整合 | pytest + FastAPI TestClient，mock Parse / GCS / Gemini | 各端點的 401 / 403 / 429、參數驗證、正常路徑的回傳格式 | 每次部署 Cloud Run 前 |
-| Cloud Code | Node 測試把 `cloud/main.js` 載入假的 `Parse.Cloud`，直接呼叫 beforeSave | 封存鎖定、欄位規則、附件來源、操作者蓋章 | 貼到 Back4App 前 |
-| 端到端 | Playwright（第二階段再做） | 登入 → 新增活動 → 上傳 → 匯出的主線 | 每週或大改版前；切換前對測試網址跑（上傳除外），切換後對正式站跑 |
+| Cloud Code | Node 測試把 `cloud/main.js` 載入假的 `Parse.Cloud`，直接呼叫 beforeSave | 封存鎖定、欄位規則、附件來源、操作者蓋章 | 跑 `deploy.sh` 前 |
+| 端到端 | Playwright（第二階段再做） | 登入 → 新增活動 → 上傳 → 匯出的主線 | 每週或大改版前，對正式站跑 |
 | 手動驗收 | 檢查表（見下方「部署後手動回歸檢查」） | 真的 Gemini 生成、PDF 中文、圖表、CSP | 每次部署後 |
 
-端到端測試原本規劃用還原演練的 `TCROSS-restore-test`（Back4App），搬到 GCP 後它已不代表正式環境，改用上方「測試環境」的測試網址。測試帳號用 `Test123`（新伺服器上的密碼在 `backups/passwords-current.json`，不進 git）；測試資料名稱請加「【測試】」並在結束時刪除。
+端到端測試原本規劃用還原演練的 `TCROSS-restore-test`（Back4App），搬到 GCP 後它已不代表正式環境，改對正式站跑。測試帳號用 `Test123`（密碼在 `backups/passwords-current.json`，不進 git）；測試資料名稱請加「【測試】」並在結束時刪除。
 
 ## 測試案例清單
 
 只列還沒測過的案例，測完通過就從這裡刪掉。狀態欄請改成：未開始／撰寫中／通過／失敗。
 
-### 端到端（Playwright，切換前對測試網址、切換後對正式站）
+### 端到端（Playwright，對正式站）
 
 | 編號 | 案例 | 預期結果 | 優先 | 狀態 |
 | --- | --- | --- | --- | --- |
-| TC-39 | 新增活動 → 上傳照片 → 到「匯出成果」下載 ZIP | ZIP 內含該活動的照片與文件 | P1 | 受環境限制（要上傳，切換後再測） |
+| TC-39 | 新增活動 → 上傳照片 → 到「匯出成果」下載 ZIP | ZIP 內含該活動的照片與文件 | P1 | 未開始 |
 
 ## 部署後手動回歸檢查
 
 自動化測試補齊之前，每次部署後照這張表走一遍。指令細節見 [OPERATIONS.md](OPERATIONS.md) 與 [server/README.md](server/README.md)「驗證部署是否正確」。
 
-每項後面標的是**在哪裡測**：「測試網址」＝上方測試環境的預覽網址；「正式站」＝`tacc-iip.web.app`；「切換後」＝要等資料庫正式切換到 GCP（中介層也改指向新伺服器）才能測。正式切換完成後，全部項目都在正式站測，這些標記就可以拿掉。
+全部項目都在正式站 `tacc-iip.web.app` 測。
 
 **自架 Parse Server（改到 `parse-server/` 或 `cloud/main.js` 時）**
 
@@ -96,7 +103,7 @@
 - [ ] `node parse-server/scripts/smoke-test.mjs <已匯入的備份資料夾>`，15 項全過（會留下一筆登入與新增＋刪除的稽核紀錄）
 - [ ] 全新的 Firestore 資料庫第一次部署前，先在本機跑一次 `node index.js` 把索引建好，否則會超過 Cloud Run 4 分鐘啟動上限（見 [parse-server/README.md](parse-server/README.md)）
 
-**Cloud Run 中介層**（正式站）
+**Cloud Run 中介層**
 
 - [ ] curl `/status`，回傳 `{"ok": true}`
 - [ ] `gcloud run services describe` 確認運行中的是剛部署的 revision
@@ -106,12 +113,12 @@
 
 **前端主線（用 `Test123` 登入）**
 
-- [ ] 登入後進儀表板，活動列表與缺漏分數正常顯示（測試網址）
-- [ ] 新增一筆活動、上傳一張照片，重新整理後照片仍在（**切換後**）
-- [ ] 「匯出成果」各匯出一次簽到表、領據、大事紀，打開檢查金額大寫、民國日期（測試網址）；照片是否正確帶入（**切換後**，測試網址載不到照片）
-- [ ] 瀏覽器 Console 沒有 CSP 違規訊息（測試網址會看到中介層連線被擋，屬預期；切換後在正式站再確認一次）
+- [ ] 登入後進儀表板，活動列表與缺漏分數正常顯示
+- [ ] 新增一筆活動、上傳一張照片，重新整理後照片仍在
+- [ ] 「匯出成果」各匯出一次簽到表、領據、大事紀，打開檢查金額大寫、民國日期，照片正確帶入
+- [ ] 瀏覽器 Console 沒有 CSP 違規訊息
 
-**AI 功能（會花 Gemini 費用，只在改到 `server/` 或 AI 相關前端時跑；正式站，切換後再跑一次）**
+**AI 功能（會花 Gemini 費用，只在改到 `server/` 或 AI 相關前端時跑）**
 
 - [ ] 產一份成果報告：Word 與 PDF 都能下載，PDF 中文不亂碼、圖表數字與活動資料一致
 - [ ] 產一份會議紀錄
@@ -121,7 +128,7 @@
 
 - [ ] 刪除測試建立的活動與附件（AuditLog 會保留紀錄，屬正常）
 
-改 `cloud/main.js` 時，部署後（切換前：貼到 Back4App；切換後：跑 `parse-server/scripts/deploy.sh`）額外手動試：編輯一筆已封存活動，應該被拒。
+改 `cloud/main.js` 時，跑 `parse-server/scripts/deploy.sh` 部署後額外手動試：編輯一筆已封存活動，應該被拒。
 
 ## 導入時程與分工
 

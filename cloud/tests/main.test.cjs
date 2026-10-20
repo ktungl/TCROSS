@@ -255,11 +255,7 @@ test('TC-20 日期字串不是 YYYY-MM-DD 被拒', async () => {
   }
 });
 
-test('TC-20 日期不是字串（數字、物件）也應被拒', {
-  todo: 'main.js 只在 date 是字串時檢查格式；非字串目前靠 Parse schema（date 欄位為 String）在 beforeSave 之後擋下',
-}, async () => {
-  // 文件：「日期不是 YYYY-MM-DD」要被拒。main.js 只在 typeof date === 'string' 時檢查，
-  // 其他型別直接放行。
+test('TC-20 日期不是字串（數字、物件）也被拒', async () => {
   await rejects('beforeSave', 'Activity', { changes: { ...baseActivity, date: 20261019 } }, /YYYY-MM-DD/);
   await rejects('beforeSave', 'Activity', { changes: { ...baseActivity, date: { iso: 'x' } } }, /YYYY-MM-DD/);
 });

@@ -531,7 +531,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   }
 
   const date = object.get('date');
-  if (typeof date === 'string' && date.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+  if (date !== undefined && date !== null && (typeof date !== 'string' || (date.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(date.trim())))) {
     fail('日期格式必須是 YYYY-MM-DD');
   }
 

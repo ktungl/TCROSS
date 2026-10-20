@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import { defineConfig } from '@playwright/test'
 
-// 端到端測試只打還原演練用的 TCROSS-restore-test，不碰正式站。
+// 端到端測試打 GCP 上的自架 Parse Server（10-20 起就是正式資料庫），測試資料名稱加「【測試】」並在結束時刪除。
 // 憑證檔（E2E_ENV_FILE）內容：E2E_PARSE_APP_ID／E2E_PARSE_JS_KEY／E2E_PARSE_SERVER_URL／E2E_USERNAME／E2E_PASSWORD
 const envFile = process.env.E2E_ENV_FILE
 if (envFile) {
@@ -28,7 +28,7 @@ export default defineConfig({
     env: {
       VITE_PARSE_APP_ID: process.env.E2E_PARSE_APP_ID!,
       VITE_PARSE_JS_KEY: process.env.E2E_PARSE_JS_KEY!,
-      VITE_PARSE_SERVER_URL: process.env.E2E_PARSE_SERVER_URL || 'https://parseapi.back4app.com',
+      VITE_PARSE_SERVER_URL: process.env.E2E_PARSE_SERVER_URL || 'https://tcross-parse-502746951565.asia-east1.run.app/parse',
     },
   },
 })
