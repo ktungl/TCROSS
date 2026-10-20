@@ -168,8 +168,7 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 | --- | --- | --- |
 | `PARSE_MASTER_KEY` | GCP Secret Manager（`parse-master-key`），Cloud Run 以環境變數方式掛載（`secretKeyRef`，非 volume mount） | 去 Back4App Dashboard 重新產生後，`gcloud secrets versions add parse-master-key --data-file=-` 更新一版。**這裡是環境變數形式的 secret，只在 revision 建立當下解析一次，改了新版本不會自動生效**——即使綁的是 `:latest`，也要重新部署一次（跑一次「部署一支新版 Cloud Run 中介層」）讓新 revision 重新解析才會撿到新金鑰。**另外 GitHub repo secret `PARSE_MASTER_KEY`（每日備份用）也要同步更新**：`gh secret set PARSE_MASTER_KEY` |
 | `PARSE_APP_ID`／`PARSE_JS_KEY` | Cloud Run 環境變數（明文，設計上本來就是公開資訊）＋前端 `.env`（`.gitignore` 已排除） | 這兩把本來就假設公開，不是機密；真要換要同時改前端 `.env` 與 Cloud Run 環境變數 |
-| `parse-server-master-key`（自架 Parse Server 的 Master Key） | GCP Secret Manager，`tcross-parse` 以環境變數掛載；和 Back4App 的不同 | `openssl rand -hex 32 | tr -d "
-" | gcloud secrets versions add parse-server-master-key --data-file=-` 後重跑 `parse-server/scripts/deploy.sh`；切換後中介層與 GitHub 備份用的也要同步換 |
+| `parse-server-master-key`（自架 Parse Server 的 Master Key） | GCP Secret Manager，`tcross-parse` 以環境變數掛載；和 Back4App 的不同 | `openssl rand -hex 32 \| tr -d '\r\n' \| gcloud secrets versions add parse-server-master-key --data-file=-`（Windows 的 openssl 會帶 `\r`，一定要一起去掉）後重跑 `parse-server/scripts/deploy.sh`；切換後中介層與 GitHub 備份用的也要同步換 |
 | `parse-db-uri`（Firestore 連線字串，帳密 `parse-server`） | GCP Secret Manager | `gcloud firestore user-creds reset-password parse-server --database=tcross`，組成新連線字串（格式見 `parse-server/scripts/setup-gcp.sh`）加一版 secret，再重跑 `deploy.sh` |
 | `tcross-middleware-sa` 服務帳戶 | GCP IAM，無 JSON 金鑰檔（用 IAM 自我模擬簽 URL，見 [server/README.md](server/README.md)） | 沒有金鑰檔案可外洩，不需要輪替；如需撤銷存取直接在 IAM 移除該服務帳戶權限 |
 

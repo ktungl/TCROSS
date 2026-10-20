@@ -32,7 +32,8 @@ for ROLE in roles/datastore.user roles/datastore.indexAdmin; do
     --role "$ROLE" --condition=None --format=none
 done
 
-openssl rand -hex 32 | tr -d '\n' | gcloud secrets create parse-server-master-key --project "$P" \
+# Windows Git Bash 的 openssl 輸出 \r\n，兩個都要去掉，不然金鑰尾巴多一個 \r，HTTP 標頭送出時會被去掉而對不上
+openssl rand -hex 32 | tr -d '\r\n' | gcloud secrets create parse-server-master-key --project "$P" \
   --replication-policy automatic --data-file=-
 
 for S in parse-db-uri parse-server-master-key; do
