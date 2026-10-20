@@ -43,3 +43,6 @@ backups/
 # Playwright
 test-results/
 playwright-report/
+
+# 自架 Parse Server：部署時從 cloud/main.js 複製，見 parse-server/scripts/deploy.sh
+parse-server/cloud/
