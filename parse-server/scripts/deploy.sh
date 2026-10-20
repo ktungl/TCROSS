@@ -27,6 +27,7 @@ gcloud run deploy "$SERVICE" \
   --service-account "tcross-parse-sa@$P.iam.gserviceaccount.com" \
   --allow-unauthenticated \
   --memory 512Mi \
+  --max-instances 2 \
   --set-env-vars "PARSE_APP_ID=$APP_ID,PARSE_JS_KEY=$JS_KEY,PUBLIC_SERVER_URL=https://$SERVICE-$PN.$REGION.run.app/parse" \
   --set-secrets "DATABASE_URI=parse-db-uri:latest,PARSE_MASTER_KEY=parse-server-master-key:latest"
 
