@@ -3,3 +3,9 @@ __pycache__/
 .venv/
 .env
 .dockerignore
+
+# 測試只在本機跑，不進映像檔
+tests/
+.pytest_cache/
+pytest.ini
+requirements-dev.txt

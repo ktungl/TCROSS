@@ -39,3 +39,7 @@ scripts/users.local.json
 
 # 資料備份（含個資），見 scripts/backup-parse.mjs
 backups/
+
+# Playwright
+test-results/
+playwright-report/
