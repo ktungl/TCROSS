@@ -2,14 +2,16 @@
 then assemble the structured result into a real .docx report. See ROADMAP.md
 「GCP 整合進度」Phase 3b for the architecture this implements."""
 
-import io
 import json
+import logging
 import mimetypes
 import os
 
-from docx import Document
 from google import genai
 from google.genai import types
+
+import charts
+from document import Block, Bullet, Heading, Image, Paragraph, Table
 
 GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "us-central1")
@@ -125,34 +127,41 @@ def analyze_sources(object_paths: list[str]) -> dict:
     }
 
 
-def build_report_docx(activity_name: str, analysis: dict) -> bytes:
-    """Assemble the Gemini analysis into a real .docx — this is a genuine Word
-    file (python-docx), not the renamed-HTML trick the old frontend export used
-    before OPERATIONS.md 範本修改流程 fixed that for the manual exports."""
-    doc = Document()
-    doc.add_heading(activity_name or "活動成果報告", level=1)
+def _safe_charts(build) -> list[tuple[bytes, str]]:
+    """圖表只是輔助：畫不出來（字型、資料格式）就略過，不讓整份報告失敗。"""
+    try:
+        result = build()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("tcross.audit").exception("report chart failed")
+        return []
+    if result is None:
+        return []
+    return result if isinstance(result, list) else [result]
 
-    doc.add_heading("摘要", level=2)
-    doc.add_paragraph(analysis["summary"] or "（無摘要）")
+
+def build_report(activity: dict, analysis: dict, plan_activities: list[tuple[str, list[dict]]]) -> list[Block]:
+    """成果報告。plan_activities 是 [(計畫名稱, 該計畫的活動清單)]，用來畫同計畫比較圖。"""
+    blocks: list[Block] = [Heading(activity.get("name") or "活動成果報告", 1)]
+
+    blocks += [Heading("摘要"), Paragraph(analysis["summary"] or "（無摘要）")]
 
     if analysis["highlights"]:
-        doc.add_heading("重點", level=2)
-        for item in analysis["highlights"]:
-            doc.add_paragraph(item, style="List Bullet")
+        blocks.append(Heading("重點"))
+        blocks += [Bullet(item) for item in analysis["highlights"]]
 
     if analysis["kpis"]:
-        doc.add_heading("成果指標", level=2)
-        table = doc.add_table(rows=1, cols=3)
-        table.style = "Light Grid Accent 1"
-        header = table.rows[0].cells
-        header[0].text, header[1].text, header[2].text = "項目", "數值", "單位"
-        for kpi in analysis["kpis"]:
-            row = table.add_row().cells
-            row[0].text, row[1].text, row[2].text = kpi["k"], kpi["v"], kpi["u"]
+        blocks.append(Heading("成果指標"))
+        blocks.append(Table(["項目", "數值", "單位"], [[k["k"], k["v"], k["u"]] for k in analysis["kpis"]], (3, 1, 1)))
+        blocks += [Image(png, caption) for png, caption in _safe_charts(lambda: charts.kpi_charts(analysis["kpis"]))]
 
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+    participation = _safe_charts(lambda: charts.gender_chart(activity))
+    for plan_name, acts in plan_activities:
+        participation += _safe_charts(lambda: charts.plan_comparison_chart(plan_name, activity.get("objectId", ""), acts))
+    if participation:
+        blocks.append(Heading("參與情形"))
+        blocks += [Image(png, caption) for png, caption in participation]
+
+    return blocks
 
 
 # ── 會議紀錄（AI_UPGRADE_PLAN.md 1-3）──────────────────────────
@@ -238,49 +247,40 @@ def analyze_meeting(object_paths: list[str]) -> dict:
     }
 
 
-def build_meeting_docx(activity_name: str, activity_date: str, minutes: dict) -> bytes:
-    doc = Document()
-    doc.add_heading(minutes["title"] or activity_name or "會議紀錄", level=1)
+def build_meeting(activity_name: str, activity_date: str, minutes: dict) -> list[Block]:
+    blocks: list[Block] = [Heading(minutes["title"] or activity_name or "會議紀錄", 1)]
     meta = "　".join(s for s in [f"活動：{activity_name}" if activity_name else "", f"日期：{activity_date}" if activity_date else ""] if s)
     if meta:
-        doc.add_paragraph(meta)
+        blocks.append(Paragraph(meta))
     if minutes["participants"]:
-        doc.add_paragraph(f"與會者（錄音中提到）：{'、'.join(minutes['participants'])}")
+        blocks.append(Paragraph(f"與會者（錄音中提到）：{'、'.join(minutes['participants'])}"))
 
-    doc.add_heading("會議摘要", level=2)
-    doc.add_paragraph(minutes["summary"] or "（無摘要）")
+    blocks += [Heading("會議摘要"), Paragraph(minutes["summary"] or "（無摘要）")]
 
     if minutes["discussions"]:
-        doc.add_heading("討論重點", level=2)
+        blocks.append(Heading("討論重點"))
         for d in minutes["discussions"]:
             if d["topic"]:
-                doc.add_heading(d["topic"], level=3)
-            for point in d["points"]:
-                doc.add_paragraph(point, style="List Bullet")
+                blocks.append(Heading(d["topic"], 3))
+            blocks += [Bullet(point) for point in d["points"]]
 
-    doc.add_heading("決議事項", level=2)
+    blocks.append(Heading("決議事項"))
     if minutes["decisions"]:
-        for i, item in enumerate(minutes["decisions"], 1):
-            doc.add_paragraph(f"{i}. {item}")
+        blocks += [Paragraph(f"{i}. {item}") for i, item in enumerate(minutes["decisions"], 1)]
     else:
-        doc.add_paragraph("（錄音中沒有明確決議）")
+        blocks.append(Paragraph("（錄音中沒有明確決議）"))
 
-    doc.add_heading("待辦事項", level=2)
+    blocks.append(Heading("待辦事項"))
     if minutes["todos"]:
-        table = doc.add_table(rows=1, cols=3)
-        table.style = "Light Grid Accent 1"
-        header = table.rows[0].cells
-        header[0].text, header[1].text, header[2].text = "事項", "負責人", "期限"
-        for t in minutes["todos"]:
-            row = table.add_row().cells
-            row[0].text, row[1].text, row[2].text = t["task"], t["owner"] or "（未指定）", t["due"] or "—"
+        blocks.append(Table(
+            ["事項", "負責人", "期限"],
+            [[t["task"], t["owner"] or "（未指定）", t["due"] or "—"] for t in minutes["todos"]],
+            (3, 1, 1),
+        ))
     else:
-        doc.add_paragraph("（錄音中沒有明確待辦）")
+        blocks.append(Paragraph("（錄音中沒有明確待辦）"))
 
     if minutes["notes"]:
-        doc.add_paragraph(f"錄音狀況：{minutes['notes']}")
-    doc.add_paragraph("※ 本紀錄由 AI 依錄音整理，決議、負責人與期限請與會議主持人確認後再發出。")
-
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+        blocks.append(Paragraph(f"錄音狀況：{minutes['notes']}"))
+    blocks.append(Paragraph("※ 本紀錄由 AI 依錄音整理，決議、負責人與期限請與會議主持人確認後再發出。", small=True))
+    return blocks

@@ -100,6 +100,10 @@ def upload_bytes(object_path: str, data: bytes, content_type: str) -> None:
     _client().bucket(GCS_BUCKET).blob(object_path).upload_from_string(data, content_type=content_type)
 
 
+def object_exists(object_path: str) -> bool:
+    return _client().bucket(GCS_BUCKET).blob(object_path).exists()
+
+
 def delete_object(object_path: str) -> None:
     """Delete a GCS object. No-op if it's already gone, so callers can retry a
     partially-failed batch delete without erroring on the objects already removed."""

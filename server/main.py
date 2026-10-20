@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from parse_auth import (
     activities_referencing,
+    activities_in_plan,
     activity_exists,
     existing_activity_ids,
     find_generation_jobs_for_object_paths,
@@ -22,7 +23,8 @@ from parse_auth import (
     verify_session_token,
     write_with_master_key,
 )
-from report import analyze_meeting, analyze_sources, build_meeting_docx, build_report_docx
+from document import render_docx, render_pdf
+from report import analyze_meeting, analyze_sources, build_meeting, build_report
 from rewrite import FORMATS as REWRITE_FORMATS, rewrite_activity
 from assist import (
     MAX_SIGN_IN_IMAGES,
@@ -33,7 +35,7 @@ from assist import (
     recognize_sign_in,
     suggest_classification,
 )
-from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, upload_bytes
+from storage import delete_object, generate_signed_download_url, generate_signed_upload_url, object_exists, upload_bytes
 from utils import (
     ATTACHMENT_FOLDERS,
     is_content_type_allowed,
@@ -96,6 +98,8 @@ class SignedUrlRequest(BaseModel):
 
 class DownloadUrlRequest(BaseModel):
     objectPath: str
+    # AI 報告的 PDF 版：objectPath 仍傳 resultFile（.docx），授權照 .docx 檢查，簽的是同名 .pdf
+    pdf: bool = False
 
 
 class DeleteObjectsRequest(BaseModel):
@@ -251,8 +255,16 @@ def download_url(body: DownloadUrlRequest, user: dict = Depends(enforce_rate_lim
         audit_log.warning("rejected: unauthorized objectPath user=%s objectPath=%s", user.get("username"), body.objectPath)
         raise HTTPException(403, "objectPath 不存在或無權存取")
 
-    audit_log.info("download-url issued user=%s objectPath=%s", user.get("username"), body.objectPath)
-    return {"downloadUrl": generate_signed_download_url(body.objectPath)}
+    path = body.objectPath
+    if body.pdf:
+        if matched[path].get("resultFile") != path or not path.endswith(".docx"):
+            raise HTTPException(400, "只有 AI 產出的報告有 PDF 版")
+        path = _pdf_path(path)
+        if not object_exists(path):
+            raise HTTPException(404, "這份報告是加入 PDF 功能前產生的，沒有 PDF 版；需要的話請重新產生")
+
+    audit_log.info("download-url issued user=%s objectPath=%s", user.get("username"), path)
+    return {"downloadUrl": generate_signed_download_url(path)}
 
 
 @app.post("/delete-objects")
@@ -279,7 +291,9 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
             audit_log.warning("rejected: unauthorized objectPaths user=%s objectPaths=%s", user.get("username"), unauthorized)
             raise HTTPException(403, "部分 objectPath 不存在或無權存取")
 
-    for path in body.objectPaths:
+    # AI 報告的 PDF 版跟著 .docx 一起刪（舊工作沒有 PDF，delete_object 會略過）
+    pdf_siblings = [_pdf_path(p) for p in body.objectPaths if "/generated/" in p and p.endswith(".docx")]
+    for path in [*body.objectPaths, *pdf_siblings]:
         delete_object(path)
     audit_log.info("objects deleted user=%s count=%d objectPaths=%s", user.get("username"), len(body.objectPaths), body.objectPaths)
     return {"deleted": len(body.objectPaths)}
@@ -547,27 +561,52 @@ def trigger_generation(job_id: str, user: dict = Depends(enforce_rate_limit)):
         "generation triggered user=%s jobId=%s activityId=%s kind=%s sourceCount=%d",
         user.get("username"), job_id, job["activityId"], kind, len(job["sourceFiles"]),
     )
-    status = _run_generation(job_id, job["activityId"], kind, activity, job["sourceFiles"])
+    status = _run_generation(job_id, job["activityId"], kind, activity, job["sourceFiles"], user["sessionToken"])
     return {"status": status}
 
 
-def _build_result(kind: str, activity: dict, source_paths: list[str]) -> bytes:
-    name = activity.get("name", "")
+def _pdf_path(docx_path: str) -> str:
+    return docx_path.removesuffix(".docx") + ".pdf"
+
+
+# 成果報告的同計畫比較圖最多畫幾個計畫
+MAX_COMPARISON_PLANS = 3
+
+
+def _plan_activities(session_token: str, activity: dict) -> list[tuple[str, list[dict]]]:
+    """[(計畫名稱, 該計畫的活動)]，用呼叫者自己的 session 查，跟畫面上看得到的範圍一致。"""
+    plan_ids = [p.get("objectId") for p in (activity.get("plans") or []) if isinstance(p, dict) and p.get("objectId")]
+    if not plan_ids:
+        return []
+    try:
+        names = list_names(session_token, "Plan")
+        return [(names.get(pid, ""), activities_in_plan(session_token, pid)) for pid in plan_ids[:MAX_COMPARISON_PLANS]]
+    except Exception:  # noqa: BLE001 — 比較圖只是輔助，查不到就不畫
+        audit_log.exception("plan comparison lookup failed activityId=%s", activity.get("objectId"))
+        return []
+
+
+def _build_result(kind: str, activity: dict, source_paths: list[str], session_token: str):
     if kind == "會議紀錄":
-        return build_meeting_docx(name, activity.get("date", ""), analyze_meeting(source_paths))
-    return build_report_docx(name, analyze_sources(source_paths))
+        return build_meeting(activity.get("name", ""), activity.get("date", ""), analyze_meeting(source_paths))
+    return build_report(activity, analyze_sources(source_paths), _plan_activities(session_token, activity))
 
 
-def _run_generation(job_id: str, activity_id: str, kind: str, activity: dict, source_paths: list[str]) -> str:
+def _run_generation(job_id: str, activity_id: str, kind: str, activity: dict, source_paths: list[str], session_token: str) -> str:
     started = time.monotonic()
     try:
-        docx_bytes = _build_result(kind, activity, source_paths)
+        blocks = _build_result(kind, activity, source_paths, session_token)
         result_path = f"activities/{activity_id}/generated/{job_id}.docx"
         upload_bytes(
             result_path,
-            docx_bytes,
+            render_docx(blocks),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+        # PDF 是附帶的：排版失敗（例如字型沒裝好）只記 log，Word 版照樣交付
+        try:
+            upload_bytes(_pdf_path(result_path), render_pdf(blocks), "application/pdf")
+        except Exception:  # noqa: BLE001
+            audit_log.exception("generation pdf failed jobId=%s", job_id)
         write_with_master_key("GenerationJob", job_id, {"status": "done", "resultFile": result_path})
         # 耗時記下來，用來確認長錄音能否在 Cloud Run timeout（900 秒）內跑完
         audit_log.info("generation done jobId=%s kind=%s seconds=%.1f resultFile=%s", job_id, kind, time.monotonic() - started, result_path)

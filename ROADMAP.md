@@ -14,7 +14,6 @@
 
 | # | 項目 | 期限 | 說明 |
 | --- | --- | --- | --- |
-| 1 | 🟠 部署 10-19 資安修正 | 儘快 | 程式已改並 commit 在 `Donna`（`e3470e9`、`336564f`），還沒上線。內容：上傳 Content-Type 白名單＋下載只有圖片／影音／PDF inline、副檔名黑名單補 `html`／`svg` 等；GenerationJob 狀態／產出檔前端不能寫、素材限同活動素材資料夾；`/attachments/delete` 要能讀該活動；Cloud Code 清孤兒檔只處理 Back4App 網址、新附件只能是 `gcs:attachments/`；AI 生成失敗只回通用訊息；成果清單 CSV 防公式注入。**順序**：① 合併到 `main`，前端自動部署（要比 Cloud Run 先上，否則白名單外的類型會被擋）② Cloud Run 重新部署 ③ `cloud/main.js` 貼回 Back4App。 |
 | 2 | ⬜ 確認關閉 client class creation | 儘快 | Back4App App Settings「Allow client class creation」要關閉，否則拿到公開 App ID＋JS Key 的人能自己建 class 塞資料（10-19 已刪除權限全開的範例 class `B4aVehicle`）。 |
 | 3 | ⬜ 匯出格式細節 | 10/15 | 拿實際範本核對抬頭／頁碼／編號。 |
 | 4 | ⬜ 實際上傳＋AI 生成實測 | 10/15 | 會寫資料、花 Gemini 費用，在正式網址上跑一次，排在場域測試時。 |
@@ -26,8 +25,7 @@
 | 10 | ⬜ OPERATIONS.md 組織面 | 10/31 | 值班窗口、通報流程、還原演練週期（建議每季），待團隊補上。 |
 | 11 | 🟠 初始密碼可猜 | — | 4 個新帳號初始密碼規則可猜，依決定暫不處理；建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
 | 12 | ⬜ Back4App 擁有者帳號開 MFA | — | Back4App 後台安全建議：擁有者帳號未啟用兩步驟驗證。 |
-| 13 | ⬜ AI 報告 PDF／Excel 輸出 | — | AI 報告目前只產 `.docx`。 |
-| 14 | ⬜ `Autocomplete` 換新版 | — | 目前可用；主控台警告 `google.maps.places.Autocomplete` 是舊版（Google 停用前至少提前 12 個月通知），之後換成 `PlaceAutocompleteElement`。 |
+| 13 | 🟡 部署 AI 報告 PDF＋圖表 | — | 10-19 程式已改、未 commit：AI 報告（成果報告／會議紀錄）同時產 `.docx` 與 `.pdf`；成果報告加 KPI、性別組成、同計畫各場次人數比較圖；下載拆成 Word／PDF 兩顆按鈕。**順序**：① Cloud Run 先部署（Dockerfile 會下載字型，建置會比較久）② 再合併到 `main` 部署前端（反過來的話，舊後端不認得 `pdf` 參數，PDF 按鈕會下載到 Word）。部署後在正式站產一份成果報告，核對圖表與 PDF 中文。舊工作沒有 PDF，按 PDF 會提示重新產生。Excel 輸出尚未做。 |
 | 15 | ⬜ 評估資料庫搬到 GCP | 10/31 後 | Cloud Run 自架 Parse Server＋MongoDB（Atlas 可經 GCP Marketplace 計費；或試 Firestore MongoDB 相容模式），前端與 `cloud/main.js` 幾乎不用改，估 7～9 個工作天。Back4App Free 不會給密碼雜湊，除非客服能匯出完整資料庫，否則帳號要重設密碼。 |
 
 

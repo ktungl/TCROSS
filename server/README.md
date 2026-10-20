@@ -5,7 +5,7 @@
 - `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL（PUT）給前端直傳檔案。
 - `/download-url`：同樣驗證 session token 後，對 `objectPath` 發一個限時的 GCS v4 signed URL（GET）給前端下載/預覽檔案；`objectPath` 必須以 `activities/` 開頭且不含 `..`（`utils.is_valid_object_path()`），避免任何登入使用者拿去簽發桶內任意路徑的下載網址。前端 `AiGenerationModal.vue` 在 `GenerationJob.status === 'done'` 時會呼叫這個端點。
 - `/delete-objects`：驗證 session token 後，批次刪除傳入的 `objectPaths`（同樣用 `is_valid_object_path()` 檢查每個路徑），供前端在刪除 `GenerationJob` 記錄前先清掉對應的 GCS 來源/產出檔案（`src/stores/db.ts` 的 `deleteGenerationJob()`）。
-- `/generate/{job_id}`：Phase 3b。驗證呼叫者能讀到這筆 `GenerationJob` 且狀態是 `pending` 後，先用 Master Key 把 `status` 改成 `processing`，接著**在同一個請求裡**把生成做完（呼叫 Gemini → 組裝 `.docx` → 寫回 GCS → 用 Master Key 把 `status`/`resultFile` 或 `errorMessage` 寫回 Parse，`report.py` 的 `analyze_sources()`／`build_report_docx()`）才回應 `{"status": "done"|"error"}`。前端 `AiGenerationModal.vue` 建立好 `GenerationJob` 後用 `keepalive` 送出觸發請求但**不等回應**，結果透過既有的 5 秒輪詢取得。停在 `processing` 超過 20 分鐘的工作允許重新觸發（前端有「重新觸發」按鈕）。每筆工作最多 `MAX_SOURCE_FILES`（預設 20）個素材檔。
+- `/generate/{job_id}`：Phase 3b。驗證呼叫者能讀到這筆 `GenerationJob` 且狀態是 `pending` 後，先用 Master Key 把 `status` 改成 `processing`，接著**在同一個請求裡**把生成做完（呼叫 Gemini → `report.py` 組出報告內容（成果報告含圖表，`charts.py`）→ `document.py` 輸出 `.docx` 與同名 `.pdf` 寫回 GCS → 用 Master Key 把 `status`/`resultFile` 或 `errorMessage` 寫回 Parse）才回應 `{"status": "done"|"error"}`。前端 `AiGenerationModal.vue` 建立好 `GenerationJob` 後用 `keepalive` 送出觸發請求但**不等回應**，結果透過既有的 5 秒輪詢取得。停在 `processing` 超過 20 分鐘的工作允許重新觸發（前端有「重新觸發」按鈕）。每筆工作最多 `MAX_SOURCE_FILES`（預設 20）個素材檔。
 
 `parse_auth.write_with_master_key()` 現在由 `/generate` 使用，把 `GenerationJob` 推進 `processing`/`done`/`error`。
 
@@ -130,6 +130,6 @@ curl -X POST https://<cloud-run-url>/generate/<某筆 pending 狀態的 Generati
 ## 尚未做的事（不在這次範圍）
 
 - **Phase 3b 程式碼已完成、部署上線並通過端到端測試**（`/generate` 端點、`report.py` 的 Gemini 呼叫與 `.docx` 組裝、前端 `AiGenerationModal.vue` 已串接觸發；revision `tcross-middleware-00011-hdv`，2026-09-17）。詳見上方「部署前提」第 5 點。
-- 目前只組裝 `.docx`（Word），沒有實作 PDF／Excel 輸出（README.md 的目標架構寫「輸出：PDF、Word、Excel」，這裡先做一種格式當 MVP；`GenerationJob.kind` 目前 `成果報告`／`其他` 兩種都走同一套 `.docx` 組裝邏輯，還沒有依 `kind` 分流成不同格式）。
+- 輸出 `.docx` 與 `.pdf`（2026-10-19 起）：兩份由同一份內容結構（`document.py` 的 blocks）產生；`resultFile` 仍記 `.docx`，PDF 是同路徑換副檔名，`/download-url` 帶 `pdf: true` 下載、`/delete-objects` 刪 `.docx` 時一併刪 PDF。PDF 用 fpdf2 排版，中文字型 Noto Sans TC 由 Dockerfile 執行 `fetch_fonts.py` 下載（核對 SHA-256）；字型缺檔時 PDF 略過、Word 照常交付。成果報告的圖表：KPI（同單位 ≥2 項才畫）、參與人數性別組成、同計畫各場次人數比較（最多 3 個計畫）；畫圖失敗只略過該圖。Excel 輸出尚未實作。
 - 沒有自動化測試。
 - `/status`、`/signed-url`、`/download-url`、`/delete-objects`、`/generate` 都已部署到 Cloud Run 並用上面的 curl 指令在線上實測過（見 [../ROADMAP.md](../ROADMAP.md) 部署紀錄）。

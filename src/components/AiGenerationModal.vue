@@ -275,11 +275,12 @@ async function startGeneration() {
 
 const downloading = ref<string | null>(null)
 
-async function download(job: GenerationJobRecord) {
+/** downloading 存「工作 id:格式」，Word／PDF 兩顆按鈕各自顯示取得中。 */
+async function download(job: GenerationJobRecord, pdf = false) {
   if (!job.resultFile) return
-  downloading.value = job.id
+  downloading.value = `${job.id}:${pdf ? 'pdf' : 'docx'}`
   try {
-    const url = await requestDownloadUrl(job.resultFile)
+    const url = await requestDownloadUrl(job.resultFile, pdf)
     window.open(url, '_blank')
   } catch (e) {
     pushToast(errorMessage(e), 'error')
@@ -375,15 +376,14 @@ useEscape(close)
         <p v-else-if="activeJob.status === 'error'" class="sub kv">
           {{ activeJob.errorMessage || '生成失敗' }}
         </p>
-        <button
-          v-else-if="activeJob.resultFile"
-          class="btn ghost sm"
-          style="margin-top:8px"
-          :disabled="downloading === activeJob.id"
-          @click="download(activeJob)"
-        >
-          {{ downloading === activeJob.id ? '取得中…' : '下載' }}
-        </button>
+        <div v-else-if="activeJob.resultFile" class="row" style="margin-top:8px;gap:8px">
+          <button class="btn ghost sm" :disabled="!!downloading" @click="download(activeJob)">
+            {{ downloading === `${activeJob.id}:docx` ? '取得中…' : '下載 Word' }}
+          </button>
+          <button class="btn ghost sm" :disabled="!!downloading" @click="download(activeJob, true)">
+            {{ downloading === `${activeJob.id}:pdf` ? '取得中…' : '下載 PDF' }}
+          </button>
+        </div>
       </div>
 
       <div class="field" v-if="pastJobs.length">
@@ -392,15 +392,14 @@ useEscape(close)
           <li v-for="j in pastJobs" :key="j.id">
             <span>{{ j.kind }}　{{ statusLabel(j.status) }}<span class="actor-stamp" style="margin-left:6px">建立者：{{ j.createdByName || UNRECORDED }}</span></span>
             <span style="display:flex;align-items:center;gap:8px">
-              <button
-                v-if="j.status === 'done' && j.resultFile"
-                class="btn ghost sm"
-               
-                :disabled="downloading === j.id"
-                @click="download(j)"
-              >
-                {{ downloading === j.id ? '取得中…' : '下載' }}
-              </button>
+              <template v-if="j.status === 'done' && j.resultFile">
+                <button class="btn ghost sm" :disabled="!!downloading" @click="download(j)">
+                  {{ downloading === `${j.id}:docx` ? '取得中…' : 'Word' }}
+                </button>
+                <button class="btn ghost sm" :disabled="!!downloading" @click="download(j, true)">
+                  {{ downloading === `${j.id}:pdf` ? '取得中…' : 'PDF' }}
+                </button>
+              </template>
               <span class="mono fsize">{{ formatDateTime(j.createdAt) }}</span>
               <button class="x" title="移到垃圾桶" :disabled="deletingJobId === j.id" @click="removeJob(j)">×</button>
             </span>
