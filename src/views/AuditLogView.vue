@@ -133,6 +133,13 @@ function goPage(n: number) {
   </div>
 
   <p v-if="loadError" class="flagbox"><b>讀取失敗</b>　{{ loadError }}</p>
+  <div v-if="pageCount > 1" class="row pager pager-top">
+    <button class="btn ghost sm" :disabled="page <= 1" @click="goPage(1)">第一頁</button>
+    <button class="btn ghost sm" :disabled="page <= 1" @click="goPage(page - 1)">上一頁</button>
+    <span class="count-text">第 {{ page }} ／ {{ pageCount }} 頁（{{ rangeText }}）</span>
+    <button class="btn ghost sm" :disabled="page >= pageCount" @click="goPage(page + 1)">下一頁</button>
+    <button class="btn ghost sm" :disabled="page >= pageCount" @click="goPage(pageCount)">最後一頁</button>
+  </div>
   <div class="card flush">
     <p v-if="loading && !logs.length" class="empty">載入中…</p>
     <AuditLogList v-else :logs="paged" :empty-text="logs.length ? '目前篩選條件下沒有操作紀錄。' : undefined" />
@@ -152,6 +159,10 @@ function goPage(n: number) {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+.pager-top {
+  margin-top: 0;
+  margin-bottom: 12px;
 }
 .filters {
   display: grid;

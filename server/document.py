@@ -64,6 +64,11 @@ class Image:
         width_px = int.from_bytes(self.png[16:20], "big")  # PNG IHDR 的寬度欄位
         return width_px / IMAGE_DPI * 25.4
 
+    @property
+    def height_mm(self) -> float:
+        height_px = int.from_bytes(self.png[20:24], "big")  # PNG IHDR 的高度欄位
+        return height_px / IMAGE_DPI * 25.4
+
 
 Block = Heading | Paragraph | Bullet | Table | Image
 
@@ -91,6 +96,7 @@ def render_docx(blocks: list[Block]) -> bytes:
                     cell.text = text
         elif isinstance(b, Image):
             doc.add_picture(io.BytesIO(b.png), width=Cm(min(15, b.width_mm / 10)))
+            doc.paragraphs[-1].paragraph_format.keep_with_next = True  # 圖說跟著圖，不被分到下一頁
             run = doc.add_paragraph().add_run(b.caption)
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(*_INK_SOFT)
@@ -162,8 +168,13 @@ def render_pdf(blocks: list[Block]) -> bytes:
                         r.cell(cell)
             pdf.ln(2)
         elif isinstance(b, Image):
-            pdf.ln(1)
-            pdf.image(io.BytesIO(b.png), w=min(pdf.epw, b.width_mm))
+            w = min(pdf.epw, b.width_mm)
+            # 圖加圖說（預留兩行）放不下就整組換頁，避免圖說孤零零掉到下一頁
+            if pdf.get_y() + 1 + b.height_mm * w / b.width_mm + 12 > pdf.page_break_trigger:
+                pdf.add_page()
+            else:
+                pdf.ln(1)
+            pdf.image(io.BytesIO(b.png), w=w)
             text(b.caption, 9, color=_INK_SOFT)
             pdf.ln(2)
     return bytes(pdf.output())

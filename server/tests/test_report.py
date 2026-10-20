@@ -55,6 +55,9 @@ def test_tc35_render_docx_paragraph_order_and_text():
         ["項目", "數值", "單位"], ["參加人數", "30", "人"], ["場次", "2", "場"],
     ]
     assert len(doc.inline_shapes) == 1
+    # 圖片段落設「與下段同頁」，圖說不會被分到下一頁
+    picture = next(p for p in doc.paragraphs if p._p.xpath(".//w:drawing"))
+    assert picture.paragraph_format.keep_with_next is True
 
     # 表格在 body 中的位置：位於「重點二」之後、圖片之前
     from docx.table import Table as DocxTable

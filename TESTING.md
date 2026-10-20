@@ -100,7 +100,7 @@
 **自架 Parse Server（改到 `parse-server/` 或 `cloud/main.js` 時）**
 
 - [ ] curl `https://tcross-parse-502746951565.asia-east1.run.app/health`，回傳 `{"ok":true}`
-- [ ] `node parse-server/scripts/smoke-test.mjs <已匯入的備份資料夾>`，15 項全過（會留下一筆登入與新增＋刪除的稽核紀錄）
+- [ ] 用 `Test123` 跑一次端到端 `npm run test:e2e`，全過。（`smoke-test.mjs` 用的是匯入時的臨時密碼，切換後已換成正式密碼，現在會登入失敗，只在重新匯入後用）
 - [ ] 全新的 Firestore 資料庫第一次部署前，先在本機跑一次 `node index.js` 把索引建好，否則會超過 Cloud Run 4 分鐘啟動上限（見 [parse-server/README.md](parse-server/README.md)）
 
 **Cloud Run 中介層**
