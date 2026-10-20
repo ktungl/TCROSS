@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:cloud": "node --test cloud/tests/main.test.cjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -20,6 +23,7 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/google.maps": "^3.66.3",
     "@types/node": "^24.13.2",
     "@types/parse": "^3.0.9",
@@ -27,6 +31,7 @@
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
+    "vitest": "^5.0.5",
     "vue-tsc": "^3.3.5"
   }
 }

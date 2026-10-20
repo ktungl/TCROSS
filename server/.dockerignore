@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+# 測試只在本機跑，不進映像檔
+tests/
+.pytest_cache/
+pytest.ini
+requirements-dev.txt

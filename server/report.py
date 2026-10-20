@@ -2,16 +2,19 @@
 then assemble the structured result into a real .docx report. See ROADMAP.md
 「GCP 整合進度」Phase 3b for the architecture this implements."""
 
+import io
 import json
 import logging
 import mimetypes
 import os
 
+from docx import Document
 from google import genai
 from google.genai import types
 
 import charts
 from document import Block, Bullet, Heading, Image, Paragraph, Table
+from storage import download_bytes
 
 GCP_PROJECT = os.environ["GCP_PROJECT"]
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "us-central1")
@@ -99,13 +102,34 @@ def generate_json(parts: list, schema: dict, **config) -> dict:
     return json.loads(response.text)
 
 
+def _docx_text(raw: bytes) -> str:
+    """Word 檔的文字：段落在前、表格逐列接在後面（Gemini 只需要內容，不需要版面）。"""
+    doc = Document(io.BytesIO(raw))
+    lines = [p.text for p in doc.paragraphs if p.text.strip()]
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            if any(cells):
+                lines.append(" | ".join(cells))
+    return "\n".join(lines)
+
+
+def _source_part(path: str) -> types.Part:
+    """Gemini 不收 .docx（會回 400「The document has no pages」），先在這裡取出文字；
+    其他格式直接用 GCS URI 給 Gemini 讀，不必先下載到這個服務。"""
+    # 看副檔名，不靠 mimetypes：python:3.12-slim 沒有 /etc/mime.types，認不出 .docx，
+    # 會落到資料夾預設的 application/pdf
+    if path.lower().endswith(".docx"):
+        name = path.rsplit("/", 1)[-1]
+        text = _docx_text(download_bytes(path)) or "（這份 Word 檔沒有文字內容）"
+        return types.Part.from_text(text=f"【文件：{name}】\n{text}")
+    return types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
+
+
 def _generate_json(object_paths: list[str], prompt: str, schema: dict, **config) -> dict:
-    """Feed the job's uploaded files to Gemini directly as GCS URIs (no need to
-    download them into this service first) and ask for structured JSON back."""
-    parts = [
-        types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
-        for path in object_paths
-    ]
+    """Feed the job's uploaded files to Gemini (see _source_part) and ask for
+    structured JSON back."""
+    parts = [_source_part(path) for path in object_paths]
     parts.append(types.Part.from_text(text=prompt))
     return generate_json(parts, schema, **config)
 

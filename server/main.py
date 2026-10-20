@@ -176,10 +176,11 @@ class DocumentAssistRequest(BaseModel):
     document: AssistImage
 
 
-def require_user(authorization: str = Header(...)) -> dict:
+def require_user(authorization: str | None = Header(None)) -> dict:
     """Shared auth dependency — every route that touches GCS or Parse must depend
     on this so a new endpoint can't accidentally ship without the session check."""
-    session_token = authorization.removeprefix("Bearer ").strip()
+    # 不設成必填：缺 header 時 FastAPI 會回 422 且不留 rejected 紀錄，統一走下面的 401
+    session_token = (authorization or "").removeprefix("Bearer ").strip()
     user = verify_session_token(session_token)
     if not user:
         audit_log.warning("rejected: invalid session token")
