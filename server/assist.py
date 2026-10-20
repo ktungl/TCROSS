@@ -15,7 +15,7 @@ import json
 
 from google.genai import types
 
-from report import generate_json
+from report import THINKING_BUDGET_SUMMARY, generate_json
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 # 前端會先縮圖（長邊 2400px、JPEG），正常一張只有幾百 KB；這裡是防濫用的上限
@@ -56,9 +56,9 @@ def decode_document(data: str, mime_type: str) -> bytes:
     return raw
 
 
-def _generate(parts: list, schema: dict, media_resolution: str | None = None) -> dict:
+def _generate(parts: list, schema: dict, media_resolution: str | None = None, thinking_budget: int = 0) -> dict:
     extra = {"media_resolution": f"MEDIA_RESOLUTION_{media_resolution}"} if media_resolution else {}
-    return generate_json(parts, schema, **extra)
+    return generate_json(parts, schema, thinking_budget=thinking_budget, **extra)
 
 
 # ── 簽到表辨識 ──
@@ -232,7 +232,8 @@ _DOCUMENT_PROMPT = (
 
 
 def digest_document(raw: bytes, mime: str) -> dict:
-    data = _generate([types.Part.from_bytes(data=raw, mime_type=mime), types.Part.from_text(text=_DOCUMENT_PROMPT)], _DOCUMENT_SCHEMA)
+    data = _generate([types.Part.from_bytes(data=raw, mime_type=mime), types.Part.from_text(text=_DOCUMENT_PROMPT)], _DOCUMENT_SCHEMA,
+                     thinking_budget=THINKING_BUDGET_SUMMARY)
     text = lambda key: str(data.get(key) or "").strip()  # noqa: E731
     check_items = []
     for c in data.get("checkItems") or []:

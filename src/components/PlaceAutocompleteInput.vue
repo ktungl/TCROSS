@@ -86,9 +86,10 @@ async function select(s: Suggestion) {
   model.value = s.prediction.text.text
   try {
     const place = s.prediction.toPlace()
-    await place.fetchFields({ fields: ['formattedAddress', 'displayName'] })
-    const address = place.formattedAddress || place.displayName
-    if (address) model.value = address
+    // 只要 formattedAddress（Essentials 等級）；多要 displayName 會整筆升到較貴的 Pro 等級，
+    // 取不到地址時上面已經先填了建議清單的文字，不需要它備援。
+    await place.fetchFields({ fields: ['formattedAddress'] })
+    if (place.formattedAddress) model.value = place.formattedAddress
   } catch {
     // 取不到完整地址就沿用建議清單上的文字。
   }

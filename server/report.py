@@ -87,16 +87,30 @@ _PROMPT = (
 )
 
 
-def generate_json(parts: list, schema: dict, **config) -> dict:
+# 2.5 Flash 預設會開「思考」，思考 token 照輸出價計費。擷取／格式化類的任務用不到，
+# 預設關掉（0）；需要歸納推理的（成果報告、會議紀錄、公文）由呼叫端給小額預算。
+THINKING_BUDGET_SUMMARY = 1024
+# 防失控的輸出上限（不含思考預算）：簽到表 6 張、上百列也遠低於這個數字
+_MAX_OUTPUT_TOKENS = 16384
+
+
+def generate_json(parts: list, schema: dict, thinking_budget: int = 0, **config) -> dict:
     """Call Gemini with structured-JSON output; shared by report / assist / rewrite."""
     response = _get_client().models.generate_content(
         model=GEMINI_MODEL,
         contents=types.Content(role="user", parts=parts),
         config=types.GenerateContentConfig(
-            response_mime_type="application/json", response_schema=schema, **config
+            response_mime_type="application/json",
+            response_schema=schema,
+            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+            max_output_tokens=_MAX_OUTPUT_TOKENS + thinking_budget,
+            **config,
         ),
     )
-    # 被安全過濾擋下或輸出被截斷時 response.text 是 None，直接 json.loads 只會留下看不懂的 TypeError
+    candidate = response.candidates[0] if response.candidates else None
+    if candidate and candidate.finish_reason == types.FinishReason.MAX_TOKENS:
+        raise ValueError("AI 回覆太長被截斷，請減少素材後再試")
+    # 被安全過濾擋下時 response.text 是 None，直接 json.loads 只會留下看不懂的 TypeError
     if not response.text:
         raise ValueError("AI 沒有回傳內容（可能被內容過濾擋下），請換一份素材再試")
     return json.loads(response.text)
@@ -140,6 +154,7 @@ def analyze_sources(object_paths: list[str]) -> dict:
     data = _generate_json(
         object_paths, _PROMPT, _RESPONSE_SCHEMA,
         media_resolution=f"MEDIA_RESOLUTION_{GEMINI_MEDIA_RESOLUTION}",
+        thinking_budget=THINKING_BUDGET_SUMMARY,
     )
     return {
         "summary": str(data.get("summary") or ""),
@@ -243,7 +258,7 @@ def analyze_meeting(object_paths: list[str]) -> dict:
     """錄音直接以 GCS URI 給 Gemini（同 analyze_sources），只回結構化紀錄、不做逐字稿，輸出 token 少。"""
     if not object_paths:
         raise ValueError("沒有任何錄音檔")
-    data = _generate_json(object_paths, _MEETING_PROMPT, _MEETING_SCHEMA)
+    data = _generate_json(object_paths, _MEETING_PROMPT, _MEETING_SCHEMA, thinking_budget=THINKING_BUDGET_SUMMARY)
 
     def strings(values) -> list[str]:
         return [s for s in (str(v).strip() for v in values or []) if s]
