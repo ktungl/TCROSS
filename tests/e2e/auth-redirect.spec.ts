@@ -16,3 +16,13 @@ test('TC-38 已登入開 /login 導向 /dashboard', async ({ page }) => {
   await page.goto('/login')
   await expect(page).toHaveURL(/\/dashboard$/)
 })
+
+test('登入欄位不接受空白（打字、貼上）', async ({ page }) => {
+  await page.goto('/login')
+  const username = page.locator('input[autocomplete="username"]')
+  const password = page.locator('input[autocomplete="current-password"]')
+  await username.pressSequentially(' ya .ting ')
+  await password.fill('　ya.ting 1234\n')
+  await expect(username).toHaveValue('ya.ting')
+  await expect(password).toHaveValue('ya.ting1234')
+})

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useDbStore } from '../stores/db'
 import { errorMessage } from '../composables/useToast'
 import AuditLogList from '../components/AuditLogList.vue'
@@ -68,6 +68,26 @@ const filtered = computed(() => {
     return true
   })
 })
+
+const PAGE_SIZE = 100
+const page = ref(1)
+const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
+const paged = computed(() => filtered.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
+const rangeText = computed(() => {
+  if (!filtered.value.length) return ''
+  const start = (page.value - 1) * PAGE_SIZE + 1
+  return `第 ${start}–${Math.min(page.value * PAGE_SIZE, filtered.value.length)} 筆`
+})
+
+// 篩選條件或資料變動時回到第一頁
+watch([actorFilter, classFilter, dateFrom, dateTo, keyword, logs], () => {
+  page.value = 1
+})
+
+function goPage(n: number) {
+  page.value = Math.min(Math.max(1, n), pageCount.value)
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 </script>
 
 <template>
@@ -115,11 +135,24 @@ const filtered = computed(() => {
   <p v-if="loadError" class="flagbox"><b>讀取失敗</b>　{{ loadError }}</p>
   <div class="card flush">
     <p v-if="loading && !logs.length" class="empty">載入中…</p>
-    <AuditLogList v-else :logs="filtered" :empty-text="logs.length ? '目前篩選條件下沒有操作紀錄。' : undefined" />
+    <AuditLogList v-else :logs="paged" :empty-text="logs.length ? '目前篩選條件下沒有操作紀錄。' : undefined" />
+  </div>
+  <div v-if="pageCount > 1" class="row pager">
+    <button class="btn ghost sm" :disabled="page <= 1" @click="goPage(1)">第一頁</button>
+    <button class="btn ghost sm" :disabled="page <= 1" @click="goPage(page - 1)">上一頁</button>
+    <span class="count-text">第 {{ page }} ／ {{ pageCount }} 頁（{{ rangeText }}）</span>
+    <button class="btn ghost sm" :disabled="page >= pageCount" @click="goPage(page + 1)">下一頁</button>
+    <button class="btn ghost sm" :disabled="page >= pageCount" @click="goPage(pageCount)">最後一頁</button>
   </div>
 </template>
 
 <style scoped>
+.pager {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
 .filters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { errorMessage, pushToast } from '../composables/useToast'
@@ -13,6 +13,10 @@ const auth = useAuthStore()
 const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
+
+// 帳號、密碼都不含空白：打字或貼上時直接拿掉（含全形空白、換行），避免複製時多帶空白而登入失敗
+watch(username, (v) => { username.value = v.replace(/\s/g, '') })
+watch(password, (v) => { password.value = v.replace(/\s/g, '') })
 const submitting = ref(false)
 const welcomed = ref(false)
 let enterTimer: ReturnType<typeof setTimeout> | undefined
@@ -23,10 +27,10 @@ function enter() {
 }
 
 async function submit() {
-  if (!username.value.trim() || !password.value) return
+  if (!username.value || !password.value) return
   submitting.value = true
   try {
-    await auth.logIn(username.value.trim(), password.value)
+    await auth.logIn(username.value, password.value)
     // 密碼正確：先顯示「○○，您好」，再自動進入系統
     welcomed.value = true
     enterTimer = setTimeout(enter, WELCOME_MS)
