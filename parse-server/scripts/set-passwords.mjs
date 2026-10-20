@@ -53,7 +53,17 @@ const { results: users } = await api('GET', '/classes/_User?limit=1000&order=use
 console.log(`伺服器：${SERVER_URL}，共 ${users.length} 個帳號`)
 for (const u of users) console.log(`  ${u.username}（${u.displayName || ''}）`)
 
-const passwords = fromFile ? JSON.parse(readFileSync(fromFile, 'utf8')).passwords : {}
+const fromJson = fromFile ? JSON.parse(readFileSync(fromFile, 'utf8')) : {}
+const passwords = fromJson.passwords || {}
+
+// 密碼檔的 renames（舊帳號 → 新帳號）：Back4App 上還是舊帳號，重新匯入後要再改名一次
+for (const [oldName, newName] of Object.entries(fromJson.renames || {})) {
+  const u = users.find((x) => x.username === oldName)
+  if (!u) continue
+  console.log(`改帳號名稱 ${oldName} → ${newName}`)
+  if (apply) await api('PUT', `/users/${u.objectId}`, { username: newName })
+  u.username = newName
+}
 if (fromFile) {
   const missing = users.filter((u) => !passwords[u.username]).map((u) => u.username)
   if (missing.length) {

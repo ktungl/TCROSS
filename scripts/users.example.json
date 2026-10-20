@@ -5,6 +5,6 @@
     { "username": "youjun.shen", "displayName": "沈宥均", "password": "<初始密碼>", "roles": ["member"] },
     { "username": "ching.chen", "displayName": "陳怡靜", "password": "<初始密碼>", "roles": ["developer"] },
     { "username": "Test123", "displayName": "冠彤", "roles": ["developer"] },
-    { "username": "qa_cc_1786685240", "displayName": "雅婷", "roles": ["developer"] }
+    { "username": "ya.ting", "displayName": "雅婷", "roles": ["developer"] }
   ]
 }

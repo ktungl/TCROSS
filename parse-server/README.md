@@ -27,7 +27,7 @@
 6. **正式切換**（要暫停使用約半天）：
    1. 通知團隊停止使用，再匯出一份最新備份。
    2. 清空 Firestore 的 tcross 資料庫，重新執行 `import-backup.mjs --apply`。
-   3. 套用和團隊實測相同的密碼：`node scripts/set-passwords.mjs --apply --from ../backups/passwords-current.json`（Master Key 帶法見腳本檔頭）。3 個成員帳號沿用 Back4App 原密碼，3 個開發者帳號是 10-20 新產生的；密碼檔在 `backups/`，不進 git。系統功能都完成後再協助成員改密碼（見 ROADMAP 第 11 項）。
+   3. 套用和團隊實測相同的密碼：`node scripts/set-passwords.mjs --apply --from ../backups/passwords-current.json`（Master Key 帶法見腳本檔頭）。6 個帳號統一為「帳號＋1234」（10-20 決定，3 個成員沿用 Back4App 原密碼，3 個開發者改成同規則）；密碼檔在 `backups/`，不進 git。密碼檔的 `renames` 會順便把 `qa_cc_1786685240` 改名為 `ya.ting`（Back4App 上仍是舊名）。系統功能都完成後再協助成員改密碼（見 ROADMAP 第 11 項）。
    4. 改前端 `.env` 和 GitHub secret 的 `VITE_PARSE_SERVER_URL`，改成 `https://tcross-parse-502746951565.asia-east1.run.app/parse`。
    5. Cloud Run 中介層的 `PARSE_SERVER_URL` 改成同一個網址，Secret Manager `parse-master-key` 改成 `parse-server-master-key` 的值，然後重新部署。
    6. 每日備份的 `VITE_PARSE_SERVER_URL`／`PARSE_MASTER_KEY` 也換成新伺服器。

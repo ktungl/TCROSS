@@ -105,7 +105,7 @@ gcloud run services update-traffic tcross-middleware --region asia-east1 \
 | 角色 | 帳號 | 顯示名稱 |
 | --- | --- | --- |
 | `member` | `ruoting.chen`、`qiyuan.huang`、`youjun.shen` | 陳若庭、黃琪媛、沈宥均 |
-| `developer` | `ching.chen`、`Test123`、`qa_cc_1786685240` | 陳怡靜、冠彤、雅婷 |
+| `developer` | `ching.chen`、`Test123`、`ya.ting`（Back4App 上仍是 `qa_cc_1786685240`，切換時自動改名） | 陳怡靜、冠彤、雅婷 |
 
 **新增／修改帳號**：編輯 `scripts/users.local.json`（含初始密碼，不進 git；格式見 `scripts/users.example.json`），然後：
 
