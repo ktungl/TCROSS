@@ -12,6 +12,7 @@
 | `scripts/import-backup.mjs` | 把備份灌進 Firestore：保留 objectId 與建立／修改時間，最後逐筆逐欄核對 |
 | `scripts/rehearse-local.mjs` | 演練：匯入＋以成員身分測登入、CLP、Cloud Code、稽核紀錄。預設用本機暫時的 MongoDB；`.env` 設 `REHEARSE_DATABASE_URI` 時改測真的資料庫（必須是空的，測完自動清空） |
 | `scripts/checks.mjs` | 以成員身分的 15 項行為檢查（登入、CLP、Cloud Code、稽核紀錄、活動列表），並印出每個請求耗時；下面兩支共用 |
+| `scripts/clear-database.mjs` | 正式切換前清空 `tcross` 資料庫（保留索引與 `_SCHEMA`），讓 `import-backup.mjs` 可以重新匯入 |
 | `scripts/smoke-test.mjs` | 對已部署的 `tcross-parse` 跑 `checks.mjs`（會留下一筆登入與新增＋刪除的稽核紀錄） |
 | `scripts/setup-gcp.sh` | 一次性：服務帳號、Firestore 正式帳密 `parse-server`（含 IAM）、Secret Manager（連線字串、新 Master Key） |
 | `scripts/deploy.sh` | 部署／更新 Cloud Run（改完 `cloud/main.js` 也跑這支，不用再貼 Dashboard） |
@@ -24,13 +25,13 @@
 4. **匯入 Firestore**：`TARGET_DATABASE_URI` 用 Secret Manager `parse-db-uri` 的值（`gcloud secrets versions access latest --secret parse-db-uri`，不要貼到聊天或 git），先執行 `node scripts/import-backup.mjs <備份資料夾>` 做唯讀檢查，確認後加 `--apply`。10-20 已匯入 00:59 的備份，9606 個欄位 0 差異。
 5. **部署**：`bash parse-server/scripts/deploy.sh`，再跑 `node scripts/smoke-test.mjs <已匯入的備份資料夾>`。10-20 已部署，15 項全過，一般請求中位數 73 ms。
    - **全新的資料庫第一次啟動很慢**：Firestore 每建一個索引約 75 秒，Parse Server 啟動時要建約 8 個，會超過 Cloud Run 的 4 分鐘啟動上限而部署失敗。先在本機用同一個連線字串跑一次 `node index.js` 把索引建完（之後啟動只需幾秒），再部署。
-6. **正式切換**（要暫停使用約半天）：
+6. **正式切換**（2026-10-20 15:43 已完成，實際停用約 30 分鐘）：
    1. 通知團隊停止使用，再匯出一份最新備份。
-   2. 清空 Firestore 的 tcross 資料庫，重新執行 `import-backup.mjs --apply`。
+   2. 清空 Firestore 的 tcross 資料庫（`scripts/clear-database.mjs --apply`：只刪資料，保留索引與 `_SCHEMA`，伺服器重啟才不用重建索引），重新執行 `import-backup.mjs --apply`。
    3. 套用和團隊實測相同的密碼：`node scripts/set-passwords.mjs --apply --from ../backups/passwords-current.json`（Master Key 帶法見腳本檔頭）。密碼是「帳號＋1234」，只有 `Test123` 的密碼是 `Test123`（10-20 決定）；密碼檔在 `backups/`，不進 git。Back4App 也已在 10-20 改名、改成同一組密碼；密碼檔的 `renames` 只是保險（舊名不存在就略過）。系統功能都完成後再協助成員改密碼（見 ROADMAP 第 11 項）。
    4. 改前端 `.env` 和 GitHub secret 的 `VITE_PARSE_SERVER_URL`，改成 `https://tcross-parse-502746951565.asia-east1.run.app/parse`。
-   5. Cloud Run 中介層的 `PARSE_SERVER_URL` 改成同一個網址，Secret Manager `parse-master-key` 改成 `parse-server-master-key` 的值，然後重新部署。
-   6. 每日備份的 `VITE_PARSE_SERVER_URL`／`PARSE_MASTER_KEY` 也換成新伺服器。
+   5. Cloud Run 中介層的 `PARSE_SERVER_URL` 改成同一個網址，`PARSE_MASTER_KEY` 改掛 `parse-server-master-key`（先給 `tcross-middleware-sa` 這個 secret 的 Secret Accessor）。`parse-master-key` 不覆寫，保留 Back4App 的值給回滾用。
+   6. 每日備份的 `VITE_PARSE_SERVER_URL`／`PARSE_MASTER_KEY` 也換成新伺服器（和前端共用同一組 GitHub secret）。**secret 改完才部署前端**：10-20 先推了 commit，自動部署用的還是舊 secret，又手動 `gh workflow run deploy-hosting.yml --ref main` 重跑一次。
    7. 通知成員用新密碼登入。
 
 ## 和 Back4App 的差異

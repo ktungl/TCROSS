@@ -5,6 +5,7 @@ import { useDbStore } from './stores/db'
 import { useAuthStore } from './stores/auth'
 import ToastStack from './components/ToastStack.vue'
 import ConfirmDialogHost from './components/ConfirmDialogHost.vue'
+import { pushToast } from './composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,11 +35,16 @@ async function logOut() {
   router.push({ name: 'login' })
 }
 
-onMounted(() => {
-  if (auth.user) {
-    db.fetchAll()
-    auth.refreshUser()
+onMounted(async () => {
+  if (!auth.user) return
+  // 先確認登入還有效再載入資料：失效的話所有查詢都會失敗，畫面會變成全部 0 筆加上「連線失敗」
+  if (!(await auth.refreshUser())) {
+    await auth.logOut()
+    router.push({ name: 'login' })
+    pushToast('登入已失效，請重新登入', 'error')
+    return
   }
+  db.fetchAll()
 })
 
 watch(

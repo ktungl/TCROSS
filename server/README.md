@@ -81,8 +81,8 @@ gcloud run deploy $SERVICE_NAME \
   --region $REGION \
   --service-account $SA_EMAIL \
   --cpu-throttling --max-instances 2 --timeout 900 \
-  --set-env-vars PARSE_SERVER_URL=https://parseapi.back4app.com,PARSE_APP_ID=...,PARSE_JS_KEY=...,GCS_BUCKET=your-gcs-bucket-name,GCS_SIGNING_SERVICE_ACCOUNT=$SA_EMAIL,ALLOWED_ORIGIN=https://your-production-domain.example,GCP_PROJECT=$PROJECT_ID,GCP_LOCATION=asia-northeast1,GEMINI_MODEL=gemini-2.5-flash \
-  --set-secrets PARSE_MASTER_KEY=parse-master-key:latest \
+  --set-env-vars PARSE_SERVER_URL=https://tcross-parse-502746951565.asia-east1.run.app/parse,PARSE_APP_ID=...,PARSE_JS_KEY=...,GCS_BUCKET=your-gcs-bucket-name,GCS_SIGNING_SERVICE_ACCOUNT=$SA_EMAIL,ALLOWED_ORIGIN=https://your-production-domain.example,GCP_PROJECT=$PROJECT_ID,GCP_LOCATION=asia-northeast1,GEMINI_MODEL=gemini-2.5-flash \
+  --set-secrets PARSE_MASTER_KEY=parse-server-master-key:latest \
   --no-allow-unauthenticated=false
 ```
 

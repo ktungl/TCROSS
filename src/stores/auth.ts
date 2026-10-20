@@ -28,19 +28,26 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /** 瀏覽器裡快取的登入狀態可能是加上顯示名稱之前存的，開站時重新抓一次。 */
-  async function refreshUser(): Promise<void> {
-    if (!user.value) return
+  /** 瀏覽器裡快取的登入狀態可能是加上顯示名稱之前存的，開站時重新抓一次。
+   * 回傳 false 表示伺服器不認得這個登入（例如 2026-10-20 從 Back4App 換到自架伺服器前登入的），
+   * 呼叫端要請使用者重新登入；其他錯誤（網路斷線等）就沿用快取，不擋畫面。 */
+  async function refreshUser(): Promise<boolean> {
+    if (!user.value) return true
     try {
       await user.value.fetch()
       displayName.value = displayNameOf(user.value)
-    } catch {
-      // 抓不到（例如 session 過期）就沿用快取，不擋畫面
+    } catch (e) {
+      if (e instanceof Parse.Error && e.code === Parse.Error.INVALID_SESSION_TOKEN) return false
     }
+    return true
   }
 
   async function logOut(): Promise<void> {
-    await Parse.User.logOut()
+    try {
+      await Parse.User.logOut()
+    } catch {
+      // 伺服器端的 session 已經失效時登出會失敗，但本機的登入狀態一樣要清掉
+    }
     user.value = null
     displayName.value = ''
   }
