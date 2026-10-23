@@ -1,6 +1,6 @@
 # Parse Cloud Code：伺服器端資料驗證、稽核紀錄、檔案清理
 
-`main.js` 是 Parse 的 Cloud Code。2026-10-20 起由自架 Parse Server `tcross-parse` 執行（`parse-server/index.js` 掛載同一份檔案）；Back4App 只留作回滾備份，只有回滾時才需要把這份檔案貼到 Back4App。
+`main.js` 是 Parse 的 Cloud Code。2026-10-20 起由自架 Parse Server `tcross-parse` 執行（`parse-server/index.js` 掛載同一份檔案），改完跑 `bash parse-server/scripts/deploy.sh` 部署。
 
 ## 做什麼
 
@@ -9,7 +9,7 @@
 | `Plan`／`Category` | `beforeSave` | 名稱必填、長度上限；寫入建立者／修改者（`stampActor()`，前端送來的值會被覆蓋） |
 | `Activity` | `beforeSave` | 必填、數字範圍、日期格式（`YYYY-MM-DD`，非字串也擋）、人數、文字長度、`kpis` 與附件陣列形狀；**封存的活動不能修改**（只能解除封存）；新加入的附件只能是 `gcs:` 路徑，不能塞外部連結；比對前後的附件陣列，寫入上傳者／移到垃圾桶的人 |
 | `Activity` | `beforeDelete` | 封存中的活動不能刪除 |
-| `Activity` | `afterSave` | 清掉舊版 Back4App 附件的孤兒檔；附件搬移（Master Key）只記一筆摘要 |
+| `Activity` | `afterSave` | 寫操作紀錄（GCS 附件的實體檔由中介層 `/attachments/delete` 清） |
 | `GenerationJob` | `beforeSave` | `activity` 必填、`kind`／`status`／`sourceFiles`／`resultFile`／`errorMessage` 格式；非 Master Key 時，新工作只能是待處理狀態、素材必須是該活動上傳的檔案、建立後關鍵欄位不能改（狀態與結果由 Cloud Run 中介層用 Master Key 寫入，防止偽造） |
 | 以上全部 | `afterSave`／`afterDelete` | 寫一筆 `AuditLog`（逐欄差異＋中文摘要） |
 | `AuditLog` | `beforeSave`／`beforeDelete` | 非 Master Key 一律拒絕，紀錄不可新增、修改、刪除 |
@@ -52,16 +52,3 @@ curl -X POST \
 ```json
 {"code":142,"error":"活動名稱不能為空"}
 ```
-
-## 回滾到 Back4App 時（Back4App 刪除前才適用）
-
-Back4App 沒有 CLI 流程，只能手動貼到 Dashboard：
-
-1. 登入 [dashboard.back4app.com](https://dashboard.back4app.com) → 選 App
-2. 左側選單 **Cloud Code** → 打開 `cloud/main.js`
-3. 把這個檔案的內容整個貼進去覆蓋，點 **Deploy**
-4. 用上面的 curl 驗證（網址換成 `https://parseapi.back4app.com/classes/Activity`）。Back4App 有時第一次部署不會立刻生效，重新點一次 Deploy 再測
-
-10-20 曾發生 Back4App 的 Cloud Code 被其他專案的程式蓋掉、正式站全部登不進去，回滾前一定要確認貼的是這份檔案。其他回滾步驟見 [doc/OPERATIONS.md](../doc/OPERATIONS.md)「自架 Parse Server（正式資料庫）」。
-
-> **欄位不會自動建立**：Cloud Code 部署跟資料表欄位是兩回事。各 class 的 CLP 關閉了 addField，前端新增欄位後要先跑 `node scripts/sync-schema.mjs --apply` 建欄位，否則會收到 `Permission denied for action addField on class Activity`。

@@ -382,7 +382,7 @@ export const useDbStore = defineStore('db', () => {
   }
 
   /** 把「歷史檔案」挑選頁選到的既有檔案掛到這個活動的這個分類——重用同一個已上傳
-   * 好的檔案（GCS 或舊的 Back4App 網址），不用重新上傳一次。只留 name/size/url，caption／featured
+   * 好的 GCS 檔案，不用重新上傳一次。只留 name/size/url，caption／featured
    * 是每個活動自己的，不沿用來源活動的值。 */
   async function attachExistingFiles(
     id: string,
@@ -434,9 +434,8 @@ export const useDbStore = defineStore('db', () => {
     })
   }
 
-  /** 永久刪除：只能對垃圾桶裡的項目做，做了就真的從 Back4App 的陣列裡拿掉，無法復原。
-   * index 是在 trash[folder] 陣列裡的位置。GCS 附件在沒有其他活動引用時才會刪掉實體檔
-   * （舊的 Back4App 附件由 Cloud Code afterSave 處理）。 */
+  /** 永久刪除：只能對垃圾桶裡的項目做，做了就真的從活動的附件陣列裡拿掉，無法復原。
+   * index 是在 trash[folder] 陣列裡的位置。GCS 附件在沒有其他活動引用時才會刪掉實體檔。 */
   async function hardDeleteFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
     const url = activities.value.find((a) => a.id === id)?.trash[folder][index]?.url
     if (!url) return

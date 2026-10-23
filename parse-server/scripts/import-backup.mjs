@@ -11,8 +11,8 @@
 // （由 Parse 自己處理 ACL／Pointer／Relation 的儲存格式），再直接改 MongoDB 補回原本的
 // createdAt／updatedAt。不掛 Cloud Code 是為了不讓 beforeSave 覆蓋操作者欄位、afterSave 多寫稽核紀錄。
 //
-// 和 restore-parse.mjs（還原到另一個 Back4App app）不同：自架伺服器可以指定 objectId，
-// 所以 objectId、Pointer、角色成員、createdById 等全部照舊，不用對照表；建立／修改時間也保留。
+// 自架伺服器可以指定 objectId，所以 objectId、Pointer、角色成員、createdById 等全部照舊，
+// 不用對照表；建立／修改時間也保留。
 //
 // ⚠️ 帳號密碼：備份不含密碼雜湊，匯入的帳號是隨機臨時密碼（寫在 <備份資料夾>/import-result.json），
 //    正式切換前用 scripts/setup-users.mjs 重設，再通知成員。

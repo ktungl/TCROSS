@@ -1,8 +1,8 @@
 # 自架 Parse Server（Back4App → GCP）
 
-原 [doc/ROADMAP.md](../doc/ROADMAP.md) 第 15 項，2026-10-20 15:43 已完成切換，目前是正式資料庫；Back4App 的退場見 ROADMAP #16、#9、#17、#12。Parse Server 跑在 Cloud Run（服務 `tcross-parse`，`asia-east1`），資料庫用 Firestore 的 MongoDB 相容模式（`tcross` 資料庫，`asia-east1`，2026-10-20 建立），帳單、權限、監控全部集中在同一個 GCP 專案。前端、Cloud Run 中介層和 `cloud/main.js` 都還是走 Parse 協定，切換時只要換伺服器網址。
+原 [doc/ROADMAP.md](../doc/ROADMAP.md) 第 15 項，2026-10-20 15:43 已完成切換，目前是正式資料庫；Back4App 已於 10-23 退場。Parse Server 跑在 Cloud Run（服務 `tcross-parse`，`asia-east1`），資料庫用 Firestore 的 MongoDB 相容模式（`tcross` 資料庫，`asia-east1`，2026-10-20 建立），帳單、權限、監控全部集中在同一個 GCP 專案。前端、Cloud Run 中介層和 `cloud/main.js` 都還是走 Parse 協定，切換時只要換伺服器網址。
 
-**Back4App 不會被改動**：搬移只從每日備份（`scripts/backup-parse.mjs` 的匯出）讀資料，切換後 Back4App 停在切換當下的狀態，留作備份；要回滾就把網址改回去。
+搬移只從每日備份（`scripts/backup-parse.mjs` 的匯出）讀資料。現在同一套流程（`import-backup.mjs`＋`set-passwords.mjs`）就是災難還原的方法。
 
 ## 檔案
 
@@ -29,9 +29,9 @@
 6. **正式切換**（2026-10-20 15:43 已完成，實際停用約 30 分鐘）：
    1. 通知團隊停止使用，再匯出一份最新備份。
    2. 清空 Firestore 的 tcross 資料庫（`scripts/clear-database.mjs --apply`：只刪資料，保留索引與 `_SCHEMA`，伺服器重啟才不用重建索引），重新執行 `import-backup.mjs --apply`。
-   3. 套用和團隊實測相同的密碼：`node scripts/set-passwords.mjs --apply --from ../backups/passwords-current.json`（Master Key 帶法見腳本檔頭）。密碼是「帳號＋1234」，只有 `Test123` 的密碼是 `Test123`（10-20 決定）；密碼檔在 `backups/`，不進 git。Back4App 也已在 10-20 改名、改成同一組密碼；密碼檔的 `renames` 只是保險（舊名不存在就略過）。系統功能都完成後再協助成員改密碼（見 ROADMAP 第 11 項）。
+   3. 套用和團隊實測相同的密碼：`node scripts/set-passwords.mjs --apply --from ../backups/passwords-current.json`（Master Key 帶法見腳本檔頭）。密碼是「帳號＋1234」，只有 `Test123` 的密碼是 `Test123`（10-20 決定）；密碼檔在 `backups/`，不進 git。密碼檔的 `renames` 給 10-20 以前的舊備份用（舊名不存在就略過）。系統功能都完成後再協助成員改密碼（見 ROADMAP 第 11 項）。
    4. 改前端 `.env` 和 GitHub secret 的 `VITE_PARSE_SERVER_URL`，改成 `https://tcross-parse-502746951565.asia-east1.run.app/parse`。
-   5. Cloud Run 中介層的 `PARSE_SERVER_URL` 改成同一個網址，`PARSE_MASTER_KEY` 改掛 `parse-server-master-key`（先給 `tcross-middleware-sa` 這個 secret 的 Secret Accessor）。`parse-master-key` 不覆寫，保留 Back4App 的值給回滾用。
+   5. Cloud Run 中介層的 `PARSE_SERVER_URL` 改成同一個網址，`PARSE_MASTER_KEY` 改掛 `parse-server-master-key`（先給 `tcross-middleware-sa` 這個 secret 的 Secret Accessor）。（Back4App 的 `parse-master-key` 已在退場時刪除。）
    6. 每日備份的 `VITE_PARSE_SERVER_URL`／`PARSE_MASTER_KEY` 也換成新伺服器（和前端共用同一組 GitHub secret）。**secret 改完才部署前端**：10-20 先推了 commit，自動部署用的還是舊 secret，又手動 `gh workflow run deploy-hosting.yml --ref main` 重跑一次。
    7. 通知成員用新密碼登入。
 
@@ -40,5 +40,5 @@
 - **密碼**：Back4App 免費方案不給密碼雜湊，匯入的帳號是隨機臨時密碼（寫在 `<備份資料夾>/import-result.json`），切換時要重設。
 - **帳號名稱大小寫**：Firestore 不支援 collation，所以設了 `enableCollationCaseComparison`，結果是不再把 `Test123`／`test123` 視為重複。帳號只由管理員建立，登入本來就分大小寫，影響很小。
 - **Master Key 來源**：Parse Server 預設只允許本機使用 Master Key。中介層和備份都是從外部呼叫，所以 `masterKeyIps` 開放所有來源，和 Back4App 一樣靠保管好金鑰來把關。
-- **舊附件**：資料裡已經沒有 `parsefiles.back4app.com` 的附件（2026-10-20 確認 0 個），附件都在 GCS，不用搬。
+- **舊附件**：資料裡沒有 `parsefiles.back4app.com` 的附件（10-20、10-23 確認 0 個），附件都在 GCS。
 - **冷啟動**：Cloud Run 沒人使用時會縮到 0 台，閒置後第一個請求會慢幾秒。如果覺得太慢，可以加 `--min-instances 1`，但會多一點費用。

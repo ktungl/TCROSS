@@ -603,10 +603,8 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     }
   }
 
-  // 附件 10 月起一律上傳到 GCS；前端新加進來的項目只能是 gcs: 路徑（含從「歷史檔案」
-  // 重用的），不能塞任意外部連結，也不能塞 Back4App 檔案網址再移除、藉 afterSave 的孤兒檔
-  // 清理刪掉別的檔案。既有的舊網址照常保留。
-  const knownUrls = request.master || !original ? new Set() : referencedUrls(original);
+  // 附件一律存在 GCS：前端送來的項目只能是 gcs:attachments/ 路徑（含從「歷史檔案」重用的），
+  // 不能塞任意外部連結。
   for (const field of FOLDER_FIELDS) {
     const files = object.get(field);
     if (files === undefined) continue;
@@ -629,7 +627,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       if (!/^https?:\/\//i.test(file.url) && !file.url.startsWith('gcs:attachments/')) {
         fail(`${label}的檔案網址必須是 http(s) 網址或系統上傳的附件`);
       }
-      if (!request.master && !file.url.startsWith('gcs:attachments/') && !knownUrls.has(file.url)) {
+      if (!request.master && !file.url.startsWith('gcs:attachments/')) {
         fail(`「${file.name}」不是透過系統上傳的檔案`);
       }
       if (file.caption !== undefined && typeof file.caption !== 'string') {
@@ -664,9 +662,6 @@ Parse.Cloud.beforeSave('Activity', (request) => {
     fail('封存時間格式錯誤');
   }
 
-  // 附件從 Back4App 搬到 GCS（scripts/migrate-attachments-to-gcs.mjs）只是換網址，
-  // 不是誰新增了檔案：保留腳本帶過來的原上傳者／刪除者與最後修改者，不重新蓋章。
-  if (isAttachmentMigration(request)) return;
   const actor = stampActor(request, 'Activity');
   stampAttachments(request, actor);
 
@@ -685,96 +680,8 @@ Parse.Cloud.beforeDelete('Activity', (request) => {
   }
 });
 
-/** 只有 Master Key 才能帶這個 context，前端（JS Key＋session）帶了也不算數。 */
-function isAttachmentMigration(request) {
-  return !!(request.master && request.context && request.context.attachmentMigration);
-}
-
-/** 本 app 在 Back4App 的檔案網址：https://parsefiles.back4app.com/<appId>/<檔名>。
- * 孤兒檔清理只處理這種網址，不會依任意網址推出檔名去刪檔。 */
-function isBack4AppFileUrl(url) {
-  const prefix = `https://parsefiles.back4app.com/${Parse.applicationId}/`;
-  return url.startsWith(prefix) && !url.slice(prefix.length).includes('/');
-}
-
-/** 這個物件所有附件欄位裡還引用到的檔案網址。 */
-function referencedUrls(object) {
-  const urls = new Set();
-  for (const field of FOLDER_FIELDS) {
-    for (const f of object.get(field) || []) {
-      if (f && typeof f.url === 'string') urls.add(f.url);
-    }
-  }
-  return urls;
-}
-
-// 前端刪檔（removeFile()）只把項目從陣列拿掉再存回去，實際的 Parse.File blob
-// 從來沒被刪過，會在 Back4App 檔案儲存裡一直堆孤兒檔案。這裡改成不管陣列是怎麼變小的
-// （手動刪除、或任何其他寫入路徑），存檔後統一比對前後差異，把消失的檔案一併刪掉。
-// Parse.File.destroy() 需要 Master Key，前端沒有也不該有，所以放在這裡而不是 db.ts。
-// 每個 class 只能註冊一個 afterSave，所以稽核紀錄跟孤兒檔清理寫在同一個 handler。
-// GCS 附件（gcs: 開頭）不在這裡刪，由前端呼叫 Cloud Run /attachments/delete 處理。
-Parse.Cloud.afterSave('Activity', async (request) => {
-  if (isAttachmentMigration(request)) {
-    // 搬遷期間 Back4App 原檔先保留（場域測試後確認無誤再清），稽核只記一筆摘要
-    const moved = request.context.attachmentMigration.moved || 0;
-    await writeAudit({
-      action: 'update',
-      targetClass: 'Activity',
-      targetId: request.object.id,
-      targetName: request.object.get('name') || '',
-      activityId: request.object.id,
-      actorId: '',
-      actorName: '系統（附件搬移）',
-      changes: [],
-      summary: `附件搬移到 GCS：${moved} 個檔案（內容不變，只換存放位置）`,
-    });
-    return;
-  }
-  await auditSave('Activity', request);
-  if (!request.original) return; // 新建的活動沒有舊檔案可比對
-
-  // 同一個檔案網址可能同時掛在別的分類或別的活動（「歷史檔案」挑選會重用既有網址），
-  // 只有整個系統都不再引用時才真的刪掉底層檔案，不然會把別處還在用的檔案一起刪掉。
-  const stillHere = referencedUrls(request.object);
-  const candidates = new Set();
-  for (const url of referencedUrls(request.original)) {
-    if (isBack4AppFileUrl(url) && !stillHere.has(url)) candidates.add(url);
-  }
-  if (!candidates.size) return;
-
-  try {
-    await new Parse.Query('Activity')
-      .notEqualTo('objectId', request.object.id)
-      .select(...FOLDER_FIELDS)
-      .each(
-        (other) => {
-          for (const url of referencedUrls(other)) candidates.delete(url);
-        },
-        { useMasterKey: true },
-      );
-  } catch (err) {
-    // 查不到其他活動的引用狀況就不刪，寧可留孤兒檔也不能誤刪別人還在用的檔案
-    console.error('查詢附件引用失敗，略過清檔', err);
-    return;
-  }
-
-  for (const url of candidates) {
-    let filename = '';
-    try {
-      filename = decodeURIComponent(url.split('/').pop() || '');
-    } catch (err) {
-      console.error(`檔案網址格式錯誤：${url}`, err);
-      continue;
-    }
-    if (!filename) continue;
-    try {
-      await new Parse.File(filename).destroy({ useMasterKey: true });
-    } catch (err) {
-      console.error(`刪除檔案失敗：${filename}`, err);
-    }
-  }
-});
+// GCS 附件的實體檔案由前端呼叫 Cloud Run /attachments/delete 清掉（只刪已沒有任何活動引用的檔案）。
+Parse.Cloud.afterSave('Activity', (request) => auditSave('Activity', request));
 
 Parse.Cloud.afterDelete('Activity', (request) => auditDelete('Activity', request));
 

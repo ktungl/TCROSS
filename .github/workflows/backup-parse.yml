@@ -27,7 +27,7 @@ jobs:
           node-version: 22
 
       - name: Export
-        run: node scripts/backup-parse.mjs --files --out backup
+        run: node scripts/backup-parse.mjs --out backup
         env:
           VITE_PARSE_APP_ID: ${{ secrets.VITE_PARSE_APP_ID }}
           VITE_PARSE_SERVER_URL: ${{ secrets.VITE_PARSE_SERVER_URL }}

@@ -1,6 +1,6 @@
 # TCROSS 活動紀錄平台
 
-Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://parseplatform.org/)（2026-10-20 起是 GCP Cloud Run 上自架的 Parse Server `tcross-parse`，資料庫為 Firestore MongoDB 相容模式，見 [parse-server/README.md](parse-server/README.md)；Back4App 只留作回滾備份），檔案處理與 AI 生成擴充則導入 [Google Cloud Platform (GCP)](https://cloud.google.com/)。
+Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://parseplatform.org/)（2026-10-20 起是 GCP Cloud Run 上自架的 Parse Server `tcross-parse`，資料庫為 Firestore MongoDB 相容模式，見 [parse-server/README.md](parse-server/README.md)；原本的 Back4App 已於 10-23 退場），檔案處理與 AI 生成擴充則導入 [Google Cloud Platform (GCP)](https://cloud.google.com/)。
 
 ## 開發設定
 

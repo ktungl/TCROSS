@@ -22,7 +22,7 @@ const server = new ParseServer({
   // Cloud Code 透過這個網址呼叫自己（例如 afterSave 裡 useMasterKey 的查詢），走容器內部就好
   serverURL: `http://localhost:${port}${mountPath}`,
   publicServerURL: process.env.PUBLIC_SERVER_URL,
-  // 部署時 scripts/deploy.sh 把專案根目錄的 cloud/main.js 複製進來（回滾到 Back4App 時也是貼同一份）
+  // 部署時 scripts/deploy.sh 把專案根目錄的 cloud/main.js 複製進來
   cloud: fileURLToPath(new URL('./cloud/main.js', import.meta.url)),
   // Parse Server 預設只讓本機用 Master Key；Cloud Run 中介層與 GitHub Actions 備份都是從外部
   // 帶 Master Key 呼叫（和 Back4App 時一樣），所以放寬來源，安全靠 Secret Manager 保管金鑰。

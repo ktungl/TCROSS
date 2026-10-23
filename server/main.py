@@ -117,8 +117,7 @@ class DeleteObjectsRequest(BaseModel):
     activityId: str | None = None
 
 
-# 活動附件（/attachments/*）：前端 FileMeta.url 存成 "gcs:" + GCS 路徑，跟舊的 Back4App
-# 網址區分。
+# 活動附件（/attachments/*）：前端 FileMeta.url 存成 "gcs:" + GCS 路徑。
 ATTACHMENT_URL_PREFIX = "gcs:"
 MAX_ATTACHMENT_UPLOADS_PER_REQUEST = 50
 MAX_ATTACHMENT_VIEWS_PER_REQUEST = 300

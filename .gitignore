@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Environment (holds Parse/Back4App credentials)
+# Environment (holds Parse／Google Maps credentials)
 .env
 
 # Python (server/)

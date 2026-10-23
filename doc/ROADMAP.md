@@ -14,32 +14,13 @@
 | --- | --- | --- | --- |
 | 10 | ⬜ OPERATIONS.md 組織面 | 10/31 | 技術面已完成。待團隊補上：值班窗口、通報流程、還原演練週期（建議每季）。 |
 
-## Back4App 退場
+## Back4App 退場（10-23 提前執行）
 
-10-20 起系統已不依賴 Back4App，只當回滾用的備份。依時間順序處理：
+10-23 決定提前退場。程式與文件已清乾淨（Cloud Code 舊附件處理、`restore-parse.mjs`、`migrate-attachments-to-gcs.mjs`、備份 `--files`、CSP 的 Back4App 網域、所有回滾說明），正式資料再確認一次 0 個 Back4App 網址。剩下的都要在後台手動做，**做了就不能回滾**，依序：
 
-| # | 項目 | 期限 | 說明 |
-| --- | --- | --- | --- |
-| 16 | ⬜ 切換後收尾 | 10/27 | 新系統觀察一週沒問題後，刪 Secret Manager `parse-master-key`（Back4App 的 Master Key，回滾才用）。測試站 10-27 自動失效。 |
-| 9 | ⬜ Back4App 方案到期 | 10/29 | 到期後降回免費方案即可，不用續約付費。 |
-| 17 | ⬜ 刪除 Back4App 與清除殘留 | 10/31 驗收後 | 刪除後就無法回滾，所以等 #16 觀察期和驗收都過了再刪。步驟見下方。 |
-| 12 | ⬜ Back4App 擁有者帳號開 MFA | 到 #17 為止 | Back4App 後台安全建議：擁有者帳號未啟用兩步驟驗證。只當備份，優先度低；#17 刪掉帳號就不用做。 |
-
-**#17 刪除 Back4App 步驟**
-
-- **刪除前**
-  - 確認切換當下的備份 `backups/2026-10-20T07-43-21` 另存一份在 GCS 或雲端硬碟。
-  - 已搬到 GCS 的附件原檔（對照表 `backups/attachment-migration-2026-10-09T07-59-51.json`）不用另外清，刪 app 時一起消失。
-  - 若在刪除前需要回滾到 Back4App：先到 App Settings 關閉「Allow client class creation」，否則拿到公開 App ID＋JS Key 的人能自己建 class 塞資料（新伺服器已設 `allowClientClassCreation: false`）。
-- **刪除後一次清掉殘留**
-  - `firebase.json` CSP `connect-src` 的 Back4App 網域（`img-src`／`media-src` 已在 10-23 拿掉）
-  - `cloud/main.js` 的孤兒檔清理（`isBack4AppFileUrl` 與 afterSave 刪 Parse.File 那段）、附件搬移特例 `isAttachmentMigration`，連同 `cloud/README.md` 的說明與 `cloud/tests` 的舊網址案例
-  - 一次性腳本：`scripts/migrate-attachments-to-gcs.mjs`、`scripts/restore-parse.mjs`（只能還原到 Back4App）
-  - 備份不再需要 `--files`（`backup-parse.yml`、`backup-parse.mjs` 的 `isParseFile`），`OPERATIONS.md`「一份約 216 MB」一起更新
-  - 「回滾到 Back4App」的說明（`OPERATIONS.md`、`cloud/README.md`、`parse-server/README.md` 三處）
-  - Secret Manager `parse-master-key`（若 #16 還沒刪）
-  - `.env` 的 `BACK4APP_*`、`RESTORE_PARSE_*`
-- **注意**：自架的 Parse Server（`tcross-parse`）還在用，不能一起刪。
+| # | 項目 | 說明 |
+| --- | --- | --- |
+| 17 | ⬜ 刪除 Back4App | ① 切換當下的備份 `backups/2026-10-20T07-43-21` 另存到 GCS：`gcloud storage cp -r backups/2026-10-20T07-43-21 gs://project-80ac5e1a-2ea4-4000-9ff-backup/archive/ --account tainanjade@gmail.com`（備份桶 `archive/` 不套 90 天刪除）。② Back4App Dashboard → 先取消付費方案（原 #9），再到 App Settings → General → Delete App。③ 刪 Secret Manager `parse-master-key`（原 #16）：`gcloud secrets delete parse-master-key --project project-80ac5e1a-2ea4-4000-9ff --account tainanjade@gmail.com`。④ 刪本機 `.env` 的 `BACK4APP_*`、`RESTORE_PARSE_*`。原 #12（Back4App 開 MFA）隨刪除不用做。 |
 
 ## 系統整理（10-23 全面掃描）
 

@@ -8,7 +8,6 @@
 | --- | --- | --- |
 | 前端 SPA（Vue） | `src/`，部署在 Firebase Hosting，正式網址 `https://tacc-iip.web.app`（見「部署前端」），尚未綁自訂網域 | 瀏覽器持有 Parse App ID／JS Key（設計上本來就公開，靠 Parse ACL／CLP 把關） |
 | 自架 Parse Server `tcross-parse`（**2026-10-20 起為正式資料庫**） | `parse-server/`，Cloud Run `asia-east1`＋Firestore MongoDB 相容模式資料庫 `tcross`，掛 `cloud/main.js`，見 [parse-server/README.md](../parse-server/README.md) | Master Key 與資料庫連線字串只在 Secret Manager（`parse-server-master-key`／`parse-db-uri`），服務帳號 `tcross-parse-sa` |
-| Back4App（**10-20 起停用，保留當備份**） | 停在 10-20 15:43 切換當下的資料，回滾用 | Master Key 在 Back4App Dashboard、Secret Manager `parse-master-key`（已不掛在任何服務上）、本機 `.env` 的 `BACK4APP_PARSE_MASTER_KEY` |
 | Cloud Run 中介層 `tcross-middleware` | `server/`，GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`，region `asia-east1` | 唯一持有 GCS 簽名用的服務帳戶身分（`tcross-middleware-sa`）；`PARSE_MASTER_KEY` 掛 Secret Manager `parse-server-master-key`（與 `tcross-parse`、GitHub 每日備份共用同一把，見「密鑰輪替」） |
 
 ## 日常健康檢查
@@ -129,12 +128,7 @@ node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一
 
 ## 自架 Parse Server（正式資料庫）
 
-2026-10-20 15:43 正式切換：用當下的 Back4App 備份重新匯入（9983 個欄位 0 差異），前端（GitHub secret `VITE_PARSE_SERVER_URL`）、中介層（`PARSE_SERVER_URL`＋secret `parse-server-master-key`）、每日備份（GitHub secret `PARSE_MASTER_KEY`）都已改指向 `https://tcross-parse-502746951565.asia-east1.run.app/parse`。Back4App 保留不動當備份。
-
-**回滾到 Back4App**（只在新系統出大問題時；切換後新增的資料要另外補回 Back4App）：
-1. `gh secret set VITE_PARSE_SERVER_URL --body https://parseapi.back4app.com`，`PARSE_MASTER_KEY` 改回 Back4App 的（本機 `.env` 的 `BACK4APP_PARSE_MASTER_KEY`），再 `gh workflow run deploy-hosting.yml --ref main`。
-2. `gcloud run services update tcross-middleware --region asia-east1 --update-env-vars PARSE_SERVER_URL=https://parseapi.back4app.com --update-secrets PARSE_MASTER_KEY=parse-master-key:latest`。
-3. 確認 Back4App Cloud Code 是 `cloud/main.js` 的內容（10-20 曾被 HerzBaa 的程式蓋掉，正式站全部登不進去）。
+2026-10-20 15:43 正式切換：用當下的 Back4App 備份重新匯入（9983 個欄位 0 差異），前端（GitHub secret `VITE_PARSE_SERVER_URL`）、中介層（`PARSE_SERVER_URL`＋secret `parse-server-master-key`）、每日備份（GitHub secret `PARSE_MASTER_KEY`）都已改指向 `https://tcross-parse-502746951565.asia-east1.run.app/parse`。Back4App 於 10-23 退場，已沒有回滾目標；出問題時用每日備份還原（見「資料備份」）。
 
 ```bash
 curl https://tcross-parse-502746951565.asia-east1.run.app/health   # 應回傳 {"ok":true}
@@ -142,45 +136,30 @@ bash parse-server/scripts/deploy.sh                                  # 部署／
 npm run test:e2e                                                     # 行為檢查（用 Test123 登入，見 TESTING.md）
 ```
 
-改 `cloud/main.js` 後跑 `bash parse-server/scripts/deploy.sh` 部署，不用再手動貼 Back4App Dashboard。
-
-## 部署 Back4App Cloud Code（`cloud/main.js`，只在回滾時需要）
-
-沒有 CLI 流程，只能手動貼到 Dashboard：步驟見 [cloud/README.md](../cloud/README.md)「回滾到 Back4App 時」。
+改 `cloud/main.js` 後跑 `bash parse-server/scripts/deploy.sh` 部署。
 
 ## 資料備份（10-20 起備份自架 Parse Server）
 
-GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00 跑 `scripts/backup-parse.mjs --files`，把所有 class、schema、角色成員（以及舊版 Back4App 附件，資料裡已 0 個）打包成 `parse-<時間>.tar.gz`，上傳到 `gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/`。
+GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00 跑 `scripts/backup-parse.mjs`，把所有 class、schema、角色成員打包成 `parse-<時間>.tar.gz`，上傳到 `gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/`。
 
 - **保存**：`parse/` 90 天後自動刪除；Nearline 儲存類別（存放便宜，還原下載時才有少量讀取費）。
 - **活動附件**：存在 GCS 主桶 `attachments/`，由 Storage Transfer Service 每天增量複製到備份桶 `attachments/`（只新增／更新、不同步刪除、不套 90 天規則），設定見 `scripts/setup-attachments-gcs.sh`。
 - **權限**：`github-backup` 服務帳號只有該桶的 `storage.objectCreator`，只能新增備份、不能讀取／覆蓋／刪除既有備份。用 Workload Identity Federation，不存 JSON 金鑰；GCP 端一次性設定見 `scripts/setup-github-backup.sh`。
 - **不含密碼**：`_User` 匯出不含密碼雜湊（Parse 不會回傳），還原後帳號需要重設密碼。也不含 GCS 主桶的 AI 生成素材（另有 30 天保存規則）。
 - **確認有在跑**：GitHub → Actions → 「Backup Parse data to GCS」，或 `gh run list --workflow backup-parse.yml`。失敗時 GitHub 會寄信給觸發者。
-- **手動備一份**：Actions 頁按「Run workflow」；或本機 `node scripts/backup-parse.mjs --files`（存在 `backups/`，已列入 `.gitignore`）。
+- **手動備一份**：Actions 頁按「Run workflow」；或本機 `node scripts/backup-parse.mjs`（存在 `backups/`，已列入 `.gitignore`）。
 - **下載備份**：`gcloud storage ls gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/` 找檔名，再 `gcloud storage cp` 下載後 `tar -xzf` 解開。下載需要專案 Owner／Storage 管理權限的帳號。
 
 ### 還原
 
 **還原到自架 Parse Server（Firestore）**：用 `parse-server/scripts/import-backup.mjs`，會保留 objectId 與建立／修改時間，最後逐筆逐欄核對；目標資料庫必須是空的（正式資料庫要先 `clear-database.mjs --apply`）。10-20 正式切換就是用這個流程，步驟與注意事項見 [parse-server/README.md](../parse-server/README.md) 第 4、6 步。匯入後帳號是臨時密碼，用 `parse-server/scripts/set-passwords.mjs` 設定。
 
-**還原到 Back4App（舊流程，只在 Back4App 刪除前、需要回滾時用）**：`scripts/restore-parse.mjs` 把解開的備份資料夾還原到**另一個空的** Back4App app（目標 App ID 與正式站相同會拒絕執行；目標已有資料也會拒絕）。目標寫在 `.env` 的 `RESTORE_PARSE_APP_ID`／`RESTORE_PARSE_MASTER_KEY`。
-
-```
-node scripts/restore-parse.mjs <備份資料夾>           # 唯讀檢查
-node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最後自動核對筆數與角色成員
-```
-
-- Back4App 不能指定 objectId，還原後全部換新 id，Pointer／ACL／角色成員／`createdById` 等 id 字串會自動對應；附件重新上傳並換成新網址。對照表存在 `<備份資料夾>/restore-result.json`。
-- 帳號是隨機臨時密碼（同一個檔案），要登入得重設；`createdAt`／`updatedAt` 變成還原當下時間；Cloud Code 要從 git 另外貼上。
-- 真的要以還原的 Back4App app 取代正式站時：貼 Cloud Code → 前端 `.env`／GitHub secrets 的 `VITE_PARSE_*` 換成新 app → Cloud Run 的 `PARSE_APP_ID`／`PARSE_JS_KEY` 與 Secret Manager `parse-master-key` 換成新 app 後重新部署 → 通知成員重設密碼。
-- **演練紀錄**：10-05 還原到 `TCROSS-restore-test`，筆數、角色成員全部一致，2058 個欄位比對 0 差異，86 個附件全部可開啟。
+- **演練紀錄**：10-05 用舊流程還原到 Back4App 測試 app，2058 個欄位比對 0 差異；10-20 用 `import-backup.mjs` 匯入新伺服器，9983 個欄位 0 差異。
 
 ## 密鑰與憑證
 
 | 密鑰 | 存放位置 | 輪替方式 |
 | --- | --- | --- |
-| `PARSE_MASTER_KEY`（Back4App 的，10-20 起只留作回滾） | GCP Secret Manager（`parse-master-key`），切換後已不掛在任何服務上；本機 `.env` 的 `BACK4APP_PARSE_MASTER_KEY` | 去 Back4App Dashboard 重新產生後，`gcloud secrets versions add parse-master-key --data-file=-` 更新一版，並改本機 `.env`。目前沒有服務掛這把，不用重新部署。**GitHub secret `PARSE_MASTER_KEY` 現在是正式的金鑰（見下方 `parse-server-master-key`），不要改成這把**；只有回滾到 Back4App 時才換（見「自架 Parse Server」的回滾步驟）。 |
 | `PARSE_APP_ID`／`PARSE_JS_KEY` | Cloud Run 環境變數（明文，設計上本來就是公開資訊）＋前端 `.env`（`.gitignore` 已排除） | 這兩把本來就假設公開，不是機密；真要換要同時改前端 `.env` 與 Cloud Run 環境變數 |
 | `parse-server-master-key`（正式的 Master Key） | GCP Secret Manager，`tcross-parse` 與 `tcross-middleware` 都以環境變數掛載；GitHub secret `PARSE_MASTER_KEY`（每日備份）也是這把 | `openssl rand -hex 32 \| tr -d '\r\n' \| gcloud secrets versions add parse-server-master-key --data-file=-`（Windows 的 openssl 會帶 `\r`，一定要一起去掉）後重跑 `parse-server/scripts/deploy.sh`，中介層也要重新部署一次（環境變數形式的 secret 只在 revision 建立時解析），再 `gcloud secrets versions access latest --secret parse-server-master-key \| tr -d '\r\n' \| gh secret set PARSE_MASTER_KEY` |
 | `parse-db-uri`（Firestore 連線字串，帳密 `parse-server`） | GCP Secret Manager | `gcloud firestore user-creds reset-password parse-server --database=tcross`，組成新連線字串（格式見 `parse-server/scripts/setup-gcp.sh`）加一版 secret，再重跑 `deploy.sh` |
@@ -196,9 +175,9 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 - Gemini 媒體解析度 `LOW`（token 約 1/4，09-29 實測辨識正常）；每筆工作最多 20 個素材。
 - Session 驗證快取 60 秒（登出後 token 最多仍可用 60 秒）。
 - Artifact Registry 只保留最新 3 份 image，其餘 7 天後刪除。
-- 備份桶 Nearline、`parse/` 90 天刪除：一份約 216 MB，滿 90 份約 20 GB，每月約 US$0.2（附件變多會跟著增加）。
+- 備份桶 Nearline、`parse/` 90 天刪除：一份約 1 MB（只有資料，附件另由 Storage Transfer 備份），費用可忽略。
 - GCS：建置用桶 30 天刪除；主桶 `activities/` 下的照片／影音等 AI 素材 30 天刪除，`.docx` 保留；活動附件在 `attachments/`，不受影響。30 天後舊的生成工作無法再「重新觸發」。
-- 活動附件存 GCS 約 US$0.02／GB／月（50 GB 約 US$1），備份桶另有一份副本；Back4App 10/29 到期後降回免費方案（ROADMAP #9）。
+- 活動附件存 GCS 約 US$0.02／GB／月（50 GB 約 US$1），備份桶另有一份副本。
 
 ## 帳號與帳單異動（換卡、換使用權人）
 
@@ -206,8 +185,6 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 
 - **GCP 換卡**：帳單 → 付款方式 → 新增卡片 → 設為預設 → 移除舊卡。
 - **GCP 換人**：IAM → 新增成員並給角色 → 移除舊帳號。帳單帳戶的「帳單帳戶管理員」角色要另外設定。
-- **Back4App 換卡**（Back4App 刪除前才需要）：Account Settings → Billing。
-- **Back4App 換人**（同上）：App Settings → Collaborators → 邀請新 email 設 Admin → 移除舊帳號。付費方案換卡前確認不會中斷服務。
 - 本機 `gcloud auth login` 若登入的是舊帳號，要改用新帳號重新登入。
 
 **換正式網域時**：同步更新 Cloud Run `ALLOWED_ORIGIN` 與 Google Maps 金鑰的網域白名單。

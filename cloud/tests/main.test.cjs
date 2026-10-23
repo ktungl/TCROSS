@@ -272,29 +272,20 @@ test('TC-21 新附件 url 不是 gcs:attachments/ 被拒', async () => {
   await rejects(
     'beforeSave',
     'Activity',
-    {
-      originalAttrs: { ...baseActivity, photoFiles: [] },
-      changes: { photoFiles: [{ name: 'x.jpg', size: 10, url: 'https://parsefiles.back4app.com/TEST_APP/other.jpg' }] },
-    },
-    /不是透過系統上傳/,
-  );
-  await rejects(
-    'beforeSave',
-    'Activity',
     { changes: { ...baseActivity, photoFiles: [{ name: 'x.jpg', size: 10, url: 'javascript:alert(1)' }] } },
     /檔案網址必須是/,
   );
 });
 
-test('TC-21 對照：原有的舊網址保留可以，搬到別的分類也可以', async () => {
-  const legacy = { name: 'old.jpg', size: 10, url: 'https://parsefiles.back4app.com/TEST_APP/old.jpg' };
+test('TC-21 對照：GCS 附件可以新增，也可以搬到別的分類', async () => {
+  const existing = gcsFile('old.jpg');
   await run('beforeSave', 'Activity', {
-    originalAttrs: { ...baseActivity, photoFiles: [legacy] },
-    changes: { photoFiles: [legacy, gcsFile('new.jpg')] },
+    originalAttrs: { ...baseActivity, photoFiles: [existing] },
+    changes: { photoFiles: [existing, gcsFile('new.jpg')] },
   });
   await run('beforeSave', 'Activity', {
-    originalAttrs: { ...baseActivity, photoFiles: [legacy] },
-    changes: { photoFiles: [], recordFiles: [legacy] },
+    originalAttrs: { ...baseActivity, photoFiles: [existing] },
+    changes: { photoFiles: [], recordFiles: [existing] },
   });
 });
 
@@ -381,14 +372,6 @@ test('TC-22 Plan／Category／GenerationJob 也覆蓋偽造的操作者', async 
 
 test('TC-22 對照：未登入也非 master 的寫入被拒', async () => {
   await rejects('beforeSave', 'Activity', { changes: baseActivity, user: null }, /需要登入/);
-});
-
-test('TC-22 非 master 帶 attachmentMigration context 不能跳過蓋章', async () => {
-  const { object } = await run('beforeSave', 'Activity', {
-    changes: { ...baseActivity, ...forged },
-    context: { attachmentMigration: { moved: 1 } },
-  });
-  assert.equal(object.get('createdById'), 'userAlice');
 });
 
 // ───────────────────────── TC-23 GenerationJob ─────────────────────────

@@ -2,9 +2,8 @@ import { reactive, ref } from 'vue'
 import { postJson, putToSignedUrl } from './middleware'
 import type { AttachmentKey } from '../types'
 
-/** 活動附件存在 GCS（Cloud Run 中介層簽發的臨時網址上傳／讀取）。FileMeta.url 存成
- * 「gcs:attachments/…」，跟 10 月前上傳到 Back4App 的舊附件（https://parsefiles.back4app.com/…）
- * 區分；舊網址照舊直接使用，新舊可以並存在同一個活動裡。 */
+/** 活動附件存在 GCS（Cloud Run 中介層簽發的臨時網址上傳／讀取），FileMeta.url 存成
+ * 「gcs:attachments/…」。不是這個前綴的網址（例如外部連結）照原樣使用。 */
 const GCS_URL_PREFIX = 'gcs:'
 
 function isGcsUrl(url: string | undefined): url is string {
@@ -157,7 +156,7 @@ export async function resolveAttachmentUrl(url: string, name = ''): Promise<stri
 // ── 刪除 ──────────────────────────────────────────────
 
 /** 從活動拿掉附件後呼叫：Cloud Run 只會刪掉已經沒有任何活動引用的檔案（同一檔案掛在
- * 別的活動、或還在某個垃圾桶裡就保留）。舊的 Back4App 附件不經過這裡，由 Cloud Code 處理。 */
+ * 別的活動、或還在某個垃圾桶裡就保留）。 */
 export async function deleteUnreferencedAttachments(urls: string[]): Promise<void> {
   const paths = urls.filter(isGcsUrl).map((u) => u.slice(GCS_URL_PREFIX.length))
   if (!paths.length) return

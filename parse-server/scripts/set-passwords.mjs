@@ -26,10 +26,6 @@ const apply = args.includes('--apply')
 const fromIdx = args.indexOf('--from')
 const fromFile = fromIdx >= 0 ? args[fromIdx + 1] : null
 
-if (SERVER_URL.includes('back4app')) {
-  console.error('這支只用在自架伺服器（tcross-parse）')
-  process.exit(1)
-}
 
 const headers = { 'X-Parse-Application-Id': APP_ID, 'X-Parse-Master-Key': MASTER_KEY, 'Content-Type': 'application/json' }
 async function api(method, path, body) {
@@ -52,7 +48,7 @@ for (const u of users) console.log(`  ${u.username}（${u.displayName || ''}）`
 const fromJson = fromFile ? JSON.parse(readFileSync(fromFile, 'utf8')) : {}
 const passwords = fromJson.passwords || {}
 
-// 密碼檔的 renames（舊帳號 → 新帳號）：Back4App 上還是舊帳號，重新匯入後要再改名一次
+// 密碼檔的 renames（舊帳號 → 新帳號）：10-20 以前的備份裡還是舊帳號，用舊備份重新匯入後要再改名一次
 for (const [oldName, newName] of Object.entries(fromJson.renames || {})) {
   const u = users.find((x) => x.username === oldName)
   if (!u) continue

@@ -12,11 +12,11 @@
 | --- | --- | --- |
 | 前端網站 | `src/` | Vue 3 + Vite + Pinia + TypeScript |
 | AI 中介層 | `server/` | Python，部署在 Cloud Run，呼叫 Vertex AI Gemini |
-| 雲端函式 | `cloud/main.js` | Parse Cloud Code（由自架 Parse Server 執行；Back4App 只當備份） |
+| 雲端函式 | `cloud/main.js` | Parse Cloud Code（由自架 Parse Server 執行） |
 | 自架 Parse Server | `parse-server/` | Node，部署在 Cloud Run `tcross-parse`，資料庫是 Firestore MongoDB 相容模式（10-20 起為正式資料庫，見 [parse-server/README.md](../parse-server/README.md)） |
 | 維運腳本 | `scripts/` | Node 腳本：備份、還原、附件搬移、帳號與 schema 同步 |
 
-不在範圍內：Back4App、Google Cloud、Google Maps 等第三方服務本身的可用性。
+不在範圍內：Google Cloud、Google Maps 等第三方服務本身的可用性。
 
 ## 測試環境（10-20 15:43 起）
 
@@ -24,7 +24,6 @@
 | --- | --- | --- | --- |
 | 正式站 | `https://tacc-iip.web.app` | `tcross-parse`（Firestore） | 全部項目，含附件與 AI |
 | 測試網址 | `https://tacc-iip--parse-test-wsf5d7qa.web.app`（10/27 10:42 自動失效） | 同上，**和正式站同一個資料庫** | 只用來試前端改版；寫入的資料就是正式資料 |
-| 備份 | Back4App | 停在 10-20 15:43 的資料 | 只有回滾時用，不再測 |
 
 切換後已經沒有獨立的測試資料庫，在任何網址新增的資料都會進正式資料庫。測試資料名稱請加「【測試】」並在結束時刪除。單元測試不連任何網站，跟環境無關。
 
@@ -136,7 +135,6 @@
 
 | 工作 | 期間（2026） | 負責人 |
 | --- | --- | --- |
-| **節點：Back4App 方案到期** | 10/29 | — |
 | **節點：驗收交付** | 10/31 | — |
 | P1 案例與端到端（Playwright） | 11/2–11/13 | 待定 |
 
