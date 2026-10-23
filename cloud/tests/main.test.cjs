@@ -1,4 +1,4 @@
-// cloud/main.js 的伺服器端驗證測試（TESTING.md TC-18～TC-24）。
+// cloud/main.js 的伺服器端驗證測試（doc/TESTING.md TC-18～TC-24）。
 // 執行：node --test cloud/tests/
 //
 // 不依賴 parse-server：用最小的假 Parse 物件載入 main.js，把 Parse.Cloud.* 註冊的

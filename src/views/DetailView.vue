@@ -364,7 +364,7 @@ async function duplicateActivity() {
       <div class="row">
         <button class="btn sm" @click="showAiGenModal = true">AI 自動生成成果報告</button>
         <button class="btn ghost sm" @click="showRewriteModal = true">AI 改寫文案</button>
-        <button class="btn ghost sm" @click="showMeetingModal = true">AI 會議紀錄</button>
+        <button class="btn ghost sm" @click="showMeetingModal = true">AI 會議音檔轉錄紀錄</button>
         <div ref="genMenuRoot" class="menu">
           <button
             class="btn ghost sm"

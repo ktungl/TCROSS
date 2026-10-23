@@ -13,7 +13,7 @@
 | 前端網站 | `src/` | Vue 3 + Vite + Pinia + TypeScript |
 | AI 中介層 | `server/` | Python，部署在 Cloud Run，呼叫 Vertex AI Gemini |
 | 雲端函式 | `cloud/main.js` | Parse Cloud Code（由自架 Parse Server 執行；Back4App 只當備份） |
-| 自架 Parse Server | `parse-server/` | Node，部署在 Cloud Run `tcross-parse`，資料庫是 Firestore MongoDB 相容模式（10-20 起為正式資料庫，見 [parse-server/README.md](parse-server/README.md)） |
+| 自架 Parse Server | `parse-server/` | Node，部署在 Cloud Run `tcross-parse`，資料庫是 Firestore MongoDB 相容模式（10-20 起為正式資料庫，見 [parse-server/README.md](../parse-server/README.md)） |
 | 維運腳本 | `scripts/` | Node 腳本：備份、還原、附件搬移、帳號與 schema 同步 |
 
 不在範圍內：Back4App、Google Cloud、Google Maps 等第三方服務本身的可用性。
@@ -41,7 +41,7 @@
 
 現在實際在用的手動把關：
 
-- **部署後健康檢查**：curl `/status`，再帶 session token 打 `/signed-url`、`/download-url`（見 [OPERATIONS.md](OPERATIONS.md)、[server/README.md](server/README.md)）。
+- **部署後健康檢查**：curl `/status`，再帶 session token 打 `/signed-url`、`/download-url`（見 [OPERATIONS.md](OPERATIONS.md)、[server/README.md](../server/README.md)）。
 - **範本修改**：`npm run dev` 後到「匯出成果」實際匯出，打開檔案核對。
 - **Cloud Code**：由 `parse-server/scripts/deploy.sh` 部署，部署後用 `Test123` 跑 `npm run test:e2e`。`node parse-server/scripts/smoke-test.mjs <備份資料夾>` 的 15 項檢查（登入、CLP、Cloud Code 驗證、稽核紀錄）用的是匯入時的臨時密碼，只在重新匯入後能用。
 - **備份還原演練**：10-05 還原到 `TCROSS-restore-test`，2058 個欄位 0 差異。
@@ -76,7 +76,7 @@
 | 後端單元 | pytest | `server/utils.py`、`charts.py` 的純函式；`document.py` 產出後用 python-docx 讀回來比對 | 每次部署 Cloud Run 前 |
 | 後端整合 | pytest + FastAPI TestClient，mock Parse / GCS / Gemini | 各端點的 401 / 403 / 429、參數驗證、正常路徑的回傳格式 | 每次部署 Cloud Run 前 |
 | Cloud Code | Node 測試把 `cloud/main.js` 載入假的 `Parse.Cloud`，直接呼叫 beforeSave | 封存鎖定、欄位規則、附件來源、操作者蓋章 | 跑 `deploy.sh` 前 |
-| 端到端 | Playwright（第二階段再做） | 登入 → 新增活動 → 上傳 → 匯出的主線 | 每週或大改版前，對正式站跑 |
+| 端到端 | Playwright（`tests/e2e/`，目前只有登入導向，主線案例待補） | 登入 → 新增活動 → 上傳 → 匯出的主線 | 每週或大改版前，對正式站跑 |
 | 手動驗收 | 檢查表（見下方「部署後手動回歸檢查」） | 真的 Gemini 生成、PDF 中文、圖表、CSP | 每次部署後 |
 
 端到端測試原本規劃用還原演練的 `TCROSS-restore-test`（Back4App），搬到 GCP 後它已不代表正式環境，改對正式站跑。測試帳號用 `Test123`（密碼在 `backups/passwords-current.json`，不進 git）；測試資料名稱請加「【測試】」並在結束時刪除。
@@ -93,7 +93,7 @@
 
 ## 部署後手動回歸檢查
 
-自動化測試補齊之前，每次部署後照這張表走一遍。指令細節見 [OPERATIONS.md](OPERATIONS.md) 與 [server/README.md](server/README.md)「驗證部署是否正確」。
+自動化測試補齊之前，每次部署後照這張表走一遍。指令細節見 [OPERATIONS.md](OPERATIONS.md) 與 [server/README.md](../server/README.md)「驗證部署是否正確」。
 
 全部項目都在正式站 `tacc-iip.web.app` 測。
 
@@ -101,7 +101,7 @@
 
 - [ ] curl `https://tcross-parse-502746951565.asia-east1.run.app/health`，回傳 `{"ok":true}`
 - [ ] 用 `Test123` 跑一次端到端 `npm run test:e2e`，全過。（`smoke-test.mjs` 用的是匯入時的臨時密碼，切換後已換成正式密碼，現在會登入失敗，只在重新匯入後用）
-- [ ] 全新的 Firestore 資料庫第一次部署前，先在本機跑一次 `node index.js` 把索引建好，否則會超過 Cloud Run 4 分鐘啟動上限（見 [parse-server/README.md](parse-server/README.md)）
+- [ ] 全新的 Firestore 資料庫第一次部署前，先在本機跑一次 `node index.js` 把索引建好，否則會超過 Cloud Run 4 分鐘啟動上限（見 [parse-server/README.md](../parse-server/README.md)）
 
 **Cloud Run 中介層**
 

@@ -119,7 +119,7 @@ watch([male, female], ([m, f], [om, of]) => {
 })
 const totalMismatch = computed(() => (Number(total.value) || 0) !== sumMF())
 
-// AI 輔助（AI_UPGRADE_PLAN.md 2-1、2-2）：只產生建議，使用者勾選／點選後才寫進表單
+// AI 輔助（doc/AI_UPGRADE_PLAN.md 2-1、2-2）：只產生建議，使用者勾選／點選後才寫進表單
 const posterDescription = ref('')
 const posterCurrent = computed<Record<PosterField, string>>(() => ({
   name: name.value,

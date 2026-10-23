@@ -1,6 +1,6 @@
 # 自架 Parse Server（Back4App → GCP）
 
-原 [ROADMAP.md](../ROADMAP.md) 第 15 項，2026-10-20 15:43 已完成切換，目前是正式資料庫；Back4App 的退場見 ROADMAP #16、#9、#17。Parse Server 跑在 Cloud Run（服務 `tcross-parse`，`asia-east1`），資料庫用 Firestore 的 MongoDB 相容模式（`tcross` 資料庫，`asia-east1`，2026-10-20 建立），帳單、權限、監控全部集中在同一個 GCP 專案。前端、Cloud Run 中介層和 `cloud/main.js` 都還是走 Parse 協定，切換時只要換伺服器網址。
+原 [doc/ROADMAP.md](../doc/ROADMAP.md) 第 15 項，2026-10-20 15:43 已完成切換，目前是正式資料庫；Back4App 的退場見 ROADMAP #16、#9、#17、#12。Parse Server 跑在 Cloud Run（服務 `tcross-parse`，`asia-east1`），資料庫用 Firestore 的 MongoDB 相容模式（`tcross` 資料庫，`asia-east1`，2026-10-20 建立），帳單、權限、監控全部集中在同一個 GCP 專案。前端、Cloud Run 中介層和 `cloud/main.js` 都還是走 Parse 協定，切換時只要換伺服器網址。
 
 **Back4App 不會被改動**：搬移只從每日備份（`scripts/backup-parse.mjs` 的匯出）讀資料，切換後 Back4App 停在切換當下的狀態，留作備份；要回滾就把網址改回去。
 
@@ -13,7 +13,7 @@
 | `scripts/rehearse-local.mjs` | 演練：匯入＋以成員身分測登入、CLP、Cloud Code、稽核紀錄。預設用本機暫時的 MongoDB；`.env` 設 `REHEARSE_DATABASE_URI` 時改測真的資料庫（必須是空的，測完自動清空） |
 | `scripts/checks.mjs` | 以成員身分的 15 項行為檢查（登入、CLP、Cloud Code、稽核紀錄、活動列表），並印出每個請求耗時；下面兩支共用 |
 | `scripts/clear-database.mjs` | 正式切換前清空 `tcross` 資料庫（保留索引與 `_SCHEMA`），讓 `import-backup.mjs` 可以重新匯入 |
-| `scripts/smoke-test.mjs` | 對已部署的 `tcross-parse` 跑 `checks.mjs`（會留下一筆登入與新增＋刪除的稽核紀錄）。用的是匯入時的臨時密碼，切換後已換成正式密碼，現在只在重新匯入後能用；平常改用 `npm run test:e2e`（見 [TESTING.md](../TESTING.md)） |
+| `scripts/smoke-test.mjs` | 對已部署的 `tcross-parse` 跑 `checks.mjs`（會留下一筆登入與新增＋刪除的稽核紀錄）。用的是匯入時的臨時密碼，切換後已換成正式密碼，現在只在重新匯入後能用；平常改用 `npm run test:e2e`（見 [doc/TESTING.md](../doc/TESTING.md)） |
 | `scripts/set-passwords.mjs` | 匯入後把帳號密碼設成指定值（`--from` 密碼檔，檔案在 `backups/`，不進 git） |
 | `scripts/setup-gcp.sh` | 一次性：服務帳號、Firestore 正式帳密 `parse-server`（含 IAM）、Secret Manager（連線字串、新 Master Key） |
 | `scripts/deploy.sh` | 部署／更新 Cloud Run（改完 `cloud/main.js` 也跑這支，不用再貼 Dashboard） |

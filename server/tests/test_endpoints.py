@@ -56,7 +56,7 @@ def spy_downstream(monkeypatch):
 @pytest.mark.parametrize("path, body", ENDPOINTS, ids=_IDS)
 def test_tc30_no_token_returns_401(client, spy_downstream, path, body):
     """已知產品問題：main.py require_user 用 Header(...) 必填，完全不帶 Authorization 時
-    FastAPI 在進入驗證前就回 422（Field required），不是 TESTING.md 預期的 401。
+    FastAPI 在進入驗證前就回 422（Field required），不是 doc/TESTING.md 預期的 401。
     請求仍被擋下、下游沒被呼叫，但狀態碼不符規格，修正前這組測試會失敗。"""
     resp = client.post(path, json=body)
     assert resp.status_code == 401, resp.text

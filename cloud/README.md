@@ -31,7 +31,7 @@ npm run test:cloud   # 2026-10-20：30 項全過
 bash parse-server/scripts/deploy.sh   # 會把 cloud/main.js 一起打包部署到 tcross-parse
 ```
 
-改 `main.js` 時，先跑 `npm run test:cloud`，部署後依 [TESTING.md](../TESTING.md)「部署後手動回歸檢查」用 `Test123` 跑 `npm run test:e2e`，並手動試一次「編輯已封存活動應該被拒」。
+改 `main.js` 時，先跑 `npm run test:cloud`，部署後依 [doc/TESTING.md](../doc/TESTING.md)「部署後手動回歸檢查」用 `Test123` 跑 `npm run test:e2e`，並手動試一次「編輯已封存活動應該被拒」。
 
 ### 部署後驗證
 
@@ -62,6 +62,6 @@ Back4App 沒有 CLI 流程，只能手動貼到 Dashboard：
 3. 把這個檔案的內容整個貼進去覆蓋，點 **Deploy**
 4. 用上面的 curl 驗證（網址換成 `https://parseapi.back4app.com/classes/Activity`）。Back4App 有時第一次部署不會立刻生效，重新點一次 Deploy 再測
 
-10-20 曾發生 Back4App 的 Cloud Code 被其他專案的程式蓋掉、正式站全部登不進去，回滾前一定要確認貼的是這份檔案。其他回滾步驟見 [OPERATIONS.md](../OPERATIONS.md)「自架 Parse Server（正式資料庫）」。
+10-20 曾發生 Back4App 的 Cloud Code 被其他專案的程式蓋掉、正式站全部登不進去，回滾前一定要確認貼的是這份檔案。其他回滾步驟見 [doc/OPERATIONS.md](../doc/OPERATIONS.md)「自架 Parse Server（正式資料庫）」。
 
 > **欄位不會自動建立**：Cloud Code 部署跟資料表欄位是兩回事。各 class 的 CLP 關閉了 addField，前端新增欄位後要先跑 `node scripts/sync-schema.mjs --apply` 建欄位，否則會收到 `Permission denied for action addField on class Activity`。

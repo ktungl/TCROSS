@@ -517,7 +517,7 @@ async function batchHardDeleteJobs() {
   <h2>各計畫已有生成的匯出檔案</h2>
   <div class="card">
     <p class="sub card-intro">
-      這裡列出 AI 自動生成的成果報告與會議紀錄（活動詳情頁「AI 自動生成成果報告」「AI 會議紀錄」建立的工作）。
+      這裡列出 AI 自動生成的成果報告與會議紀錄（活動詳情頁「AI 自動生成成果報告」「AI 會議音檔轉錄紀錄」建立的工作）。
       「匯出成果」頁的大事紀 Excel／內政部結案 Word，以及活動詳情頁產生的簽到表、領據、公文等，都是即時產生、不會保存在伺服器，因此不會出現在這裡。
     </p>
     <div class="row toolbar">

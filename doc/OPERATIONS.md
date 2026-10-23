@@ -7,7 +7,7 @@
 | 元件 | 位置 | 誰持有密鑰 |
 | --- | --- | --- |
 | 前端 SPA（Vue） | `src/`，部署在 Firebase Hosting，正式網址 `https://tacc-iip.web.app`（見「部署前端」），尚未綁自訂網域 | 瀏覽器持有 Parse App ID／JS Key（設計上本來就公開，靠 Parse ACL／CLP 把關） |
-| 自架 Parse Server `tcross-parse`（**2026-10-20 起為正式資料庫**） | `parse-server/`，Cloud Run `asia-east1`＋Firestore MongoDB 相容模式資料庫 `tcross`，掛 `cloud/main.js`，見 [parse-server/README.md](parse-server/README.md) | Master Key 與資料庫連線字串只在 Secret Manager（`parse-server-master-key`／`parse-db-uri`），服務帳號 `tcross-parse-sa` |
+| 自架 Parse Server `tcross-parse`（**2026-10-20 起為正式資料庫**） | `parse-server/`，Cloud Run `asia-east1`＋Firestore MongoDB 相容模式資料庫 `tcross`，掛 `cloud/main.js`，見 [parse-server/README.md](../parse-server/README.md) | Master Key 與資料庫連線字串只在 Secret Manager（`parse-server-master-key`／`parse-db-uri`），服務帳號 `tcross-parse-sa` |
 | Back4App（**10-20 起停用，保留當備份**） | 停在 10-20 15:43 切換當下的資料，回滾用 | Master Key 在 Back4App Dashboard、Secret Manager `parse-master-key`（已不掛在任何服務上）、本機 `.env` 的 `BACK4APP_PARSE_MASTER_KEY` |
 | Cloud Run 中介層 `tcross-middleware` | `server/`，GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`，region `asia-east1` | 唯一持有 GCP 服務帳戶身分（`tcross-middleware-sa`）與 `PARSE_MASTER_KEY`（Secret Manager） |
 
@@ -29,7 +29,7 @@ gcloud run services describe tcross-parse --region asia-east1 \
   --format="value(status.latestReadyRevisionName)"
 ```
 
-Parse Server 的錯誤記錄用同樣的 `gcloud logging read`，把 `service_name` 換成 `tcross-parse`。
+Parse Server 的錯誤記錄用下一節的 `gcloud logging read`，把 `service_name` 換成 `tcross-parse`。
 
 ## 查稽核紀錄／除錯
 
@@ -89,9 +89,9 @@ gcloud run deploy tcross-middleware \
   --service-account tcross-middleware-sa@project-80ac5e1a-2ea4-4000-9ff.iam.gserviceaccount.com
 ```
 
-不用帶 `--set-env-vars`／`--set-secrets`——沒指定的話 `gcloud run deploy` 會沿用目前 revision 的環境變數與 Secret Manager 綁定。只有在真的要新增/修改環境變數時才需要帶（完整初始建置流程見 [server/README.md](server/README.md#部署到-cloud-run你有-gcp-專案後再做)）。
+不用帶 `--set-env-vars`／`--set-secrets`——沒指定的話 `gcloud run deploy` 會沿用目前 revision 的環境變數與 Secret Manager 綁定。只有在真的要新增/修改環境變數時才需要帶（完整初始建置流程見 [server/README.md](../server/README.md#部署到-cloud-run你有-gcp-專案後再做)）。
 
-部署後務必用上面的「日常健康檢查」跟 `/signed-url`／`/download-url` 各打一次確認沒有回歸（curl 範例見 [server/README.md](server/README.md#驗證部署是否正確)）。
+部署後務必用上面的「日常健康檢查」跟 `/signed-url`／`/download-url` 各打一次確認沒有回歸（curl 範例見 [server/README.md](../server/README.md#驗證部署是否正確)）。
 
 ### 回滾到上一版
 
@@ -146,7 +146,7 @@ node parse-server/scripts/smoke-test.mjs <已匯入的備份資料夾>       # �
 
 ## 部署 Back4App Cloud Code（`cloud/main.js`，只在回滾時需要）
 
-沒有 CLI 流程，只能手動貼到 Dashboard：步驟見 [cloud/README.md](cloud/README.md)「回滾到 Back4App 時」。
+沒有 CLI 流程，只能手動貼到 Dashboard：步驟見 [cloud/README.md](../cloud/README.md)「回滾到 Back4App 時」。
 
 ## 資料備份（10-20 起備份自架 Parse Server）
 
@@ -162,7 +162,7 @@ GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00
 
 ### 還原
 
-**還原到自架 Parse Server（Firestore）**：用 `parse-server/scripts/import-backup.mjs`，會保留 objectId 與建立／修改時間，最後逐筆逐欄核對；目標資料庫必須是空的（正式資料庫要先 `clear-database.mjs --apply`）。10-20 正式切換就是用這個流程，步驟與注意事項見 [parse-server/README.md](parse-server/README.md) 第 4、6 步。匯入後帳號是臨時密碼，用 `parse-server/scripts/set-passwords.mjs` 設定。
+**還原到自架 Parse Server（Firestore）**：用 `parse-server/scripts/import-backup.mjs`，會保留 objectId 與建立／修改時間，最後逐筆逐欄核對；目標資料庫必須是空的（正式資料庫要先 `clear-database.mjs --apply`）。10-20 正式切換就是用這個流程，步驟與注意事項見 [parse-server/README.md](../parse-server/README.md) 第 4、6 步。匯入後帳號是臨時密碼，用 `parse-server/scripts/set-passwords.mjs` 設定。
 
 **還原到 Back4App（舊流程，只在 Back4App 刪除前、需要回滾時用）**：`scripts/restore-parse.mjs` 把解開的備份資料夾還原到**另一個空的** Back4App app（目標 App ID 與正式站相同會拒絕執行；目標已有資料也會拒絕）。目標寫在 `.env` 的 `RESTORE_PARSE_APP_ID`／`RESTORE_PARSE_MASTER_KEY`。
 
@@ -180,11 +180,11 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 
 | 密鑰 | 存放位置 | 輪替方式 |
 | --- | --- | --- |
-| `PARSE_MASTER_KEY`（Back4App 的，10-20 起只留作回滾） | GCP Secret Manager（`parse-master-key`），切換後已不掛在任何服務上 | 去 Back4App Dashboard 重新產生後，`gcloud secrets versions add parse-master-key --data-file=-` 更新一版。**這裡是環境變數形式的 secret，只在 revision 建立當下解析一次，改了新版本不會自動生效**——即使綁的是 `:latest`，也要重新部署一次（跑一次「部署一支新版 Cloud Run 中介層」）讓新 revision 重新解析才會撿到新金鑰。**另外 GitHub repo secret `PARSE_MASTER_KEY`（每日備份用）也要同步更新**：`gh secret set PARSE_MASTER_KEY` |
+| `PARSE_MASTER_KEY`（Back4App 的，10-20 起只留作回滾） | GCP Secret Manager（`parse-master-key`），切換後已不掛在任何服務上；本機 `.env` 的 `BACK4APP_PARSE_MASTER_KEY` | 去 Back4App Dashboard 重新產生後，`gcloud secrets versions add parse-master-key --data-file=-` 更新一版，並改本機 `.env`。目前沒有服務掛這把，不用重新部署。**GitHub secret `PARSE_MASTER_KEY` 現在是正式的金鑰（見下方 `parse-server-master-key`），不要改成這把**；只有回滾到 Back4App 時才換（見「自架 Parse Server」的回滾步驟）。 |
 | `PARSE_APP_ID`／`PARSE_JS_KEY` | Cloud Run 環境變數（明文，設計上本來就是公開資訊）＋前端 `.env`（`.gitignore` 已排除） | 這兩把本來就假設公開，不是機密；真要換要同時改前端 `.env` 與 Cloud Run 環境變數 |
 | `parse-server-master-key`（正式的 Master Key） | GCP Secret Manager，`tcross-parse` 與 `tcross-middleware` 都以環境變數掛載；GitHub secret `PARSE_MASTER_KEY`（每日備份）也是這把 | `openssl rand -hex 32 \| tr -d '\r\n' \| gcloud secrets versions add parse-server-master-key --data-file=-`（Windows 的 openssl 會帶 `\r`，一定要一起去掉）後重跑 `parse-server/scripts/deploy.sh`，中介層也要重新部署一次（環境變數形式的 secret 只在 revision 建立時解析），再 `gcloud secrets versions access latest --secret parse-server-master-key \| tr -d '\r\n' \| gh secret set PARSE_MASTER_KEY` |
 | `parse-db-uri`（Firestore 連線字串，帳密 `parse-server`） | GCP Secret Manager | `gcloud firestore user-creds reset-password parse-server --database=tcross`，組成新連線字串（格式見 `parse-server/scripts/setup-gcp.sh`）加一版 secret，再重跑 `deploy.sh` |
-| `tcross-middleware-sa` 服務帳戶 | GCP IAM，無 JSON 金鑰檔（用 IAM 自我模擬簽 URL，見 [server/README.md](server/README.md)） | 沒有金鑰檔案可外洩，不需要輪替；如需撤銷存取直接在 IAM 移除該服務帳戶權限 |
+| `tcross-middleware-sa` 服務帳戶 | GCP IAM，無 JSON 金鑰檔（用 IAM 自我模擬簽 URL，見 [server/README.md](../server/README.md)） | 沒有金鑰檔案可外洩，不需要輪替；如需撤銷存取直接在 IAM 移除該服務帳戶權限 |
 
 ## 費用控制
 

@@ -1,11 +1,11 @@
-# Cloud Run 中介層（ROADMAP.md Phase 1）
+# Cloud Run 中介層
 
 前端向這個服務要 GCS Signed URL，不直接握有 GCP 憑證。這個服務是唯一持有 GCP 服務帳戶身分的地方；`PARSE_MASTER_KEY` 也只存在這裡，絕不進前端 bundle。
 
 - `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL（PUT）給前端直傳檔案。
 - `/download-url`：同樣驗證 session token 後，對 `objectPath` 發一個限時的 GCS v4 signed URL（GET）給前端下載/預覽檔案；`objectPath` 必須以 `activities/` 開頭且不含 `..`（`utils.is_valid_object_path()`），避免任何登入使用者拿去簽發桶內任意路徑的下載網址。前端 `AiGenerationModal.vue` 在 `GenerationJob.status === 'done'` 時會呼叫這個端點。
 - `/delete-objects`：驗證 session token 後，批次刪除傳入的 `objectPaths`（同樣用 `is_valid_object_path()` 檢查每個路徑），供前端在刪除 `GenerationJob` 記錄前先清掉對應的 GCS 來源/產出檔案（`src/stores/db.ts` 的 `deleteGenerationJob()`）。
-- `/generate/{job_id}`：Phase 3b。驗證呼叫者能讀到這筆 `GenerationJob` 且狀態是 `pending` 後，先用 Master Key 把 `status` 改成 `processing`，接著**在同一個請求裡**把生成做完（呼叫 Gemini → `report.py` 組出報告內容（成果報告含圖表，`charts.py`）→ `document.py` 輸出 `.docx` 與同名 `.pdf` 寫回 GCS → 用 Master Key 把 `status`/`resultFile` 或 `errorMessage` 寫回 Parse）才回應 `{"status": "done"|"error"}`。前端 `AiGenerationModal.vue` 建立好 `GenerationJob` 後用 `keepalive` 送出觸發請求但**不等回應**，結果透過既有的 5 秒輪詢取得。停在 `processing` 超過 20 分鐘的工作允許重新觸發（前端有「重新觸發」按鈕）。每筆工作最多 `MAX_SOURCE_FILES`（預設 20）個素材檔。
+- `/generate/{job_id}`：AI 生成，依 `kind` 產成果報告或會議紀錄。驗證呼叫者能讀到這筆 `GenerationJob` 且狀態是 `pending` 後，先用 Master Key 把 `status` 改成 `processing`，接著**在同一個請求裡**把生成做完（呼叫 Gemini → `report.py` 組出報告內容（成果報告含圖表，`charts.py`）→ `document.py` 輸出 `.docx` 與同名 `.pdf` 寫回 GCS → 用 Master Key 把 `status`/`resultFile` 或 `errorMessage` 寫回 Parse）才回應 `{"status": "done"|"error"}`。前端 `AiGenerationModal.vue` 建立好 `GenerationJob` 後用 `keepalive` 送出觸發請求但**不等回應**，結果透過既有的 5 秒輪詢取得。停在 `processing` 超過 20 分鐘的工作允許重新觸發（前端有「重新觸發」按鈕）。每筆工作最多 `MAX_SOURCE_FILES`（預設 20）個素材檔。
 
 `parse_auth.write_with_master_key()` 現在由 `/generate` 使用，把 `GenerationJob` 推進 `processing`/`done`/`error`。
 
@@ -13,15 +13,15 @@
 1. ✅ GCP 專案已啟用 Vertex AI API（`aiplatform.googleapis.com`）——這是會計費的服務。
 2. ✅ `tcross-middleware-sa` 已授權 `roles/aiplatform.user`。
 3. ✅ Cloud Run 環境變數已補上 `GCP_PROJECT=project-80ac5e1a-2ea4-4000-9ff`／`GCP_LOCATION`／`GEMINI_MODEL=gemini-2.5-flash`。2026-09-28 `GCP_LOCATION` 從 `us-central1` 改成 `asia-northeast1`（東京）——`gemini-2.5-flash` 在 `asia-east1`（台灣）實測回 404 不可用，東京是離 GCS 桶最近、實測可用的 region。另可用 `GEMINI_MEDIA_RESOLUTION`（預設 `LOW`）調整照片／影片送進 Gemini 的解析度，小字辨識不出來再改 `MEDIUM`。**若之後想換模型或 region，記得先到 [Vertex AI 主控台](https://console.cloud.google.com/vertex-ai)確認新的 `GEMINI_MODEL` 在該 `GCP_LOCATION` 是否可用**（Gemini 模型的可用 region 會隨時間變動，這裡沒有寫死驗證）。
-4. ~~已用 `--no-cpu-throttling` 重部署~~（**2026-09-28 已撤銷**：`/generate` 改成在請求內同步做完，不再需要常駐 CPU；revision `tcross-middleware-00012-6nc` 改回 `--cpu-throttling` 按請求計費，並設 `--max-instances 2`、`--timeout 900`，見 [../OPERATIONS.md](../OPERATIONS.md)「費用控制」。以下為原始紀錄）已用 `--no-cpu-throttling` 重部署（revision `tcross-middleware-00011-hdv`，`gcloud run services describe` 確認 `run.googleapis.com/cpu-throttling: 'false'`）——這是必須的：FastAPI 的 `BackgroundTasks` 要在 HTTP 回應送出**之後**繼續跑 Gemini／組裝／寫回這幾步，沒有這個旗標 Cloud Run 預設會在沒有進來的請求時限制 CPU，背景工作可能因此被凍結／跑很慢甚至跑不完。**這個旗標會提高 Cloud Run 的閒置計費**（instance 常駐拿得到 CPU），是用可靠性換取的成本，之後如果覺得不划算可以評估改用 Cloud Tasks 佇列。
+4. ~~已用 `--no-cpu-throttling` 重部署~~（**2026-09-28 已撤銷**：`/generate` 改成在請求內同步做完，不再需要常駐 CPU；revision `tcross-middleware-00012-6nc` 改回 `--cpu-throttling` 按請求計費，並設 `--max-instances 2`、`--timeout 900`，見 [../doc/OPERATIONS.md](../doc/OPERATIONS.md)「費用控制」。以下為原始紀錄）已用 `--no-cpu-throttling` 重部署（revision `tcross-middleware-00011-hdv`，`gcloud run services describe` 確認 `run.googleapis.com/cpu-throttling: 'false'`）——這是必須的：FastAPI 的 `BackgroundTasks` 要在 HTTP 回應送出**之後**繼續跑 Gemini／組裝／寫回這幾步，沒有這個旗標 Cloud Run 預設會在沒有進來的請求時限制 CPU，背景工作可能因此被凍結／跑很慢甚至跑不完。**這個旗標會提高 Cloud Run 的閒置計費**（instance 常駐拿得到 CPU），是用可靠性換取的成本，之後如果覺得不划算可以評估改用 Cloud Tasks 佇列。
 5. **✅ 端到端測試已完成**（2026-09-17）：用瀏覽器對一筆測試活動實際跑過「上傳照片→開始生成→下載 `.docx`」全流程，確認 Gemini 呼叫、GCS 寫入、Parse 寫回都正常。過程中第一次觸發遇到 `400 FAILED_PRECONDITION`（Google：「Service agents are being provisioned...please try again in a few minutes」），這是剛啟用 Vertex AI API 後的正常過渡狀態；等了幾分鐘重新觸發後成功，下載的 `.docx` 內容確認 Gemini 正確讀出測試照片裡的文字並填入摘要／重點／KPI 表格。測試資料已清除，不留在正式資料庫。
 6. **已知限制（暫時接受，之後有需要再處理）**：沒有用 Cloud Tasks 佇列。生成超過 `--timeout`（900 秒）或 instance 中途被砍掉時，這筆 `GenerationJob` 會停在 `processing`；20 分鐘後可以從前端「重新觸發」再跑一次（2026-09-28 起），不用再手動改 Parse。若這種情況常發生，之後應該換成 Cloud Tasks（在 Cloud Run 裡呼叫佇列，而不是讓 Parse Cloud Code 持有 GCP 憑證——理由跟 [../README.md](../README.md#資料流向) 說明的信任邊界一致）。
 
 - `/attachments/upload-urls`、`/attachments/view-urls`、`/attachments/delete`：活動附件（存在 GCS 主桶 `attachments/`，前端 `src/lib/attachments.ts`）。上傳和 `/signed-url` 一樣檢查 session、活動可讀、副檔名黑名單，另由 GCS 強制單檔 50 MB；檢視一次簽一批 15 分鐘的 GET 網址，單一路徑無權讀取時只略過那一個；刪除只刪已經沒有任何活動引用的檔案（前端先刪紀錄再呼叫）。
 
-- `/rewrite/{activity_id}`：AI 改寫文案（`AI_UPGRADE_PLAN.md` 1-1）。body `{"format": "新聞稿"|"社群文案"|"主管摘要"}`；用呼叫者的 session 讀活動與計畫名稱（讀不到回 403），只把文字欄位送 Gemini（`rewrite.py`），同步回傳 `{format, title, paragraphs, bullets, hashtags}`，不建 `GenerationJob`、不寫任何資料。各格式的寫法在 `rewrite.py` 的 `FORMATS`。
+- `/rewrite/{activity_id}`：AI 改寫文案（`doc/AI_UPGRADE_PLAN.md` 1-1）。body `{"format": "新聞稿"|"社群文案"|"主管摘要"}`；用呼叫者的 session 讀活動與計畫名稱（讀不到回 403），只把文字欄位送 Gemini（`rewrite.py`），同步回傳 `{format, title, paragraphs, bullets, hashtags}`，不建 `GenerationJob`、不寫任何資料。各格式的寫法在 `rewrite.py` 的 `FORMATS`。
 
-- `/assist/sign-in`、`/assist/poster`、`/assist/classify`：表單智慧輔助（`AI_UPGRADE_PLAN.md` 第二批，`assist.py`）。都只回傳建議、不寫任何資料。`/assist/document`（`AI_UPGRADE_PLAN.md` 1-5）把公文／企劃書整理成重點摘要＋需人工核對清單，同樣只回傳結果、不存檔。圖片以 base64 隨請求送來（JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張、`activityId` 須可讀），不存 GCS；分類推薦的清單由這裡用呼叫者 session 讀 Category／Plan，清單外的結果一律丟棄。
+- `/assist/sign-in`、`/assist/poster`、`/assist/classify`：表單智慧輔助（`doc/AI_UPGRADE_PLAN.md` 第二批，`assist.py`）。都只回傳建議、不寫任何資料。`/assist/document`（`doc/AI_UPGRADE_PLAN.md` 1-5）把公文／企劃書整理成重點摘要＋需人工核對清單，同樣只回傳結果、不存檔。圖片以 base64 隨請求送來（JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張、`activityId` 須可讀），不存 GCS；分類推薦的清單由這裡用呼叫者 session 讀 Category／Plan，清單外的結果一律丟棄。
 
 另有 `/status` 做健康檢查（回傳 `{"ok": true}`）。**不要叫它 `/healthz`**——實測發現 Cloud Run 預設網域（`*.run.app`）對完全小寫的 `/healthz` 這個路徑字串會在 Google Frontend 層攔截、直接回一個跟這個服務無關的通用 404 頁面，請求根本不會進到容器（用 Cloud Run 的請求記錄可以驗證：`/healthz` 完全沒有記錄，`/health`、`/Healthz` 這種相近但不完全相同的路徑則正常）。
 
@@ -66,10 +66,10 @@ gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
 gsutil mb -l $REGION gs://your-gcs-bucket-name
 gsutil cors set cors.json gs://your-gcs-bucket-name
 
-# 5.（Phase 3b）啟用 Vertex AI API——會計費，執行前請確認
+# 5.（AI 生成）啟用 Vertex AI API——會計費，執行前請確認
 gcloud services enable aiplatform.googleapis.com
 
-# 6.（Phase 3b）讓服務帳戶能呼叫 Gemini
+# 6.（AI 生成）讓服務帳戶能呼叫 Gemini
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/aiplatform.user"
@@ -130,7 +130,7 @@ curl -X POST https://<cloud-run-url>/generate/<某筆 pending 狀態的 Generati
 
 ## 尚未做的事（不在這次範圍）
 
-- **Phase 3b 程式碼已完成、部署上線並通過端到端測試**（`/generate` 端點、`report.py` 的 Gemini 呼叫與 `.docx` 組裝、前端 `AiGenerationModal.vue` 已串接觸發；2026-09-17 首次上線為 revision `tcross-middleware-00011-hdv`，2026-10-20 正式運行的是 `tcross-middleware-00032-lf9`）。詳見上方「部署前提」第 5 點。
+- **AI 生成（`/generate`）程式碼已完成、部署上線並通過端到端測試**（`/generate` 端點、`report.py` 的 Gemini 呼叫與 `.docx` 組裝、前端 `AiGenerationModal.vue` 已串接觸發；2026-09-17 首次上線為 revision `tcross-middleware-00011-hdv`，2026-10-20 正式運行的是 `tcross-middleware-00032-lf9`）。詳見上方「部署前提」第 5 點。
 - 輸出 `.docx` 與 `.pdf`（2026-10-19 起）：兩份由同一份內容結構（`document.py` 的 blocks）產生；`resultFile` 仍記 `.docx`，PDF 是同路徑換副檔名，`/download-url` 帶 `pdf: true` 下載、`/delete-objects` 刪 `.docx` 時一併刪 PDF。PDF 用 fpdf2 排版，中文字型 Noto Sans TC 由 Dockerfile 執行 `fetch_fonts.py` 下載（核對 SHA-256）；字型缺檔時 PDF 略過、Word 照常交付。成果報告的圖表：KPI（同單位 ≥2 項才畫）、參與人數性別組成、同計畫各場次人數比較（最多 3 個計畫）；畫圖失敗只略過該圖。Excel 輸出尚未實作。
-- 自動化測試：`tests/` 有 pytest（工具函式、端點、報告，2026-10-20 共 106 項），在這個資料夾執行 `.venv/Scripts/python.exe -m pytest`（新環境先 `pip install -r requirements-dev.txt`）；還沒有接 CI，見 [../TESTING.md](../TESTING.md)。
+- 自動化測試：`tests/` 有 pytest（工具函式、端點、報告，2026-10-20 共 106 項），在這個資料夾執行 `.venv/Scripts/python.exe -m pytest`（新環境先 `pip install -r requirements-dev.txt`）；還沒有接 CI，見 [../doc/TESTING.md](../doc/TESTING.md)。
 - `/status`、`/signed-url`、`/download-url`、`/delete-objects`、`/generate` 都已部署到 Cloud Run 並用上面的 curl 指令在線上實測過。

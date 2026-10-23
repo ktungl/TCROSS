@@ -113,7 +113,7 @@ export interface RewriteResult {
   hashtags: string[]
 }
 
-/** AI 改寫（AI_UPGRADE_PLAN.md 1-1）：後端讀這場活動已建檔的資料，改寫成指定格式後直接回傳，
+/** AI 改寫（doc/AI_UPGRADE_PLAN.md 1-1）：後端讀這場活動已建檔的資料，改寫成指定格式後直接回傳，
  * 只送文字、幾秒內完成，不建 GenerationJob。 */
 export async function requestRewrite(activityId: string, format: RewriteFormat): Promise<RewriteResult> {
   const token = Parse.User.current()?.getSessionToken()
@@ -153,7 +153,7 @@ export interface SignInRow {
   uncertain: boolean
 }
 
-/** 簽到表辨識（AI_UPGRADE_PLAN.md 1-2）：只回傳名單，寫入由使用者在對照畫面確認後才做。 */
+/** 簽到表辨識（doc/AI_UPGRADE_PLAN.md 1-2）：只回傳名單，寫入由使用者在對照畫面確認後才做。 */
 export function assistSignIn(
   activityId: string,
   images: AssistImagePayload[],
@@ -178,12 +178,12 @@ export interface PosterSuggestion {
 export type PosterField =
   | 'name' | 'date' | 'time' | 'timeEnd' | 'placeMode' | 'place' | 'venue' | 'participantDesc' | 'attendees'
 
-/** 海報帶入（AI_UPGRADE_PLAN.md 2-1）：today 是使用者當地日期，讓沒寫年份的日期補對年份。 */
+/** 海報帶入（doc/AI_UPGRADE_PLAN.md 2-1）：today 是使用者當地日期，讓沒寫年份的日期補對年份。 */
 export function assistPoster(image: AssistImagePayload, today: string): Promise<PosterSuggestion> {
   return postAssist('/assist/poster', { image, today }, '海報辨識失敗')
 }
 
-/** 分類／計畫推薦（AI_UPGRADE_PLAN.md 2-2）：只會從現有清單挑選。 */
+/** 分類／計畫推薦（doc/AI_UPGRADE_PLAN.md 2-2）：只會從現有清單挑選。 */
 export function assistClassify(text: string): Promise<{ categories: string[]; planIds: string[]; reason: string }> {
   return postAssist('/assist/classify', { text }, '推薦失敗')
 }
@@ -205,7 +205,7 @@ export interface DocumentDigest {
   notes: string
 }
 
-/** 公文快讀（AI_UPGRADE_PLAN.md 1-5）：PDF 原檔或縮過的圖片 → 重點摘要＋需人工核對清單，不存檔。 */
+/** 公文快讀（doc/AI_UPGRADE_PLAN.md 1-5）：PDF 原檔或縮過的圖片 → 重點摘要＋需人工核對清單，不存檔。 */
 export function assistDocument(
   activityId: string,
   document: { data: string; mimeType: string },

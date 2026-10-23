@@ -1,5 +1,5 @@
 """Phase 3b: call Vertex AI Gemini on a GenerationJob's uploaded source files,
-then assemble the structured result into a real .docx report. See ROADMAP.md
+then assemble the structured result into a real .docx report. See doc/ROADMAP.md
 「GCP 整合進度」Phase 3b for the architecture this implements."""
 
 import io
@@ -203,7 +203,7 @@ def build_report(activity: dict, analysis: dict, plan_activities: list[tuple[str
     return blocks
 
 
-# ── 會議紀錄（AI_UPGRADE_PLAN.md 1-3）──────────────────────────
+# ── 會議紀錄（doc/AI_UPGRADE_PLAN.md 1-3）──────────────────────────
 
 _MEETING_SCHEMA = {
     "type": "OBJECT",

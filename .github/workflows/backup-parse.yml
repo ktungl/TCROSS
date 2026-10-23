@@ -1,6 +1,6 @@
 # 每天備份 Back4App 資料與附件，打包成 tar.gz 上傳到 GCS 備份桶。
 # 用 Workload Identity Federation 換短效憑證，github-backup 只有「建立物件」權限，
-# 不能讀、改、刪既有備份（設定見 scripts/setup-github-backup.sh、OPERATIONS.md「資料備份」）。
+# 不能讀、改、刪既有備份（設定見 scripts/setup-github-backup.sh、doc/OPERATIONS.md「資料備份」）。
 name: Backup Back4App to GCS
 
 on:

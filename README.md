@@ -28,7 +28,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 
 - `npm run build` — 型別檢查（`vue-tsc`）+ 產生正式版建置
 - `npm run preview` — 本地預覽建置結果
-- `npm test`／`npm run test:cloud`／`npm run test:e2e` — 前端單元／Cloud Code／端到端測試，說明見 [TESTING.md](TESTING.md)
+- `npm test`／`npm run test:cloud`／`npm run test:e2e` — 前端單元／Cloud Code／端到端測試，說明見 [doc/TESTING.md](doc/TESTING.md)
 
 ## 前端架構
 
@@ -57,8 +57,8 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - **Category**：`name` / `plans`（所屬計畫，可留空）
 - **AuditLog**（稽核紀錄，2026-09-27）：`action`（create/update/delete/login/logout）/ `targetClass` / `targetId` / `targetName` / `activityId` / `actorId` / `actorName` / `changes`（`[{field, label, before, after}]`）/ `summary`（中文摘要）——由 Cloud Code 的 afterSave/afterDelete/afterLogin/afterLogout 用 Master Key 寫入，CLP 不開放任何人新增／修改／刪除；前端「操作紀錄」頁與活動詳情頁底部可查
 - **_User**：多了 `displayName`（顯示名稱，登入歡迎畫面與操作紀錄用），只能由 `scripts/setup-users.mjs`（Master Key）修改，使用者自己改會被 Cloud Code 擋下
-- **角色（_Role）**：`member`、`developer`，兩者在系統內權限相同（全部 CRUD）；資料 class 的 CLP 只開放給這兩個角色，不在任何角色裡的帳號讀不到資料。帳號管理見 [OPERATIONS.md](OPERATIONS.md#帳號與角色)
-- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，前端 `AiGenerationModal.vue`（掛在 `DetailView.vue`「AI 自動生成成果報告」按鈕）已串上傳/建立/輪詢/下載/刪除；Cloud Run 端呼叫 Gemini＋組裝文件已完成、部署上線並通過端到端測試（見 [server/README.md](server/README.md)）
+- **角色（_Role）**：`member`、`developer`，兩者在系統內權限相同（全部 CRUD）；資料 class 的 CLP 只開放給這兩個角色，不在任何角色裡的帳號讀不到資料。帳號管理見 [doc/OPERATIONS.md](doc/OPERATIONS.md#帳號與角色)
+- **GenerationJob**：`activity`（指標）/ `kind`（成果報告/會議紀錄/其他）/ `status`（pending/processing/done/error）/ `sourceFiles` / `resultFile` / `errorMessage`——AI 生成任務用，前端 `AiGenerationModal.vue`（掛在 `DetailView.vue`「AI 自動生成成果報告」按鈕）已串上傳/建立/輪詢/下載/刪除；Cloud Run 端呼叫 Gemini＋組裝文件已完成、部署上線並通過端到端測試（見 [server/README.md](server/README.md)）
 
 **新增欄位時要記得同步 Parse schema**：各 class 的 CLP 關閉了 addField（自架 Parse Server 沿用從 Back4App 匯入的 schema，另設 `allowClientClassCreation: false`），前端（JS Key）不能自動建欄位，`Activity.ts` 加了新欄位卻沒先建對應欄位的話，存檔會收到 `Permission denied for action addField on class Activity`。改完 `src/models/Activity.ts` 後，更新 `scripts/sync-schema.mjs` 的 `WANTED` 再跑（對 `.env` 的 `VITE_PARSE_SERVER_URL`，即 `tcross-parse`）：
 
@@ -78,7 +78,7 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 - **輸入**：語音、影片、圖片、文字
 - **輸出**：PDF、Word、Excel
 
-輸入端以 Gemini 的原生多模態能力（語音、影片、圖片、文字都能直接餵給模型）為主要解析入口，不需要額外接 Speech-to-Text 或 Video Intelligence 轉檔；Document AI 僅在輸入圖片是「印刷掃描件/書面表單」需要高精度結構化擷取時才選配使用。輸出端因為 Gemini 只吐得出文字/JSON，實際的 PDF/Word/Excel 檔案要在 Cloud Run 裡用 Python 套件（如 `reportlab`、`python-docx`、`openpyxl`）組裝產出。
+輸入端以 Gemini 的原生多模態能力（語音、影片、圖片、文字都能直接餵給模型）為主要解析入口，不需要額外接 Speech-to-Text 或 Video Intelligence 轉檔；Document AI 僅在輸入圖片是「印刷掃描件/書面表單」需要高精度結構化擷取時才選配使用。輸出端因為 Gemini 只吐得出文字/JSON，實際的 PDF/Word/Excel 檔案要在 Cloud Run 裡用 Python 套件（如 `python-docx`、`fpdf2`、`openpyxl`）組裝產出。
 
 ### 服務分工
 
@@ -86,12 +86,12 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 | --- | --- | --- | --- |
 | **Cloud Storage (GCS)** | 統一檔案儲存庫（輸入的語音/影片/圖片 + 輸出的 PDF/Word/Excel） | 支援 Signed URL，前端 Vue 可直傳檔案不經過 Parse，省頻寬又快 | IAM 權限設定要嚴格，避免上傳桶變成公開讀取的漏洞 |
 | **Vertex AI (Gemini)** | 核心多模態分析引擎 | 原生直接讀取語音/影片/圖片/文字，具備百萬級 Tokens 的超大上下文窗口，一次輸入即可輸出結構化 JSON，不需個別轉檔 | 語音/影片檔案大小與時長有限制；需留意 API 的 Quota（配額）與非同步回應時間 |
-| **Cloud Run / Cloud Functions** | 異步運算大腦（Python） | 前端呼叫觸發後：呼叫 Gemini 取得結構化結果 → 用 `reportlab`/`python-docx`/`openpyxl` 組裝出 PDF/Word/Excel；Cloud Run 支援 Docker，套件安裝無限制 | Cloud Functions 有執行時間限制，大檔案生成建議用 Cloud Run（最長可跑 60 分鐘） |
+| **Cloud Run / Cloud Functions** | 異步運算大腦（Python） | 前端呼叫觸發後：呼叫 Gemini 取得結構化結果 → 用 `python-docx`/`fpdf2`/`openpyxl` 組裝出 Word/PDF/Excel；Cloud Run 支援 Docker，套件安裝無限制 | Cloud Functions 有執行時間限制，大檔案生成建議用 Cloud Run（最長可跑 60 分鐘） |
 | **Document AI**（選配） | 印刷掃描件的 OCR 與結構化 | 若輸入圖片是掃描表單、收據、合約等版面固定的印刷文件，用它加強欄位擷取的精準度 | 按頁數計費；一般口語錄音、生活照片、影片不需要，避免不必要成本 |
 
 ### 資料流向
 
-觸發方式**不用** GCS EventArc（檔案一上傳到 GCS 就觸發）——一個 `GenerationJob` 通常對應多個輸入檔，EventArc 沒有「這個 job 的檔案都上傳完了」這種語意，還要另外做計數/等待邏輯，而且跟現有前端「上傳完才建立 GenerationJob」的流程對不上。改成**前端在建立好 `GenerationJob` 後，直接呼叫 Cloud Run 新端點觸發生成**，觸發時機精準，也不需要讓 Parse Cloud Code 另外持有一份 GCP 憑證去發 Cloud Tasks——沿用 Phase 1 定案的「只有 Cloud Run 持有 GCP 服務帳戶」這條信任邊界。
+觸發方式**不用** GCS EventArc（檔案一上傳到 GCS 就觸發）——一個 `GenerationJob` 通常對應多個輸入檔，EventArc 沒有「這個 job 的檔案都上傳完了」這種語意，還要另外做計數/等待邏輯，而且跟現有前端「上傳完才建立 GenerationJob」的流程對不上。改成**前端在建立好 `GenerationJob` 後，直接呼叫 Cloud Run 新端點觸發生成**，觸發時機精準，也不需要讓 Parse Cloud Code 另外持有一份 GCP 憑證去發 Cloud Tasks——沿用「只有 Cloud Run 持有 GCP 服務帳戶」這條信任邊界。
 
 ```
 [Vue + TS 前端] ──(1) 請求 Signed URL ──> [Cloud Run 中介層]
@@ -124,7 +124,7 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 
 - GCS＋Cloud Run 中介層（`server/`）已部署到正式環境，前端上傳/下載/刪除檔案（AI 素材與活動附件）都經過這層簽發 signed URL，不直接握 GCP 憑證
 - `GenerationJob` 資料模型與前端的上傳/建立任務/輪詢/下載/刪除流程（`AiGenerationModal.vue`）已完成並上線
-- **Cloud Run 端呼叫 Vertex AI Gemini、組裝文件這段（上圖流程第 6–9 步）已完成、部署上線並通過端到端測試**（`server/report.py`／`/generate/{job_id}` 端點，2026-09-17），輸出 `.docx` 與 `.pdf`（PDF 於 2026-10-19 加入），Excel 尚未實作（見 [ROADMAP.md](ROADMAP.md) #13）
+- **Cloud Run 端呼叫 Vertex AI Gemini、組裝文件這段（上圖流程第 6–9 步）已完成、部署上線並通過端到端測試**（`server/report.py`／`/generate/{job_id}` 端點，2026-09-17），輸出 `.docx` 與 `.pdf`（PDF 於 2026-10-19 加入），Excel 尚未實作（見 [doc/ROADMAP.md](doc/ROADMAP.md) #13）
 
-落差盤點、資料模型異動與分階段實作計畫見 [ROADMAP.md](ROADMAP.md)；部署、健康檢查、密鑰輪替、範本修改流程等維運操作見 [OPERATIONS.md](OPERATIONS.md)。
+待辦與期限見 [doc/ROADMAP.md](doc/ROADMAP.md)，AI 功能升級規劃見 [doc/AI_UPGRADE_PLAN.md](doc/AI_UPGRADE_PLAN.md)；部署、健康檢查、密鑰輪替、範本修改流程等維運操作見 [doc/OPERATIONS.md](doc/OPERATIONS.md)。
 

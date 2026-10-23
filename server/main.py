@@ -419,7 +419,7 @@ def attachment_delete(body: AttachmentDeleteRequest, user: dict = Depends(enforc
 
 @app.post("/rewrite/{activity_id}")
 def rewrite(activity_id: str, body: RewriteRequest, user: dict = Depends(enforce_rate_limit)):
-    """AI_UPGRADE_PLAN.md 1-1：把活動已建檔的資料改寫成新聞稿／社群文案／主管摘要。
+    """doc/AI_UPGRADE_PLAN.md 1-1：把活動已建檔的資料改寫成新聞稿／社群文案／主管摘要。
     活動內容由這裡用呼叫者的 session 讀取，不接受前端送來的文字，避免被拿來任意呼叫 Gemini。
     只送文字、幾秒內完成，所以同步回傳，不建 GenerationJob。"""
     if body.format not in REWRITE_FORMATS:
@@ -445,7 +445,7 @@ def _assist_failed(kind: str) -> HTTPException:
 
 @app.post("/assist/sign-in")
 def assist_sign_in(body: SignInAssistRequest, user: dict = Depends(enforce_rate_limit)):
-    """AI_UPGRADE_PLAN.md 1-2：簽到表照片 → 名單。只回傳辨識結果，寫入由前端在使用者確認後做。"""
+    """doc/AI_UPGRADE_PLAN.md 1-2：簽到表照片 → 名單。只回傳辨識結果，寫入由前端在使用者確認後做。"""
     if not body.images or len(body.images) > MAX_SIGN_IN_IMAGES:
         raise HTTPException(400, f"簽到表照片要 1～{MAX_SIGN_IN_IMAGES} 張")
     if not activity_exists(user["sessionToken"], body.activityId):
@@ -463,7 +463,7 @@ def assist_sign_in(body: SignInAssistRequest, user: dict = Depends(enforce_rate_
 
 @app.post("/assist/poster")
 def assist_poster(body: PosterAssistRequest, user: dict = Depends(enforce_rate_limit)):
-    """AI_UPGRADE_PLAN.md 2-1：海報／邀請函 → 活動欄位建議。建立活動時還沒有 activityId，圖片直接隨請求送來、不存檔。"""
+    """doc/AI_UPGRADE_PLAN.md 2-1：海報／邀請函 → 活動欄位建議。建立活動時還沒有 activityId，圖片直接隨請求送來、不存檔。"""
     try:
         raw = decode_image(body.image.data, body.image.mimeType)
         today = datetime.strptime(body.today, "%Y-%m-%d").date().isoformat()
@@ -478,7 +478,7 @@ def assist_poster(body: PosterAssistRequest, user: dict = Depends(enforce_rate_l
 
 @app.post("/assist/classify")
 def assist_classify(body: ClassifyAssistRequest, user: dict = Depends(enforce_rate_limit)):
-    """AI_UPGRADE_PLAN.md 2-2：從現有分類／計畫清單中推薦，清單由這裡用呼叫者的 session 讀取。"""
+    """doc/AI_UPGRADE_PLAN.md 2-2：從現有分類／計畫清單中推薦，清單由這裡用呼叫者的 session 讀取。"""
     text = body.text.strip()
     if not text:
         raise HTTPException(400, "請先填寫活動名稱或說明")
@@ -495,7 +495,7 @@ def assist_classify(body: ClassifyAssistRequest, user: dict = Depends(enforce_ra
 
 @app.post("/assist/document")
 def assist_document(body: DocumentAssistRequest, user: dict = Depends(enforce_rate_limit)):
-    """AI_UPGRADE_PLAN.md 1-5：公文／企劃書 → 重點摘要＋需人工核對清單。只回傳結果、不存檔。"""
+    """doc/AI_UPGRADE_PLAN.md 1-5：公文／企劃書 → 重點摘要＋需人工核對清單。只回傳結果、不存檔。"""
     if not activity_exists(user["sessionToken"], body.activityId):
         raise HTTPException(403, "活動不存在或無權存取")
     try:

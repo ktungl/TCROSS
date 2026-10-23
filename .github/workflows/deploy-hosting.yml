@@ -1,5 +1,5 @@
 # main 有新 commit 時自動建置並部署前端到 Firebase Hosting。
-# 用 Workload Identity Federation 換短效憑證，不存 JSON 金鑰（設定見 OPERATIONS.md「前端自動部署」）。
+# 用 Workload Identity Federation 換短效憑證，不存 JSON 金鑰（設定見 doc/OPERATIONS.md「前端自動部署」）。
 name: Deploy frontend to Firebase Hosting
 
 on:

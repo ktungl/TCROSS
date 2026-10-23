@@ -331,7 +331,7 @@ useEscape(close)
   <div class="modal" v-modal-focus @click.self="close">
     <div class="card">
       <template v-if="isMeeting">
-        <h2>AI 會議紀錄</h2>
+        <h2>AI 會議音檔轉錄紀錄</h2>
         <p class="sub">
           上傳會議錄音（最多 {{ MAX_MEETING_FILES }} 個、合計 {{ MAX_MEETING_MINUTES }} 分鐘內），AI 整理成摘要、決議與待辦的 Word 檔，約需 1～5 分鐘。
           決議、負責人與期限請與主持人確認後再發出。

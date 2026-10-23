@@ -1,10 +1,10 @@
 # ROADMAP
 
-合照盟計畫資料整合平台的待辦。架構見 [README.md](README.md#架構擴充導入-gcpgoogle-cloud-platform)，部署維運、費用控制、帳號異動見 [OPERATIONS.md](OPERATIONS.md)。
+合照盟計畫資料整合平台的待辦。架構見 [README.md](../README.md#架構擴充導入-gcpgoogle-cloud-platform)，部署維運、費用控制、帳號異動見 [OPERATIONS.md](OPERATIONS.md)，AI 功能升級規劃見 [AI_UPGRADE_PLAN.md](AI_UPGRADE_PLAN.md)。
 
 處理完就刪掉。編號固定不重排（其他文件會用編號引用）。
 
-> 最後整理：2026-10-20（15:43 已切換到 GCP 自架 Parse Server）。下一個里程碑：**10/31 驗收交付**。
+> 最後整理：2026-10-23（10-20 15:43 已切換到 GCP 自架 Parse Server）。下一個里程碑：**10/31 驗收交付**。
 
 ---
 
@@ -45,6 +45,7 @@
 | # | 項目 | 說明 |
 | --- | --- | --- |
 | 13 | 🟡 AI 報告圖表核對 | 10-20 本機用正式資料的真實活動（環球境地，男 15／女 20，3 個計畫）產 Word／PDF：性別組成、同計畫比較圖、KPI 圖、PDF 中文都正常。修了 PDF 圖說被擠到下一頁的問題（`server/document.py`，10-20 已部署 revision `tcross-middleware-00032-lf9`）。只剩：在正式站用有素材的活動實際產一份，核對 AI 辨識的 KPI 是否正確。Excel 輸出尚未做。 |
+| 18 | ⬜ AI 功能正式站實測 | 10-13／10-14 上線的簽到表辨識、海報帶入、分類推薦、AI 改寫文案、公文快讀、會議錄音整理，以及成效統計表，都還沒用真資料在正式站跑過。逐項清單在 [AI_UPGRADE_PLAN.md](AI_UPGRADE_PLAN.md)「待辦」，結果記在該檔「進度」表。 |
 | 11 | 🟠 初始密碼可猜 | 6 個帳號密碼都是「帳號＋1234」（`Test123` 是 `Test123`），規則可猜，依決定暫不處理。建議請成員自行改密碼，或之後加首次登入強制改密碼。 |
 
 ---

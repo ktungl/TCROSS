@@ -1,52 +1,30 @@
 # 智慧活動管家：功能升級實作規劃
 
-依《智慧活動管家_功能升級規劃.docx》對照現有程式碼整理，作為修改網站的工作依據。現況與部署見 [ROADMAP.md](ROADMAP.md)。
+依《智慧活動管家_功能升級規劃.docx》對照現有程式碼整理，作為修改網站的工作依據。待辦與期限追蹤在 [ROADMAP.md](ROADMAP.md)（AI 功能實測是 #18）。
 
-> 建立：2026-10-13｜狀態：第一、二批已上線（2026-10-13）；第三批 1-5 公文快讀已上線（2026-10-14），待實測
+> 建立：2026-10-13｜最後整理：2026-10-23｜狀態：第一、二批已上線（10-13）；第三批 1-5 公文快讀、1-3 會議錄音整理已上線（10-14）；都還沒用真資料在正式站實測
 
-## 製作進度（2026-10-13 收工時）
+## 待辦
 
-### 今天完成
-
-| 批次 | 項目 | 上線狀態 |
-| --- | --- | --- |
-| 第一批 | 1-6 成效統計表 Excel、2-4 規則式防呆、1-1 AI 改寫文案 | ✅ 前端＋後端都已上線 |
-| 第二批 | 1-2 簽到表辨識、2-1 海報帶入、2-2 分類／計畫推薦 | ✅ 前端＋後端都已上線 |
-
-**目前線上版本**
-- 前端：`main` = `c6537f3`（GitHub Actions 部署成功，正式站 `tacc-iip.web.app` 已確認含新功能）
-- Cloud Run：`tcross-middleware-00020-8jn`（`/status` 200；`/rewrite`、`/assist/*` 未登入回 422、無效憑證回 401；正式網域 CORS 200）。上一版 `00019-86n`、更早 `00018-p22` 可回滾
-- Back4App schema：唯讀檢查無缺欄位（含新的 `venue`）
-- `Donna` 分支領先 `main` 只差文件 commit（`8185f6d`），不急著上 main
-
-**相關 commit**（`Donna`）：`1df7a0f` 領據改 Excel → `8302d06` 第一批 → `debfa6c` 部署紀錄 → `4da65e0` 場地名稱 `venue`＋第二批 → `c6537f3`／`8185f6d` 部署紀錄
-
-### 明天從這裡開始
-
-**1. 正式站實測（都還沒用真資料跑過）**
+**1. 正式站實測**（ROADMAP #18；結果記到下方「進度」表，全部通過後刪掉 #18）
 - [ ] 簽到表辨識：用一張真的手寫簽到表（含一份 PDF），看名單、性別、人數準不準；黃色「不確定」列標得合不合理
 - [ ] 海報帶入：用一張活動海報，核對日期（尤其民國年／只寫月日）、時間、地址
 - [ ] 分類推薦：建活動時按一次，看推薦合不合理
 - [ ] AI 改寫文案：挑一場成果摘要已填的活動，三種格式各產一次，核對有沒有杜撰
+- [ ] 公文快讀：用一份真公文（PDF），核對摘要與「需人工核對」清單
+- [ ] 會議錄音整理：用一段真錄音，核對決議／待辦，並看 Cloud Logging 的 `seconds=` 離 900 秒還有多遠
 - [ ] 成效統計表：實際下載一份，對照活動列表的數字
-- 測完把結果記到上方「進度」表，並把 ROADMAP 待辦 7 對應的項目刪掉
 
-**2. 未完成的雜項**
-- [x] ~~`cloud/main.js` 的 `venue` 長度檢查貼回 Back4App~~（10-14 與會議紀錄 kind 一起貼回，已記入 ROADMAP）
-- [x] ~~已知小誤判：防呆會把「1/2 折」這類寫法當成日期提醒~~（10-14 修正：斜線後接「折、的、人、倍、以上」等比例用字不當日期；單獨的「1/2」仍會提醒）
-
-**3. 待團隊提供／決定**（見文末「待團隊決定」）
+**2. 待團隊提供／決定**（見文末「待團隊決定」）
 - 新聞稿／社群文案／主管摘要範本 → 改 `server/rewrite.py` 的 `FORMATS`
 - 成效統計表公版格式 → 改 `src/utils/outcomeStats.ts`
 - 第三批週報寄送管道（Email／LINE／只放總覽頁）
 
-**4. 第三批（尚未開始）建議順序**
-1. ~~**1-5 公文快讀**~~（10-14 上線：`00021-j5x`＋`7b67cc7`，待實測）：最簡單。沿用 `/assist/*` 模式，新增 `/assist/document`（PDF 直接送 Gemini，`application/pdf` 可原生讀），前端在詳細頁「公文」卡片加按鈕，結果顯示摘要＋「需人工核對」清單。要先把 `assist.py` 的 `ALLOWED_IMAGE_TYPES` 擴充或另開 PDF 專用檢查、大小上限另訂
-2. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
-3. ~~**1-3 會議錄音整理**~~（10-14 上線，Cloud Code 已貼回，待實測）：錄音檔大，不能走 base64；改走既有 `GenerationJob` 流程（Signed URL 直傳 GCS → `/generate`），`kind` 新增「會議紀錄」，`server/report.py` 依 `kind` 分派 prompt／schema。需同步改 `src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 驗證（要貼回 Back4App）。每次限 60 分鐘（10-14 決定），上線後看 log 的 `seconds=` 確認耗時
-4. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
+**3. 第三批還沒做的**
+1. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
+2. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
 
-**部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。指令：
+**部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。改到 `cloud/main.js` 時另跑 `bash parse-server/scripts/deploy.sh`。目前運行的 revision 用 [OPERATIONS.md](OPERATIONS.md)「日常健康檢查」的指令查。
 ```
 ! gcloud run deploy tcross-middleware --source server --region asia-east1 --service-account tcross-middleware-sa@project-80ac5e1a-2ea4-4000-9ff.iam.gserviceaccount.com --account tainanjade@gmail.com --project project-80ac5e1a-2ea4-4000-9ff --quiet
 ! git push origin Donna:main
@@ -63,17 +41,17 @@
 | 2-1 海報帶入 | 🟡 10-13 上線；⬜ 用真實海報實測 | `POST /assist/poster`；前端 `PosterAssist.vue`（建立活動表單上方） |
 | 2-2 分類／計畫推薦 | 🟡 10-13 上線；⬜ 正式站實測 | `POST /assist/classify`、`list_names()`（`server/parse_auth.py`）；前端 `ClassifySuggest.vue`（表單計畫／分類下方） |
 | 1-5 公文快讀 | 🟡 10-14 上線（Cloud Run `00021-j5x`、前端 `main` = `7b67cc7`）；⬜ 用真公文實測 | `server/assist.py`（`decode_document`、`digest_document`、`MAX_PDF_BYTES`）、`POST /assist/document`；前端 `DocumentDigestModal.vue`（詳細頁「公文」卡片按鈕）、`assistDocument()`、`loadDocumentForAi()`（`src/utils/aiImages.ts`） |
-| 1-3 會議錄音整理 | 🟡 10-14 上線（Cloud Run `00022-jmz`、前端 `main` = `c0f6ac3`）；`cloud/main.js` 10-14 已貼回；⬜ 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議紀錄」按鈕 |
+| 1-3 會議錄音整理 | 🟡 10-14 上線（Cloud Run `00022-jmz`、前端 `main` = `c0f6ac3`）；⬜ 用真錄音實測耗時 | `server/report.py`（`analyze_meeting`、`build_meeting_docx`）、`server/main.py`（`GENERATION_KINDS`、`MAX_MEETING_FILES`、依 `kind` 分派、log 記錄耗時秒數）；`cloud/main.js` `GENERATION_JOB_KINDS` 加「會議紀錄」（10-14 當時貼到 Back4App，10-20 起隨 `tcross-parse` 部署）；前端 `GenerationJobKind`、`AiGenerationModal.vue` 加 `kind` prop（會議紀錄只收錄音、讀取長度）、詳細頁「AI 會議音檔轉錄紀錄」按鈕（10-23 由「AI 會議紀錄」改名） |
 
 **第二批設計**
-- 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId；舊的 Back4App 附件也能一併處理）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
+- 圖片在瀏覽器先縮到長邊 2400px 的 JPEG，以 base64 隨請求送出、不存檔（建立活動時還沒有 activityId）。PDF 簽到表用既有的 `renderPdfPages` 轉圖。後端限制 JPEG／PNG／WebP、單張 5 MB、簽到表最多 6 張。
 - 簽到表：模型只回名單（單位／職稱／姓名／性別／是否不確定），**人數由前端依名單計算**；解析度固定 `HIGH`（手寫小字）。對照畫面左原圖、右可編輯表格，不確定列標黃；勾選「更新與會人數」「更新與會單位」後才寫入，仍有不確定列時再確認一次。
 - 海報：今天日期由前端帶入，讓「10/18」這類沒寫年份的日期補對年份。結果逐欄列出「建議值（目前值）」，表單已有值的欄位預設不勾。海報上的活動簡述會一併給分類推薦參考。
 - 分類推薦：後端用呼叫者 session 讀現有 Category／Plan 清單，模型只能從清單挑，清單外的名稱一律丟棄；結果以「＋計畫／＋分類」標籤顯示，點了才加入。
 
 **1-5 設計**：PDF 原檔直接以 base64 送出（Gemini 原生讀 PDF 的文字與版面，不轉圖），上限 10 MB（base64 後約 13 MB，留在 Gemini 單次請求與 Cloud Run 請求上限內）；照片沿用縮圖成 JPEG。後端驗 `%PDF` 檔頭。回傳 `{docType, issuer, docNumber, subject, summary, keyPoints[], checkItems[{category: 期限／預算／法規／其他, item, source}], notes}`，只顯示不存檔；畫面頂端固定加註「AI 摘要僅供掌握方向，法規與預算請核對原文」，可複製成文字。目前綁在活動詳細頁（需要 activityId 驗權限），之後要獨立頁面再把 `activityId` 改成選填。Word 公文請先轉 PDF。
 
-**1-3 設計**：沿用 `GenerationJob`（錄音大，走 Signed URL 直傳 GCS → `/generate`），`kind=會議紀錄`。只收 `audio` 資料夾、最多 3 個檔；前端用 `<audio>` 讀長度，每次合計上限 **60 分鐘**（10-14 決定；`AiGenerationModal.vue` `MAX_MEETING_MINUTES`），讀不出長度的檔案不收。只要結構化紀錄（摘要、與會者、討論重點、決議、待辦 `{task, owner, due}`），不做逐字稿，輸出 token 少。Word 末尾加註「決議、負責人與期限請與主持人確認」。每次完成或失敗都在 Cloud Logging 記 `seconds=`，用來看長錄音離 900 秒還有多遠。**部署順序**：先貼 `cloud/main.js`（否則建立會議紀錄工作會被擋）→ Cloud Run → push main。⚠️ 單檔仍受 50 MB 上限：手機 128 kbps 錄音 60 分鐘約 57 MB 會被擋，96 kbps 約 43 MB、64 kbps 約 29 MB 可以（待團隊決定是否放寬，見文末）。
+**1-3 設計**：沿用 `GenerationJob`（錄音大，走 Signed URL 直傳 GCS → `/generate`），`kind=會議紀錄`。只收 `audio` 資料夾、最多 3 個檔；前端用 `<audio>` 讀長度，每次合計上限 **60 分鐘**（10-14 決定；`AiGenerationModal.vue` `MAX_MEETING_MINUTES`），讀不出長度的檔案不收。只要結構化紀錄（摘要、與會者、討論重點、決議、待辦 `{task, owner, due}`），不做逐字稿，輸出 token 少。Word 末尾加註「決議、負責人與期限請與主持人確認」。每次完成或失敗都在 Cloud Logging 記 `seconds=`，用來看長錄音離 900 秒還有多遠。**部署順序**：先部署 `cloud/main.js`（`bash parse-server/scripts/deploy.sh`，否則建立會議紀錄工作會被擋）→ Cloud Run → push main。⚠️ 單檔仍受 50 MB 上限：手機 128 kbps 錄音 60 分鐘約 57 MB 會被擋，96 kbps 約 43 MB、64 kbps 約 29 MB 可以（待團隊決定是否放寬，見文末）。
 
 **1-1 設計**：後端用呼叫者的 session 讀活動資料（基本資料、成果摘要、KPI、照片圖說），只送文字給 Gemini，同步回傳 `{title, paragraphs, bullets, hashtags}`；不建 `GenerationJob`、不需改 Cloud Code／schema。前端結果放進可編輯文字框，可複製或下載 Word（瀏覽器端 `docx` 產生）。三種格式的寫法目前是暫定，集中在 `server/rewrite.py` 的 `FORMATS`，團隊提供範本後改那裡。
 
@@ -95,12 +73,14 @@
 
 ---
 
-## 現況盤點
+## 規劃前的現況（2026-10-13）
+
+動工前的盤點，保留作為對照；之後的變動見上方「進度」。
 
 | 項目 | 現況 | 位置 |
 | --- | --- | --- |
 | AI 生成 | 只有「成果報告」一種，素材（照片／錄音／影片／文件）→ Gemini 回 `summary`／`highlights`／`kpis` → 組 `.docx` | `server/report.py`、`server/main.py` `/generate/{job_id}`、`src/components/AiGenerationModal.vue` |
-| `GenerationJob.kind` | 型別只有 `'成果報告' \| '其他'` | `src/types.ts:206` |
+| `GenerationJob.kind` | 型別只有 `'成果報告' \| '其他'`（10-14 已加「會議紀錄」） | `src/types.ts` |
 | 匯出（非 AI） | 大事紀 Excel、內政部結案 Word、簽到表／活動紀錄表／領據／公文 | `src/utils/download.ts`、`src/views/ExportView.vue` |
 | 報名表帶入 | 只解析 `.xlsx`／`.csv` 表頭，圖片／PDF 無法帶入 | `src/utils/registration.ts` |
 | 活動表單 | 純手動填寫，無 AI 輔助 | `src/components/ActivityFormModal.vue` |
@@ -117,7 +97,7 @@
 - `server/report.py`：每種 `kind` 各一組 `_PROMPT` + `_RESPONSE_SCHEMA` + 組檔函式（建議拆成 `server/generators/{kind}.py`，以字典註冊）。
 - `server/main.py` `_run_generation()` 依 `job["kind"]` 分派；輸出副檔名依種類（`.docx`／`.xlsx`／`.json`）。
 - 前端 `AiGenerationModal.vue` 加「產出類型」選單；結果除了下載檔案，文字類（社群文案、摘要）直接在 `GeneratedDocModal.vue` 預覽並可複製。
-- **同步改**：`src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 的 `GenerationJob` 驗證、`server/parse_auth.py` 預設值；`cloud/main.js` 改完要手動貼回 Back4App。
+- **同步改**：`src/types.ts` 的 `GenerationJobKind`、`cloud/main.js` 的 `GenerationJob` 驗證、`server/parse_auth.py` 預設值；`cloud/main.js` 改完跑 `bash parse-server/scripts/deploy.sh` 部署。
 
 ### 1-1 一鍵切換報告格式 ⭐ 第一批
 
@@ -161,9 +141,9 @@
 
 | | |
 | --- | --- |
-| 做法 | 純前端，不需 AI。`ExportView.vue` 加「成效統計表」：依篩選條件彙整場次、總人數、男女、各分類／計畫小計，用 `exceljs` 產出。另把 ROADMAP 待辦 13：AI 報告加 Excel 輸出一併處理。 |
+| 做法 | 純前端，不需 AI。`ExportView.vue` 加「成效統計表」：依篩選條件彙整場次、總人數、男女、各分類／計畫小計，用 `exceljs` 產出。AI 報告的 Excel 輸出另見 ROADMAP #13。 |
 | 前置 | ⚠️ 需各單位**公版表格**，依公版欄位排版（同 `buildLedgerXlsx` 做法）。 |
-| 位置 | `src/utils/download.ts` 新增 `buildOutcomeStatsXlsx()`、`ExportView.vue` |
+| 位置 | 新增 `src/utils/outcomeStats.ts`（`buildOutcomeStatsXlsx()`）、`ExportView.vue` |
 
 ---
 
@@ -201,7 +181,7 @@
 | **第三批** | 1-3 會議紀錄、1-5 文件快讀、3-1 結案打包、3-3 週報 | 需評估費用與排程 |
 | **之後** | 1-4 影片亮點、2-3 照片標籤、3-2 智慧問答 | 檔案大／維護成本高，等資料累積後再做 |
 
-每批上線流程：Cloud Run 部署 → `cloud/main.js` 貼回 → schema 同步 → push main 自動部署前端 → 正式站實測 → 從 ROADMAP 刪掉對應待辦。
+每批上線流程：Cloud Run 部署 → `cloud/main.js` 部署（`bash parse-server/scripts/deploy.sh`）→ schema 同步 → push main 自動部署前端 → 正式站實測 → 從 ROADMAP 刪掉對應待辦。
 
 ---
 
