@@ -1,5 +1,6 @@
 import { ATTACHMENT_TYPES, PHOTO_MIN, hasOnline } from '../types'
-import type { ActivityRecord, PlaceMode } from '../types'
+import type { ActivityRecord, Kpi } from '../types'
+import { ROC_EPOCH, localDateString } from './date'
 
 /** 用地點文字產生 Google 地圖搜尋連結（不需要地理編碼 API，直接讓 Google 用文字搜尋）。 */
 export function googleMapsUrl(place: string): string {
@@ -28,16 +29,16 @@ export function gaps(a: ActivityRecord): string[] {
 
 const GAP_CHECK_COUNT = 5
 
+/** 活動名稱，沒填時顯示「（未命名活動）」 */
+export function activityName(name: string | undefined): string {
+  return name || '（未命名活動）'
+}
+
 export function score(a: ActivityRecord): number {
   return Math.round(((GAP_CHECK_COUNT - gaps(a).length) / GAP_CHECK_COUNT) * 100)
 }
 
-export function averageScore(activities: ActivityRecord[]): number {
-  if (!activities.length) return 0
-  return Math.round(activities.reduce((sum, a) => sum + score(a), 0) / activities.length)
-}
-
-export interface MonthCount {
+interface MonthCount {
   month: string
   label: string
   count: number
@@ -49,7 +50,7 @@ export function monthlyCounts(activities: ActivityRecord[], months = 6): MonthCo
   const buckets: MonthCount[] = []
   for (let i = months - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const month = localDateString(d).slice(0, 7)
     buckets.push({ month, label: `${d.getMonth() + 1}月`, count: 0 })
   }
   const byMonth = new Map(buckets.map((b) => [b.month, b]))
@@ -99,24 +100,16 @@ export function dateMentionMismatches(text: string, date: string, fieldLabel: st
   }
   for (const m of text.matchAll(/(?<!\d)(\d{3}|20\d{2})\s*年/g)) {
     const year = Number(m[1])
-    const expected = year >= 2000 ? d.getFullYear() : d.getFullYear() - 1911
+    const expected = year >= 2000 ? d.getFullYear() : d.getFullYear() - ROC_EPOCH
     if (year !== expected) issues.add(`${fieldLabel}寫「${m[0]}」，但活動日期是 ${actual}`)
   }
   return [...issues]
 }
 
-export interface BasicInfoInput {
-  name: string
-  date: string
-  time: string
-  timeEnd: string
-  placeMode: PlaceMode
-  address: string
-  meetingUrl: string
-  participantDesc: string
-  remark: string
-  headcount: { male: number; female: number; total: number }
-}
+export type BasicInfoInput = Pick<
+  ActivityRecord,
+  'name' | 'date' | 'time' | 'timeEnd' | 'placeMode' | 'place' | 'meetingUrl' | 'participantDesc' | 'remark' | 'headcount'
+>
 
 const ONLINE_HINT = /線上|視訊|zoom|google\s*meet|teams|webex/i
 
@@ -143,7 +136,7 @@ export function checkBasicInfo(input: BasicInfoInput, today = new Date()): strin
   }
   const { male, female, total } = input.headcount
   if (total < male + female) issues.push(`合計人數 ${total} 少於男女加總 ${male + female}`)
-  if (input.placeMode === 'physical' && ONLINE_HINT.test(input.address)) {
+  if (input.placeMode === 'physical' && ONLINE_HINT.test(input.place)) {
     issues.push('地址看起來是線上會議，是否應改選「線上」？')
   }
   if (hasOnline(input.placeMode) && !input.meetingUrl.trim()) {
@@ -160,7 +153,7 @@ export function consistencyConfirmMessage(issues: string[]): string {
 const HEADCOUNT_KPI = /人數|人次|參與|參加|出席|受益/
 
 /** 成果補充（摘要、KPI）的防呆檢查。 */
-export function checkResults(a: ActivityRecord, summary: string, kpis: { k: string; v: string; u: string }[]): string[] {
+export function checkResults(a: ActivityRecord, summary: string, kpis: Kpi[]): string[] {
   const issues = dateMentionMismatches(summary, a.date, '成果摘要')
   const total = a.headcount.total
   for (const k of kpis) {

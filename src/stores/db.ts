@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import Parse from '../lib/parse'
-import { deleteObjects } from '../lib/middleware'
+import { UPLOAD_CONCURRENCY, deleteObjects } from '../lib/middleware'
+import { runPool } from '../utils/pool'
 import { deleteUnreferencedAttachments, putAttachment, requestAttachmentUploadUrls } from '../lib/attachments'
 import { PlanObject, planToRecord } from '../models/Plan'
 import { CategoryObject, applyCategoryRecord, categoryToRecord } from '../models/Category'
@@ -20,7 +21,6 @@ import {
 } from '../models/GenerationJob'
 import { ATTACHMENT_TYPES, DEFAULT_CATEGORY_NAMES, fileUploadRejectionReason } from '../types'
 import type {
-  ActivityCategory,
   ActivityRecord,
   AttachmentKey,
   AuditLogRecord,
@@ -30,27 +30,11 @@ import type {
   GenerationJobRecord,
   HeadcountStat,
   Kpi,
-  PlaceMode,
   PlanRecord,
 } from '../types'
 
-export interface ActivityFormInput {
-  name: string
-  categories: ActivityCategory[]
-  date: string
-  time: string
-  timeEnd: string
-  placeMode: PlaceMode
-  place: string
-  venue: string
-  meetingUrl: string
-  owner: string
-  attendees: string
-  participantDesc: string
-  headcount: HeadcountStat
-  plans: string[]
-  remark: string
-}
+/** 活動表單（基本資料）的欄位：存檔欄位扣掉成果（summary／kpis），成果由活動詳情頁另外儲存。 */
+type ActivityFormInput = Omit<Parameters<typeof applyActivityRecord>[1], 'summary' | 'kpis'>
 
 export const useDbStore = defineStore('db', () => {
   const plans = ref<PlanRecord[]>([])
@@ -208,22 +192,16 @@ export const useDbStore = defineStore('db', () => {
   async function duplicateActivity(id: string): Promise<ActivityRecord> {
     const existing = activities.value.find((a) => a.id === id)
     if (!existing) throw new Error('找不到活動')
+    // 成果、附件不複製（createActivity 只寫基本資料），日期清空等使用者重填
     return createActivity({
+      ...existing,
       name: `${existing.name}（複製）`,
       categories: [...existing.categories],
       date: '',
       time: '',
       timeEnd: '',
-      placeMode: existing.placeMode,
-      place: existing.place,
-      venue: existing.venue,
-      meetingUrl: existing.meetingUrl,
-      owner: existing.owner,
-      attendees: existing.attendees,
-      participantDesc: existing.participantDesc,
       headcount: { ...existing.headcount },
       plans: [...existing.plans],
-      remark: existing.remark,
     })
   }
 
@@ -298,25 +276,7 @@ export const useDbStore = defineStore('db', () => {
     await patchActivity(
       id,
       (obj, existing) =>
-        applyActivityRecord(obj, {
-          name: existing.name,
-          categories: existing.categories,
-          date: existing.date,
-          time: existing.time,
-          timeEnd: existing.timeEnd,
-          placeMode: existing.placeMode,
-          place: existing.place,
-          venue: existing.venue,
-          meetingUrl: existing.meetingUrl,
-          owner: existing.owner,
-          attendees: existing.attendees,
-          participantDesc: existing.participantDesc,
-          headcount: existing.headcount,
-          summary: existing.summary,
-          remark: existing.remark,
-          kpis: existing.kpis,
-          plans: planIds,
-        }),
+        applyActivityRecord(obj, { ...existing, plans: planIds }),
       (existing) => {
         existing.plans = planIds
       },
@@ -374,9 +334,6 @@ export const useDbStore = defineStore('db', () => {
     )
   }
 
-  /** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
-  const UPLOAD_CONCURRENCY = 4
-
   async function uploadFiles(
     id: string,
     folder: AttachmentKey,
@@ -393,18 +350,10 @@ export const useDbStore = defineStore('db', () => {
     // GCS 上的物件名稱由 Cloud Run 清成安全字元，原始檔名（可含中文）留在 FileMeta.name。
     const targets = await requestAttachmentUploadUrls(id, folder, files)
     const uploaded: FileMeta[] = new Array(files.length)
-    let cursor = 0
-    async function worker() {
-      while (cursor < files.length) {
-        const i = cursor++
-        const file = files[i]
-        await putAttachment(targets[i].uploadUrl, file, (fraction) => onProgress?.(file, fraction))
-        uploaded[i] = { name: file.name, size: file.size, url: targets[i].url }
-      }
-    }
-    await Promise.all(
-      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, worker),
-    )
+    await runPool(files, UPLOAD_CONCURRENCY, async (file, i) => {
+      await putAttachment(targets[i].uploadUrl, file, (fraction) => onProgress?.(file, fraction))
+      uploaded[i] = { name: file.name, size: file.size, url: targets[i].url }
+    })
     await patchFiles(id, folder, (files, trash) => ({ files: [...files, ...uploaded], trash }))
   }
 
@@ -455,7 +404,7 @@ export const useDbStore = defineStore('db', () => {
   // 以下各函式的 index 只在呼叫當下換成檔案 url，實際寫入時再用 url 找目標：
   // 排隊等存檔的期間就算有檔案被刪掉、位置移動，也不會改到別的檔案。
 
-  /** 軟刪除：把檔案標上 deletedAt 移進垃圾桶，不會真的從 Back4App 刪掉。
+  /** 軟刪除：把檔案標上 deletedAt 移進垃圾桶，不會真的刪掉檔案。
    * index 是在「目前顯示中」的 files[folder] 陣列裡的位置。 */
   async function trashFile(id: string, folder: AttachmentKey, index: number): Promise<void> {
     const url = activities.value.find((a) => a.id === id)?.files[folder][index]?.url
@@ -463,7 +412,7 @@ export const useDbStore = defineStore('db', () => {
     await patchFiles(id, folder, (files, trash) => {
       const found = files.find((f) => f.url === url)
       if (!found) return null
-      // 移到垃圾桶時取消大紀事標記，之後復原才不會讓大紀事照片超過上限而存檔失敗
+      // 移到垃圾桶時取消大事紀標記，之後復原才不會讓大事紀照片超過上限而存檔失敗
       const { ledger: _ledger, ...rest } = found
       return {
         files: files.filter((f) => f !== found),
@@ -624,7 +573,7 @@ export const useDbStore = defineStore('db', () => {
 
   /** 計畫 id → 名稱；找不到（已刪除）時回傳「—」。 */
   function planName(id: string): string {
-    return plans.value.find((p) => p.id === id)?.name ?? '—'
+    return plans.value.find((p) => p.id === id)?.name ?? '（已刪除的計畫）'
   }
 
   return {

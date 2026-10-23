@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useDbStore } from '../stores/db'
 import { errorMessage } from '../composables/useToast'
 import AuditLogList from '../components/AuditLogList.vue'
+import { localDateString } from '../utils/date'
 import type { AuditLogRecord } from '../types'
 
 const db = useDbStore()
@@ -49,19 +50,13 @@ function clearFilters() {
 
 const actors = computed(() => [...new Set(logs.value.map((l) => l.actorName).filter(Boolean))].sort())
 
-/** createdAt 是 ISO（UTC），篩選日期用本地日期比較 */
-function localDate(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
 const filtered = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   return logs.value.filter((l) => {
     if (actorFilter.value && l.actorName !== actorFilter.value) return false
     if (classFilter.value && l.targetClass !== classFilter.value) return false
-    const day = localDate(l.createdAt)
+    // createdAt 是 ISO（UTC），篩選日期用本地日期比較
+    const day = localDateString(new Date(l.createdAt))
     if (dateFrom.value && day < dateFrom.value) return false
     if (dateTo.value && day > dateTo.value) return false
     if (kw && !`${l.targetName}\n${l.summary}`.toLowerCase().includes(kw)) return false
@@ -118,7 +113,7 @@ function goPage(n: number) {
         <label>迄日</label>
         <input v-model="dateTo" type="date">
       </div>
-      <div class="kw">
+      <div>
         <label>關鍵字</label>
         <input v-model="keyword" placeholder="搜尋名稱／摘要內容">
       </div>

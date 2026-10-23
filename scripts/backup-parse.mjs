@@ -1,4 +1,4 @@
-// 把 Back4App 上的資料整份匯出到本機（唯讀，不會改到線上任何東西）。
+// 把 Parse Server（tcross-parse）上的資料整份匯出到本機（唯讀，不會改到線上任何東西）。
 //
 // 匯出內容：
 //   schema.json        所有 class 的欄位定義與 CLP（還原時先建 schema）
@@ -21,27 +21,13 @@ import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
+import { loadEnv, parseServerUrl, requireEnv } from './lib/env.mjs'
 
-const env = {}
-const envFile = new URL('../.env', import.meta.url)
-if (existsSync(envFile)) {
-  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line)
-    if (m) env[m[1]] = m[2].trim()
-  }
-}
-for (const key of ['VITE_PARSE_APP_ID', 'VITE_PARSE_SERVER_URL', 'PARSE_MASTER_KEY']) {
-  if (process.env[key]) env[key] = process.env[key]
-}
-
+const env = loadEnv()
+requireEnv(env, ['VITE_PARSE_APP_ID', 'PARSE_MASTER_KEY'])
 const APP_ID = env.VITE_PARSE_APP_ID
 const MASTER_KEY = env.PARSE_MASTER_KEY
-const SERVER_URL = (env.VITE_PARSE_SERVER_URL || 'https://parseapi.back4app.com').replace(/\/$/, '')
-
-if (!APP_ID || !MASTER_KEY) {
-  console.error('.env 缺少 VITE_PARSE_APP_ID 或 PARSE_MASTER_KEY')
-  process.exit(1)
-}
+const SERVER_URL = parseServerUrl(env)
 
 const args = process.argv.slice(2)
 const withFiles = args.includes('--files')

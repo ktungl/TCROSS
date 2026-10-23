@@ -8,7 +8,12 @@ on:
     paths-ignore:
       - 'server/**'
       - 'cloud/**'
+      - 'parse-server/**'
+      - 'scripts/**'
+      - 'doc/**'
       - '**.md'
+      - '.github/workflows/backup-parse.yml'
+      - '.github/workflows/test.yml'
   workflow_dispatch:
 
 concurrency:
@@ -30,6 +35,10 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # 測試沒過就不部署（完整測試見 test.yml）
+      - name: Unit tests
+        run: npm test
 
       - name: Build
         run: npm run build

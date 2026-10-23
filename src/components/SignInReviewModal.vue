@@ -6,7 +6,8 @@ import type { SignInRow } from '../lib/middleware'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
-import { isImageName, isPdfName, loadAttachmentForAi, prepareImageForAi } from '../utils/aiImages'
+import { loadAttachmentForAi, prepareImageForAi } from '../utils/aiImages'
+import { isImageFile, isPdfFile } from '../utils/file'
 import type { AiImage } from '../utils/aiImages'
 import type { ActivityRecord, FileMeta } from '../types'
 
@@ -19,7 +20,7 @@ const db = useDbStore()
 const MAX_PAGES = 6
 
 const readable = computed(() =>
-  props.activity.files.signIn.filter((f) => isImageName(f.name) || isPdfName(f.name)),
+  props.activity.files.signIn.filter((f) => isImageFile(f.name) || isPdfFile(f.name)),
 )
 const picked = ref<string[]>(readable.value.map((f) => f.url))
 const localFiles = ref<File[]>([])
@@ -232,7 +233,6 @@ useEscape(requestClose)
 
 <style scoped>
 .signin-card{max-width:1100px;width:100%}
-.pick-list{display:flex;flex-direction:column;gap:6px}
 .review{display:grid;grid-template-columns:1fr 1.2fr;gap:16px;margin-top:10px}
 .review-image img{width:100%;border:1px solid var(--line);border-radius:var(--r)}
 .review-table{overflow:auto;max-height:70vh}

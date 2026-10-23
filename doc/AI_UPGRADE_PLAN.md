@@ -21,7 +21,7 @@
 - 第三批週報寄送管道（Email／LINE／只放總覽頁）
 
 **3. 第三批還沒做的**
-1. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/download.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
+1. **3-1 結案報告打包**：擴充 `buildNeimuReportDocx()`（`src/utils/exportDocs.ts`）加「總體成果統計」（可直接用 `computeOutcomeStats()`）＋AI 總結段落（後端讀該計畫所有活動的 `summary`／`kpis`，只送文字）
 2. **3-3 每週週報**：等寄送管道決定。讀上週 `AuditLog` 彙整；排程用 Cloud Scheduler 觸發 Cloud Run
 
 **部署提醒**：Cloud Run 部署與 push `main` 都要由使用者在提示列用 `!` 自己執行（auto mode 會擋）；部署帳號要用 `--account tainanjade@gmail.com`（預設帳號沒權限）。改到 `cloud/main.js` 時另跑 `bash parse-server/scripts/deploy.sh`。目前運行的 revision 用 [OPERATIONS.md](OPERATIONS.md)「日常健康檢查」的指令查。
@@ -81,7 +81,7 @@
 | --- | --- | --- |
 | AI 生成 | 只有「成果報告」一種，素材（照片／錄音／影片／文件）→ Gemini 回 `summary`／`highlights`／`kpis` → 組 `.docx` | `server/report.py`、`server/main.py` `/generate/{job_id}`、`src/components/AiGenerationModal.vue` |
 | `GenerationJob.kind` | 型別只有 `'成果報告' \| '其他'`（10-14 已加「會議紀錄」） | `src/types.ts` |
-| 匯出（非 AI） | 大事紀 Excel、內政部結案 Word、簽到表／活動紀錄表／領據／公文 | `src/utils/download.ts`、`src/views/ExportView.vue` |
+| 匯出（非 AI） | 大事紀 Excel、內政部結案成果報告 Word、簽到表／活動紀錄表／領據／公文 | `src/utils/exportDocs.ts`、`src/views/ExportView.vue` |
 | 報名表帶入 | 只解析 `.xlsx`／`.csv` 表頭，圖片／PDF 無法帶入 | `src/utils/registration.ts` |
 | 活動表單 | 純手動填寫，無 AI 輔助 | `src/components/ActivityFormModal.vue` |
 | 總覽 | 活動數、缺漏數、近 6 月場次 | `src/views/DashboardView.vue`、`src/utils/activity.ts` |

@@ -39,7 +39,7 @@ Vue 3 + TypeScript + Vite 專案，資料層使用 [Parse Platform](https://pars
 - **`lib/`**：`parse.ts` 用 `.env` 的 App ID/JS Key/Server URL 初始化 Parse SDK，全專案共用同一個實例；`middleware.ts` 封裝呼叫 Cloud Run 中介層（`server/`）的 API：AI 素材上傳／下載／刪除（`requestSignedUploadUrls()`、`uploadToSignedUrl()`、`requestDownloadUrl()`、`deleteObjects()`）、觸發生成（`triggerGeneration()`）、AI 改寫（`requestRewrite()`）、表單輔助（`assistSignIn()`／`assistPoster()`／`assistClassify()`／`assistDocument()`）；`attachments.ts` 處理活動附件（`/attachments/*`，附件存在 GCS，網址以 `gcs:` 開頭）；兩者都會帶上 `Parse.User.current()?.getSessionToken()` 做驗證。`googleMaps.ts` 載入地點欄位的地址自動建議。
 - **`composables/`**：`useToast.ts`/`useConfirm.ts` 是全域的提示訊息與刪除確認彈窗狀態（`reactive` 陣列/物件，搭配 `components/ToastStack.vue`、`components/ConfirmDialogHost.vue` 掛在 `App.vue` 顯示）；`useGenerationJobPolling.ts` 每 5 秒輪詢 `GenerationJob.status`。
 - **`components/`**：頁面共用的 UI 元件，例如活動卡片（`ActivityEntry.vue`）、活動新增/編輯表單（`ActivityFormModal.vue`）、AI 生成任務彈窗（`AiGenerationModal.vue`）、各附件分類共用的拖曳上傳卡（`FolderDropzone.vue`）、產出文件預覽（`GeneratedDocModal.vue`）。
-- **`utils/`**：`download.ts` 用 `docx`/`exceljs` 產生真正格式的大事紀 Excel、內政部結案 Word（依《需求訪談》欄位對照表）以及簽到表/活動紀錄表/領據；`activity.ts` 是活動相關的純函式（篩選、缺漏檢核、格式化等）。
+- **`utils/`**：`exportDocs.ts` 用 `docx`/`exceljs` 產生真正格式的大事紀 Excel、內政部結案成果報告 Word（依《需求訪談》欄位對照表）以及簽到表/活動紀錄表/領據；`activity.ts` 是活動相關的純函式（篩選、缺漏檢核、格式化等）。
 - **`models/`**：`Activity.ts`/`Plan.ts`/`Category.ts`/`GenerationJob.ts`/`AuditLog.ts` 定義對應 Parse Class 的型別/轉換邏輯，供 `stores/db.ts` 使用；`actorStamp.ts` 讀取建立者／修改者欄位。
 
 ## 資料結構（Parse Classes）
@@ -127,4 +127,6 @@ node scripts/sync-schema.mjs --apply   # 用 .env 的 Master Key 建立缺少的
 - **Cloud Run 端呼叫 Vertex AI Gemini、組裝文件這段（上圖流程第 6–9 步）已完成、部署上線並通過端到端測試**（`server/report.py`／`/generate/{job_id}` 端點，2026-09-17），輸出 `.docx` 與 `.pdf`（PDF 於 2026-10-19 加入），Excel 尚未實作（見 [doc/ROADMAP.md](doc/ROADMAP.md) #13）
 
 待辦與期限見 [doc/ROADMAP.md](doc/ROADMAP.md)，AI 功能升級規劃見 [doc/AI_UPGRADE_PLAN.md](doc/AI_UPGRADE_PLAN.md)；部署、健康檢查、密鑰輪替、範本修改流程等維運操作見 [doc/OPERATIONS.md](doc/OPERATIONS.md)。
+
+最初（2026-08-11）的 MVP 功能需求心智圖：[doc/LINE_NOTE_260811_1.jpg](doc/LINE_NOTE_260811_1.jpg)。
 

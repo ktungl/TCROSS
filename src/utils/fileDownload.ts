@@ -1,8 +1,10 @@
 import JSZip from 'jszip'
-import { downloadBlob } from './download'
+import { downloadBlob } from './exportDocs'
 import { resolveAttachmentUrl } from '../lib/attachments'
+import { runPool } from './pool'
+import { localDateString } from './date'
 
-export interface DownloadItem {
+interface DownloadItem {
   /** 原始檔名（FileMeta.name），Parse 檔案網址上的檔名有加時間戳記前綴，不拿來用 */
   name: string
   url: string
@@ -10,7 +12,7 @@ export interface DownloadItem {
   folder?: string
 }
 
-export interface DownloadResult {
+interface DownloadResult {
   /** 抓不到的檔案名稱（網址失效、網路中斷），其他檔案照樣下載 */
   failed: string[]
 }
@@ -63,21 +65,17 @@ export async function downloadFiles(
     uniquePath(used, (item.folder ?? '').split('/').map(safePathPart).filter(Boolean).join('/'), safePathPart(item.name)),
   )
   const failed: string[] = []
-  let cursor = 0
   let done = 0
-  async function worker() {
-    while (cursor < items.length) {
-      const i = cursor++
-      try {
-        zip.file(paths[i], await fetchBlob(items[i].url, items[i].name))
-      } catch (err) {
-        console.error(`下載失敗：${items[i].name}`, err)
-        failed.push(items[i].name)
-      }
-      onProgress?.(++done, items.length)
+  // 單一檔案失敗不中斷，記下來最後一起告訴使用者
+  await runPool(items, FETCH_CONCURRENCY, async (item, i) => {
+    try {
+      zip.file(paths[i], await fetchBlob(item.url, item.name))
+    } catch (err) {
+      console.error(`下載失敗：${item.name}`, err)
+      failed.push(item.name)
     }
-  }
-  await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, items.length) }, worker))
+    onProgress?.(++done, items.length)
+  })
   if (failed.length === items.length) throw new Error('檔案都下載失敗，請檢查網路後再試一次')
   const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
   downloadBlob(`${safePathPart(zipName)}.zip`, blob)
@@ -86,6 +84,5 @@ export async function downloadFiles(
 
 /** 今天日期 YYYYMMDD，放進壓縮檔名 */
 export function todayStamp(): string {
-  const d = new Date()
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  return localDateString().replace(/-/g, '')
 }

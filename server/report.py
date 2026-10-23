@@ -14,12 +14,11 @@ from google.genai import types
 
 import charts
 from document import Block, Bullet, Heading, Image, Paragraph, Table
-from storage import download_bytes
+from storage import download_bytes, gcs_uri
 
 GCP_PROJECT = os.environ["GCP_PROJECT"]
-GCP_LOCATION = os.environ.get("GCP_LOCATION", "us-central1")
+GCP_LOCATION = os.environ.get("GCP_LOCATION", "asia-northeast1")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GCS_BUCKET = os.environ["GCS_BUCKET"]
 # 照片／影片送進 Gemini 的解析度：LOW 每張圖／每格影格的 token 數只有預設的約 1/4，
 # 大幅壓低費用；如果發現簽到表之類小字辨識不出來，再把環境變數改成 MEDIUM／HIGH。
 GEMINI_MEDIA_RESOLUTION = os.environ.get("GEMINI_MEDIA_RESOLUTION", "LOW").upper()
@@ -137,7 +136,7 @@ def _source_part(path: str) -> types.Part:
         name = path.rsplit("/", 1)[-1]
         text = _docx_text(download_bytes(path)) or "（這份 Word 檔沒有文字內容）"
         return types.Part.from_text(text=f"【文件：{name}】\n{text}")
-    return types.Part.from_uri(file_uri=f"gs://{GCS_BUCKET}/{path}", mime_type=_guess_mime_type(path))
+    return types.Part.from_uri(file_uri=gcs_uri(path), mime_type=_guess_mime_type(path))
 
 
 def _generate_json(object_paths: list[str], prompt: str, schema: dict, **config) -> dict:

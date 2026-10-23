@@ -4,10 +4,8 @@ import re
 _UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
 # Mirrors src/types.ts BLOCKED_EXTENSIONS / cloud/main.js BLOCKED_EXTENSIONS — keep
-# the three lists in sync if this changes. There's no size cap enforced here: the
-# client PUTs straight to GCS with a signed URL, and a plain v4 signed PUT URL has
-# no way to cap the body size (that needs a signed POST policy with a
-# content-length-range condition instead, which isn't implemented yet).
+# the three lists in sync if this changes. The size cap isn't here: it's signed into
+# the upload URL as x-goog-content-length-range (see storage.generate_signed_upload_url).
 BLOCKED_EXTENSIONS = {
     "exe", "bat", "cmd", "com", "scr", "msi", "msp", "dll", "ps1", "psm1",
     "vbs", "vbe", "js", "jse", "jar", "apk", "sh", "app", "cpl", "gadget",

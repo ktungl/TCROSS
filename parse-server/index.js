@@ -22,15 +22,13 @@ const server = new ParseServer({
   // Cloud Code 透過這個網址呼叫自己（例如 afterSave 裡 useMasterKey 的查詢），走容器內部就好
   serverURL: `http://localhost:${port}${mountPath}`,
   publicServerURL: process.env.PUBLIC_SERVER_URL,
-  // 部署時 scripts/deploy.sh 把專案根目錄的 cloud/main.js 複製進來，和 Back4App 跑同一份
+  // 部署時 scripts/deploy.sh 把專案根目錄的 cloud/main.js 複製進來（回滾到 Back4App 時也是貼同一份）
   cloud: fileURLToPath(new URL('./cloud/main.js', import.meta.url)),
   // Parse Server 預設只讓本機用 Master Key；Cloud Run 中介層與 GitHub Actions 備份都是從外部
   // 帶 Master Key 呼叫（和 Back4App 時一樣），所以放寬來源，安全靠 Secret Manager 保管金鑰。
   masterKeyIps: ['0.0.0.0/0', '::/0'],
   // 不讓前端自己建新 class／新欄位，跟 Back4App 上的 CLP（addField 全關）一致
   allowClientClassCreation: false,
-  // 匯入時保留 Back4App 的 objectId（Pointer、角色成員、createdById 等字串都不用改寫）
-  allowCustomObjectId: process.env.ALLOW_CUSTOM_OBJECT_ID === 'true',
   // 免費方案沒有寄信，忘記密碼由管理員用 scripts/setup-users.mjs 重設
   verifyUserEmails: false,
   // Firestore MongoDB 相容模式不支援 collation（建不出「帳號名稱不分大小寫」索引）。關掉後只少了

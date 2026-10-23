@@ -1,6 +1,6 @@
-// 對照前端會寫入的欄位與 Back4App 上的 Activity schema，補上缺少的欄位。
+// 對照前端會寫入的欄位與 Parse Server（tcross-parse）上的 schema，補上缺少的欄位。
 //
-// Back4App 不允許前端（JS Key）自動建欄位，會回 "Permission denied for action
+// 伺服器不允許前端（JS Key）自動建欄位，會回 "Permission denied for action
 // addField on class Activity"。這支腳本用 .env 裡的 PARSE_MASTER_KEY 建欄位，
 // 只新增、不刪除也不改型別，所以不會動到既有資料。
 //
@@ -8,22 +8,13 @@
 //   node scripts/sync-schema.mjs --apply   實際建立缺少的欄位
 //
 // 之後 src/models/Activity.ts 有新增欄位時，記得同步更新下面的 WANTED。
-import { readFileSync } from 'fs'
+import { loadEnv, parseServerUrl, requireEnv } from './lib/env.mjs'
 
-const env = {}
-for (const line of readFileSync(new URL('../.env', import.meta.url), 'utf8').split(/\r?\n/)) {
-  const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line)
-  if (m) env[m[1]] = m[2].trim()
-}
-
+const env = loadEnv()
+requireEnv(env, ['VITE_PARSE_APP_ID', 'PARSE_MASTER_KEY'])
 const APP_ID = env.VITE_PARSE_APP_ID
 const MASTER_KEY = env.PARSE_MASTER_KEY
-const SERVER_URL = (env.VITE_PARSE_SERVER_URL || 'https://parseapi.back4app.com').replace(/\/$/, '')
-
-if (!APP_ID || !MASTER_KEY) {
-  console.error('.env 缺少 VITE_PARSE_APP_ID 或 PARSE_MASTER_KEY')
-  process.exit(1)
-}
+const SERVER_URL = parseServerUrl(env)
 
 const headers = {
   'X-Parse-Application-Id': APP_ID,
@@ -39,7 +30,7 @@ const ACTOR_FIELDS = {
   updatedByName: 'String',
 }
 
-/** 對應各 model 檔的 applyXRecord()／xToRecord()。key 是 Back4App 的 className。 */
+/** 對應各 model 檔的 applyXRecord()／xToRecord()。key 是 Parse 的 className。 */
 const WANTED_BY_CLASS = {
   // src/models/Activity.ts
   Activity: {
@@ -122,7 +113,7 @@ for (const [className, WANTED] of Object.entries(WANTED_BY_CLASS)) {
     }
   }
   const existing = classExists ? (await res.json()).fields || {} : {}
-  if (!classExists) console.log(`${className}：Back4App 上還沒有這個 class，會一併建立。`)
+  if (!classExists) console.log(`${className}：伺服器上還沒有這個 class，會一併建立。`)
 
   const missing = Object.entries(WANTED).filter(([name]) => !existing[name])
   if (!missing.length) {
@@ -131,7 +122,7 @@ for (const [className, WANTED] of Object.entries(WANTED_BY_CLASS)) {
   }
   anyMissing = true
 
-  console.log(`${className}：前端需要但 Back4App 上不存在的欄位：`)
+  console.log(`${className}：前端需要但伺服器上不存在的欄位：`)
   for (const [name, type] of missing) console.log(`  ${name.padEnd(18)} ${type}`)
 
   if (!apply) continue

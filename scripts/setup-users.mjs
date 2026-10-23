@@ -14,21 +14,13 @@
 //
 // 需要 .env 裡的 VITE_PARSE_APP_ID／VITE_PARSE_SERVER_URL／PARSE_MASTER_KEY。
 import { existsSync, readFileSync } from 'fs'
+import { loadEnv, parseServerUrl, requireEnv } from './lib/env.mjs'
 
-const env = {}
-for (const line of readFileSync(new URL('../.env', import.meta.url), 'utf8').split(/\r?\n/)) {
-  const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line)
-  if (m) env[m[1]] = m[2].trim()
-}
-
+const env = loadEnv()
+requireEnv(env, ['VITE_PARSE_APP_ID', 'PARSE_MASTER_KEY'])
 const APP_ID = env.VITE_PARSE_APP_ID
 const MASTER_KEY = env.PARSE_MASTER_KEY
-const SERVER_URL = (env.VITE_PARSE_SERVER_URL || 'https://parseapi.back4app.com').replace(/\/$/, '')
-
-if (!APP_ID || !MASTER_KEY) {
-  console.error('.env 缺少 VITE_PARSE_APP_ID 或 PARSE_MASTER_KEY')
-  process.exit(1)
-}
+const SERVER_URL = parseServerUrl(env)
 
 const configUrl = new URL('./users.local.json', import.meta.url)
 if (!existsSync(configUrl)) {

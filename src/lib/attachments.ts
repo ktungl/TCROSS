@@ -1,58 +1,18 @@
 import { reactive, ref } from 'vue'
-import Parse from './parse'
+import { postJson, putToSignedUrl } from './middleware'
 import type { AttachmentKey } from '../types'
 
 /** 活動附件存在 GCS（Cloud Run 中介層簽發的臨時網址上傳／讀取）。FileMeta.url 存成
  * 「gcs:attachments/…」，跟 10 月前上傳到 Back4App 的舊附件（https://parsefiles.back4app.com/…）
  * 區分；舊網址照舊直接使用，新舊可以並存在同一個活動裡。 */
-export const GCS_URL_PREFIX = 'gcs:'
+const GCS_URL_PREFIX = 'gcs:'
 
-export function isGcsUrl(url: string | undefined): url is string {
+function isGcsUrl(url: string | undefined): url is string {
   return !!url && url.startsWith(GCS_URL_PREFIX)
-}
-
-function baseUrl(): string {
-  const url = import.meta.env.VITE_MIDDLEWARE_URL
-  if (!url) throw new Error('尚未設定 VITE_MIDDLEWARE_URL')
-  return url.replace(/\/$/, '')
-}
-
-/** 被 Cloud Run 限流（429，每人每分鐘 30 次、以 60 秒滑動計算）時依序等這麼久再重試，合計超過 60 秒。
- * 429 是在處理請求前就擋下，重送不會重複執行。 */
-const RATE_LIMIT_RETRY_DELAYS_MS = [3_000, 10_000, 20_000, 30_000]
-
-async function post<T>(path: string, body: unknown, fallback: string): Promise<T> {
-  const token = Parse.User.current()?.getSessionToken()
-  if (!token) throw new Error('請重新登入')
-  const send = () =>
-    fetch(`${baseUrl()}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    })
-  let res = await send()
-  for (const delay of RATE_LIMIT_RETRY_DELAYS_MS) {
-    if (res.status !== 429) break
-    await new Promise((r) => setTimeout(r, delay))
-    res = await send()
-  }
-  if (!res.ok) {
-    let message = fallback
-    try {
-      const err = await res.json()
-      if (typeof err?.detail === 'string') message = err.detail
-    } catch {
-      // 回應不是 JSON 就用預設訊息
-    }
-    throw new Error(message)
-  }
-  return res.json() as Promise<T>
 }
 
 // ── 上傳 ──────────────────────────────────────────────
 
-/** 跟 server/main.py MAX_ATTACHMENT_BYTES 一致；簽在上傳網址裡，GCS 會實際擋下超過的檔案。 */
-const MAX_BYTES = 50 * 1024 * 1024
 const UPLOAD_URL_BATCH = 50
 
 /** 一次換一批上傳網址（Cloud Run 一個請求最多 50 個），回傳與 files 同順序。 */
@@ -64,7 +24,7 @@ export async function requestAttachmentUploadUrls(
   const out: { uploadUrl: string; url: string }[] = []
   for (let i = 0; i < files.length; i += UPLOAD_URL_BATCH) {
     const batch = files.slice(i, i + UPLOAD_URL_BATCH)
-    const body = await post<{ files: { uploadUrl: string; url: string }[] }>(
+    const body = await postJson<{ files: { uploadUrl: string; url: string }[] }>(
       '/attachments/upload-urls',
       {
         activityId,
@@ -99,28 +59,13 @@ export function contentTypeOf(file: File): string {
   return allowed ? type : 'application/octet-stream'
 }
 
-/** 用 XHR 而非 fetch，才能取得上傳進度。Content-Type 與 x-goog-content-length-range
- * 都簽在網址裡，必須原樣送出，否則 GCS 會回 403。 */
+/** Content-Type 與上傳大小上限都簽在網址裡，見 middleware.ts putToSignedUrl。 */
 export function putAttachment(
   uploadUrl: string,
   file: File,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('PUT', uploadUrl)
-    xhr.setRequestHeader('Content-Type', contentTypeOf(file))
-    xhr.setRequestHeader('x-goog-content-length-range', `0,${MAX_BYTES}`)
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress?.(e.loaded / e.total)
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve()
-      else reject(new Error(`檔案「${file.name}」上傳失敗`))
-    }
-    xhr.onerror = () => reject(new Error(`檔案「${file.name}」上傳失敗`))
-    xhr.send(file)
-  })
+  return putToSignedUrl(uploadUrl, file, contentTypeOf(file), onProgress)
 }
 
 // ── 讀取（臨時網址）─────────────────────────────────────
@@ -167,7 +112,7 @@ async function flush() {
   try {
     for (let i = 0; i < entries.length; i += VIEW_URL_BATCH) {
       const batch = entries.slice(i, i + VIEW_URL_BATCH)
-      const body = await post<{ urls: Record<string, string> }>(
+      const body = await postJson<{ urls: Record<string, string> }>(
         '/attachments/view-urls',
         { items: batch.map(([, v]) => ({ path: v.path, name: v.name })) },
         '無法取得附件網址',
@@ -216,5 +161,5 @@ export async function resolveAttachmentUrl(url: string, name = ''): Promise<stri
 export async function deleteUnreferencedAttachments(urls: string[]): Promise<void> {
   const paths = urls.filter(isGcsUrl).map((u) => u.slice(GCS_URL_PREFIX.length))
   if (!paths.length) return
-  await post('/attachments/delete', { paths }, '無法刪除附件檔案')
+  await postJson('/attachments/delete', { paths }, '無法刪除附件檔案')
 }

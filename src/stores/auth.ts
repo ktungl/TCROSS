@@ -11,21 +11,14 @@ function displayNameOf(user: Parse.User | null): string {
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<Parse.User | null>(Parse.User.current() ?? null)
-  const error = ref('')
   // Parse.User 不是響應式物件，fetch() 後同一個實例的欄位變了 Vue 也不會知道，
   // 所以顯示名稱另外存一份。
   const displayName = ref(displayNameOf(user.value))
   const greetingName = computed(() => greetingNameOf(displayName.value))
 
   async function logIn(username: string, password: string): Promise<void> {
-    error.value = ''
-    try {
-      user.value = await Parse.User.logIn(username, password)
-      displayName.value = displayNameOf(user.value)
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : '登入失敗'
-      throw e
-    }
+    user.value = await Parse.User.logIn(username, password)
+    displayName.value = displayNameOf(user.value)
   }
 
   /** 瀏覽器裡快取的登入狀態可能是加上顯示名稱之前存的，開站時重新抓一次。
@@ -52,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     displayName.value = ''
   }
 
-  return { user, error, displayName, greetingName, logIn, refreshUser, logOut }
+  return { user, displayName, greetingName, logIn, refreshUser, logOut }
 })

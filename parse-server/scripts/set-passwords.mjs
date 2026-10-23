@@ -1,7 +1,9 @@
 // 幫自架 Parse Server 上的所有帳號設定密碼（匯入後帳號只有隨機臨時密碼，備份不含 Back4App 的密碼雜湊）。
 // 團隊實測與正式切換用同一份密碼檔（--from），成員只需要記一組新密碼。
 //
-//   PARSE_SERVER_MASTER_KEY=$(gcloud secrets versions access latest --secret parse-server-master-key) \
+// 用 .env 的 VITE_PARSE_SERVER_URL／PARSE_MASTER_KEY（自架伺服器的 Master Key：
+// gcloud secrets versions access latest --secret parse-server-master-key），也可以直接在指令前帶環境變數。
+//
 //     node scripts/set-passwords.mjs                     列出帳號（唯讀）
 //     node scripts/set-passwords.mjs --apply             每個帳號產生新的隨機密碼並套用
 //     node scripts/set-passwords.mjs --apply --from <檔> 套用既有密碼檔（正式切換重新匯入後用）
@@ -11,27 +13,21 @@
 import { randomInt } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
+import { loadEnv, parseServerUrl, requireEnv } from '../../scripts/lib/env.mjs'
 
-const env = {}
-for (const line of readFileSync(new URL('../../.env', import.meta.url), 'utf8').split(/\r?\n/)) {
-  const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line)
-  if (m) env[m[1]] = m[2].trim()
-}
+const env = loadEnv()
+requireEnv(env, ['VITE_PARSE_APP_ID', 'PARSE_MASTER_KEY'])
 const APP_ID = env.VITE_PARSE_APP_ID
-const MASTER_KEY = process.env.PARSE_SERVER_MASTER_KEY
-const SERVER_URL = (process.env.NEW_PARSE_SERVER_URL || 'https://tcross-parse-502746951565.asia-east1.run.app/parse').replace(/\/$/, '')
+const MASTER_KEY = env.PARSE_MASTER_KEY
+const SERVER_URL = parseServerUrl(env)
 
 const args = process.argv.slice(2)
 const apply = args.includes('--apply')
 const fromIdx = args.indexOf('--from')
 const fromFile = fromIdx >= 0 ? args[fromIdx + 1] : null
 
-if (!MASTER_KEY) {
-  console.error('缺少 PARSE_SERVER_MASTER_KEY（自架伺服器的 Master Key，用法見檔頭）')
-  process.exit(1)
-}
 if (SERVER_URL.includes('back4app')) {
-  console.error('這支只用在自架伺服器，Back4App 的帳號請用 scripts/setup-users.mjs')
+  console.error('這支只用在自架伺服器（tcross-parse）')
   process.exit(1)
 }
 

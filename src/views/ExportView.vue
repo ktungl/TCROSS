@@ -10,12 +10,12 @@ import {
   takeImageLoadFailures,
   downloadBlob,
   downloadFile,
-  LEDGER_MAX_PHOTOS,
   LEDGER_PHOTO_SIZES,
   type LedgerPhotoSize,
-} from '../utils/download'
+} from '../utils/exportDocs'
 import { buildOutcomeStatsXlsx, computeOutcomeStats } from '../utils/outcomeStats'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { LEDGER_PHOTO_MAX } from '../types'
 import type { ActivityCategory } from '../types'
 
 const db = useDbStore()
@@ -141,7 +141,7 @@ async function doExport() {
 
 <template>
   <h1>匯出成果</h1>
-  <p class="sub">挑計畫、期間或分類，產出大事紀 Excel、內政部結案 Word 與成效統計表。</p>
+  <p class="sub">挑計畫、期間或分類，產出大事紀 Excel、內政部結案成果報告 Word 與成效統計表。</p>
   <div class="card">
     <div class="grid3">
       <div>
@@ -170,7 +170,7 @@ async function doExport() {
     <label class="field">匯出檔案類型</label>
     <div class="row">
       <label class="chk"><input type="checkbox" v-model="wantLedger">大事紀 Excel</label>
-      <label class="chk"><input type="checkbox" v-model="wantNeimu">內政部結案 Word</label>
+      <label class="chk"><input type="checkbox" v-model="wantNeimu">內政部結案成果報告 Word</label>
       <label class="chk"><input type="checkbox" v-model="wantStats">成效統計表 Excel</label>
     </div>
     <p v-if="wantStats" class="hint">統計總表（場次、男女與合計人數，依計畫／分類／月份小計）＋活動明細</p>
@@ -185,12 +185,12 @@ async function doExport() {
       <div>
         <label>每場照片張數</label>
         <select v-model.number="ledgerPhotosPerRow">
-          <option v-for="n in LEDGER_MAX_PHOTOS" :key="n" :value="n">最多 {{ n }} 張</option>
+          <option v-for="n in LEDGER_PHOTO_MAX" :key="n" :value="n">最多 {{ n }} 張</option>
         </select>
       </div>
     </div>
     <p v-if="wantLedger" class="hint">
-      放活動頁勾選「大紀事照片」的照片（沒勾的活動改放精選照片）；一張照片一個格子，每列列高固定，照片不會超出格子
+      放活動頁勾選「大事紀照片」的照片（沒勾的活動改放精選照片）；一張照片一個格子，每列列高固定，照片不會超出格子
     </p>
 
     <div class="row actions">

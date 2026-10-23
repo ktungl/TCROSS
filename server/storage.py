@@ -10,6 +10,11 @@ from google.cloud import storage
 from utils import inline_content_type
 
 GCS_BUCKET = os.environ["GCS_BUCKET"]
+
+
+def gcs_uri(object_path: str) -> str:
+    """給 Vertex AI 讀檔用的 gs:// 網址"""
+    return f"gs://{GCS_BUCKET}/{object_path}"
 SIGNING_SERVICE_ACCOUNT = os.environ["GCS_SIGNING_SERVICE_ACCOUNT"]
 SIGNED_URL_TTL_MINUTES = int(os.environ.get("SIGNED_URL_TTL_MINUTES", "15"))
 

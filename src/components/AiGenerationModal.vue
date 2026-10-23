@@ -4,16 +4,18 @@ import { useDbStore } from '../stores/db'
 import { useGenerationJobPolling } from '../composables/useGenerationJobPolling'
 import {
   deleteObjects,
-  requestDownloadUrl,
   requestSignedUploadUrls,
   triggerGeneration,
-  uploadToSignedUrl,
+  putToSignedUrl,
+  UPLOAD_CONCURRENCY,
   type SignedUrlResponse,
 } from '../lib/middleware'
 import { contentTypeOf } from '../lib/attachments'
+import { runPool } from '../utils/pool'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
+import { useReportDownload } from '../composables/useReportDownload'
 import FolderDropzone from './FolderDropzone.vue'
 import { UNRECORDED, formatDateTime } from '../utils/actor'
 import { FOLDERS, GENERATION_STATUS_LABELS, fileUploadRejectionReason } from '../types'
@@ -35,8 +37,6 @@ const selected = reactive(emptySelection())
 const fileStates = reactive(new Map<File, 'queued' | 'uploading' | 'uploaded' | 'error'>())
 const fileProgress = reactive(new Map<File, number>())
 const FILE_STATE_LABELS = { queued: '待上傳', uploading: '上傳中', uploaded: '已上傳', error: '上傳失敗' } as const
-/** 同時上傳的檔案數量上限，避免一次太多連線把伺服器或使用者頻寬打滿。 */
-const UPLOAD_CONCURRENCY = 3
 /** 每筆生成工作的素材數量上限，要跟 server/main.py 的 MAX_SOURCE_FILES 一致——
  * 素材越多 Gemini 費用越高。 */
 const MAX_SOURCE_FILES = 20
@@ -222,6 +222,7 @@ async function startGeneration() {
         folder,
         filename: file.name,
         contentType: contentTypeOf(file),
+        size: file.size,
       })),
     )
   } catch (e) {
@@ -231,36 +232,22 @@ async function startGeneration() {
   }
 
   const objectPaths: (string | null)[] = new Array(allFiles.length).fill(null)
-  let cursor = 0
-  let aborted = false
-  async function worker() {
-    while (!aborted && cursor < allFiles.length) {
-      const i = cursor++
-      const { file } = allFiles[i]
+  try {
+    // runPool 會等還在傳的檔案都結束才拋錯，下面 catch 清孤兒檔時才不會漏掉稍後才完成的。
+    await runPool(allFiles, UPLOAD_CONCURRENCY, async ({ file }, i) => {
       const { uploadUrl, objectPath } = signedUrls[i]
       fileStates.set(file, 'uploading')
       try {
-        const contentType = contentTypeOf(file)
-        await uploadToSignedUrl(uploadUrl, file, contentType, (fraction) => {
+        await putToSignedUrl(uploadUrl, file, contentTypeOf(file), (fraction) => {
           fileProgress.set(file, fraction)
         })
         fileStates.set(file, 'uploaded')
         objectPaths[i] = objectPath
       } catch (e) {
-        aborted = true
         fileStates.set(file, 'error')
         throw e
       }
-    }
-  }
-  try {
-    // 用 allSettled 等所有 worker 都停下來：Promise.all 在第一個失敗就 reject，其他還在傳的
-    // 檔案稍後才完成，下面 catch 清孤兒檔時就會漏掉它們，留在 GCS 持續計費。
-    const results = await Promise.allSettled(
-      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, allFiles.length) }, worker),
-    )
-    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
-    if (failed) throw failed.reason
+    })
     const job = await db.createGenerationJob(props.activity.id, props.kind, objectPaths as string[])
     activeJob.value = job
     FOLDERS.forEach(([key]) => (selected[key] = []))
@@ -280,21 +267,7 @@ async function startGeneration() {
   }
 }
 
-const downloading = ref<string | null>(null)
-
-/** downloading 存「工作 id:格式」，Word／PDF 兩顆按鈕各自顯示取得中。 */
-async function download(job: GenerationJobRecord, pdf = false) {
-  if (!job.resultFile) return
-  downloading.value = `${job.id}:${pdf ? 'pdf' : 'docx'}`
-  try {
-    const url = await requestDownloadUrl(job.resultFile, pdf)
-    window.open(url, '_blank')
-  } catch (e) {
-    pushToast(errorMessage(e), 'error')
-  } finally {
-    downloading.value = null
-  }
-}
+const { downloading, download } = useReportDownload()
 
 const deletingJobId = ref<string | null>(null)
 

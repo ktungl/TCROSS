@@ -170,7 +170,7 @@ const consistencyIssues = computed(() =>
     time: time.value,
     timeEnd: timeEnd.value,
     placeMode: placeMode.value,
-    address: address.value,
+    place: address.value,
     meetingUrl: meetingUrl.value,
     participantDesc: participantDesc.value,
     remark: remark.value,

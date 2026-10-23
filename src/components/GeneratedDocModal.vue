@@ -13,8 +13,8 @@ import {
   SIGN_IN_LAYOUTS,
   takeImageLoadFailures,
   toChineseUpperAmount,
-} from '../utils/download'
-import type { GeneratedFormKind, OfficialLetterPurpose, ReceiptEntry, SignInLayout } from '../utils/download'
+} from '../utils/exportDocs'
+import type { GeneratedFormKind, OfficialLetterPurpose, ReceiptEntry, SignInLayout } from '../utils/exportDocs'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
 import { isParsableRegistration, readParticipants } from '../utils/registration'

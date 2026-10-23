@@ -9,7 +9,6 @@ vi.mock('../../src/utils/pdfPages', () => ({ renderPdfPages: async () => [] }))
 vi.mock('../../src/utils/pdfText', () => ({
   attachmentTextsToPlain: () => '',
   extractPdfText: async () => '',
-  isPdf: () => false,
   readAttachmentTexts: async () => [],
 }))
 
@@ -23,7 +22,7 @@ const {
   missingImagesMessage,
   SIGN_IN_LAYOUTS,
   takeImageLoadFailures,
-} = await import('../../src/utils/download')
+} = await import('../../src/utils/exportDocs')
 const { computeOutcomeStats } = await import('../../src/utils/outcomeStats')
 
 describe('buildCsv', () => {

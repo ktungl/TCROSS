@@ -5,14 +5,15 @@ import type { DocumentDigest } from '../lib/middleware'
 import { resolveAttachmentUrl } from '../lib/attachments'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
-import { isImageName, isPdfName, loadDocumentForAi } from '../utils/aiImages'
+import { loadDocumentForAi } from '../utils/aiImages'
+import { isImageFile, isPdfFile } from '../utils/file'
 import type { ActivityRecord } from '../types'
 
 const props = defineProps<{ activity: ActivityRecord }>()
 const emit = defineEmits<{ close: [] }>()
 
 const readable = computed(() =>
-  props.activity.files.document.filter((f) => isPdfName(f.name) || isImageName(f.name)),
+  props.activity.files.document.filter((f) => isPdfFile(f.name) || isImageFile(f.name)),
 )
 const picked = ref(readable.value[0]?.url ?? '')
 const localFile = ref<File | null>(null)
@@ -99,7 +100,7 @@ useEscape(requestClose)
 
 <template>
   <div class="modal" v-modal-focus @click.self="requestClose">
-    <div class="card doc-card">
+    <div class="card wide">
       <h2>AI 公文快讀</h2>
 
       <template v-if="!result">
@@ -158,8 +159,6 @@ useEscape(requestClose)
 </template>
 
 <style scoped>
-.doc-card{max-width:760px;width:100%}
-.pick-list{display:flex;flex-direction:column;gap:6px}
 .points{margin:4px 0 8px;padding-left:1.4em}
 .points li{margin:2px 0}
 .check-group{margin-top:6px}

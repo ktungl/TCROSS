@@ -26,7 +26,10 @@ import type { Participant } from './registration'
 import { isAgendaReadable, readAgenda } from './agenda'
 import type { AgendaBlock } from './agenda'
 import { renderPdfPages } from './pdfPages'
-import { attachmentTextsToPlain, extractPdfText, isPdf, readAttachmentTexts } from './pdfText'
+import { ROC_EPOCH, localDateString } from './date'
+import { blobToDataUrl, loadImage } from './image'
+import { attachmentTextsToPlain, extractPdfText, readAttachmentTexts } from './pdfText'
+import { fileExt, isImageFile, isPdfFile } from './file'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const THIN_BORDER = {
@@ -300,7 +303,7 @@ export interface ReceiptEntry {
   payeeUnit: string
 }
 
-export interface ReceiptOptions {
+interface ReceiptOptions {
   /** 「茲收到支付之 ○○○」的支付單位 */
   payer: string
   /** 款項名稱，例：講師鐘點費 */
@@ -433,7 +436,7 @@ export async function buildReceiptXlsx(a: ActivityRecord, opts: ReceiptOptions):
 
 export type OfficialLetterPurpose = '邀請參加' | '檢送成果'
 
-export interface OfficialLetterOptions {
+interface OfficialLetterOptions {
   /** 發文機關全銜 */
   issuer: string
   /** 受文者 */
@@ -520,9 +523,7 @@ export async function buildOfficialLetterDocx(a: ActivityRecord, opts: OfficialL
   return Packer.toBlob(doc)
 }
 
-// ---------- 大事紀 Excel／內政部結案 Word（需求訪談欄位對照表） ----------
-
-const ROC_EPOCH = 1911
+// ---------- 大事紀 Excel／內政部結案成果報告 Word（需求訪談欄位對照表） ----------
 
 function toRocParts(dateStr: string): { y: number; m: number; d: number } | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
@@ -534,11 +535,6 @@ function formatRocCompact(dateStr: string): string {
   const p = toRocParts(dateStr)
   if (!p) return ''
   return `${p.y}${String(p.m).padStart(2, '0')}${String(p.d).padStart(2, '0')}`
-}
-
-/** 大事紀日期欄格式：1140103 */
-export function formatLedgerDate(date: string): string {
-  return formatRocCompact(date)
 }
 
 /** 內政部報告日期格式：114年1月3日 */
@@ -556,7 +552,7 @@ function pickPhotosForExport(files: FileMeta[], max: number): FileMeta[] {
 function fileKindFromName(
   name: string,
 ): { docxType: 'jpg' | 'png' | 'gif' | 'bmp'; xlsxExt: 'jpeg' | 'png' | 'gif' } | null {
-  const ext = name.toLowerCase().split('.').pop() ?? ''
+  const ext = fileExt(name)
   if (ext === 'jpg' || ext === 'jpeg') return { docxType: 'jpg', xlsxExt: 'jpeg' }
   if (ext === 'png') return { docxType: 'png', xlsxExt: 'png' }
   if (ext === 'gif') return { docxType: 'gif', xlsxExt: 'gif' }
@@ -564,58 +560,32 @@ function fileKindFromName(
 }
 
 function readImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(blob)
-    const img = new window.Image()
-    img.onload = () => {
-      resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 })
-      URL.revokeObjectURL(url)
-    }
-    img.onerror = () => {
-      resolve({ width: 1, height: 1 })
-      URL.revokeObjectURL(url)
-    }
-    img.src = url
-  })
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('讀取圖片失敗'))
-    reader.readAsDataURL(blob)
-  })
+  return loadImage(blob).then(
+    (img) => ({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 }),
+    () => ({ width: 1, height: 1 }),
+  )
 }
 
 /** docx／exceljs 都只認得 jpg/png/gif，手機截圖、Line 傳圖、瀏覽器另存常見的 webp（或其他
  * 瀏覽器看得懂但不在白名單裡的格式）會被上面的 fileKindFromName() 擋掉。這裡用瀏覽器內建
  * 的圖片解碼能力把它畫到 canvas 上再輸出成 PNG，而不是直接放棄不嵌入。 */
-function convertToPng(blob: Blob): Promise<{ blob: Blob; width: number; height: number } | null> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(blob)
-    const img = new window.Image()
-    img.onload = () => {
-      const width = img.naturalWidth || 1
-      const height = img.naturalHeight || 1
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      URL.revokeObjectURL(url)
-      if (!ctx) {
-        resolve(null)
-        return
-      }
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob((pngBlob) => resolve(pngBlob ? { blob: pngBlob, width, height } : null), 'image/png')
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      resolve(null)
-    }
-    img.src = url
-  })
+async function convertToPng(blob: Blob): Promise<{ blob: Blob; width: number; height: number } | null> {
+  let img: HTMLImageElement
+  try {
+    img = await loadImage(blob)
+  } catch {
+    return null
+  }
+  const width = img.naturalWidth || 1
+  const height = img.naturalHeight || 1
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(img, 0, 0, width, height)
+  const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  return pngBlob ? { blob: pngBlob, width, height } : null
 }
 
 interface ImageAsset {
@@ -769,8 +739,6 @@ export const LEDGER_PHOTO_SIZES: Record<LedgerPhotoSize, { label: string; widthC
   large: { label: '大（8 × 6 公分）', widthCm: 8, heightCm: 6 },
 }
 
-/** 每場活動最多放幾張大紀事照片（範例檔最多 3 張並排），同 types 的 LEDGER_PHOTO_MAX／伺服器端檢查 */
-export const LEDGER_MAX_PHOTOS = LEDGER_PHOTO_MAX
 
 /** 照片與格線之間的留白（px） */
 const LEDGER_PHOTO_GAP_PX = 8
@@ -782,7 +750,7 @@ const pxToPt = (px: number) => Math.ceil(px * 0.75 * 10) / 10
 
 const LEDGER_FONT = { name: '微軟正黑體', size: 12 }
 
-/** 大紀事照片：有勾「大紀事照片」就照上傳順序取這些；一張都沒勾的舊資料沿用
+/** 大事紀照片：有勾「大事紀照片」就照上傳順序取這些；一張都沒勾的舊資料沿用
  * 精選優先／上傳順序的規則，不用回頭重新勾選也能匯出。 */
 function pickLedgerPhotos(files: FileMeta[], max: number): FileMeta[] {
   const ledger = files.filter((f) => f.ledger)
@@ -805,7 +773,7 @@ export async function buildLedgerXlsx(
   const box = LEDGER_PHOTO_SIZES[photoSize]
   const boxW = cmToPx(box.widthCm)
   const boxH = cmToPx(box.heightCm)
-  const slots = Math.min(Math.max(1, photosPerRow), LEDGER_MAX_PHOTOS)
+  const slots = Math.min(Math.max(1, photosPerRow), LEDGER_PHOTO_MAX)
   // 比照範例：一張照片一個格子，「精選照片」依張數往右延伸成幾欄，每欄剛好放一張
   const photoColWidth = pxToExcelColWidth(boxW + LEDGER_PHOTO_GAP_PX * 2)
   const photoColPx = excelColWidthToPx(photoColWidth)
@@ -839,7 +807,7 @@ export async function buildLedgerXlsx(
     const a = activities[i]
     const rowIdx = i + 2
     const row = sheet.getRow(rowIdx)
-    const rocDate = formatLedgerDate(a.date)
+    const rocDate = formatRocCompact(a.date)
     const values: (string | number)[] = [
       a.plans.map(planName).join('、'),
       a.categories.join('、'),
@@ -986,7 +954,7 @@ async function readReportSection(files: FileMeta[]): Promise<{ blocks: AgendaBlo
   for (const file of files) {
     const read = isAgendaReadable(file)
       ? await readAgenda([file])
-      : isPdf(file.name)
+      : isPdfFile(file.name)
         ? await extractPdfText(file.url, file.name).then((text): AgendaBlock[] => (text ? [{ type: 'text', text }] : []))
         : []
     if (read.length) blocks.push(...read)
@@ -1014,7 +982,7 @@ function reportSectionBody(
  * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動流程 七、活動效益
  * 八、活動照片，再附上 九、活動流程表 十、簽到表 的原始檔（PDF／圖片逐頁嵌入）。
  * 活動內容、活動流程分別取自「活動內容」「活動流程」附件的文字與表格；活動效益是成果摘要加上 KPI。
- * 內政部成果報告書（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
+ * 內政部結案成果報告（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
   const hc = a.headcount
   const [content, agenda] = await Promise.all([
@@ -1086,8 +1054,7 @@ const ATTACHMENT_MAX_HEIGHT_CM = 22
 
 /** 把附件轉成可以嵌進 Word 的頁面圖片：圖片本身一張；PDF 每頁畫成一張。其他格式回傳 null。 */
 async function loadAttachmentPages(file: FileMeta): Promise<ImageAsset[] | null> {
-  const name = file.name.trim().toLowerCase()
-  if (name.endsWith('.pdf')) {
+  if (isPdfFile(file.name)) {
     try {
       const res = await fetch(await resolveAttachmentUrl(file.url, file.name))
       if (!res.ok) {
@@ -1102,7 +1069,8 @@ async function loadAttachmentPages(file: FileMeta): Promise<ImageAsset[] | null>
       return []
     }
   }
-  if (/\.(jpe?g|png|gif|webp|bmp|heic|heif)$/.test(name)) {
+  // HEIC 只有 Safari 轉得出來，其他瀏覽器轉失敗會列進 imageLoadFailures
+  if (isImageFile(file.name) || /\.hei[cf]$/i.test(file.name.trim())) {
     const asset = await loadImageAsset(file)
     return asset ? [asset] : []
   }
@@ -1182,12 +1150,10 @@ const A4_PAGE = {
 }
 
 function todayRocChinese(): string {
-  const d = new Date()
-  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return formatRocChinese(iso)
+  return formatRocChinese(localDateString())
 }
 
-/** 內政部成果報告書 Word（比照《成果報告書範本》）：封面（計畫名稱／活動成果報告書／指導單位／
+/** 內政部結案成果報告 Word（比照《成果報告書範本》）：封面（計畫名稱／活動成果報告書／指導單位／
  * 主辦單位／日期）→ 目錄 → 每場活動一章（壹、活動一…）→ 計畫整體效益，內文頁尾有頁碼。
  * 目錄是 Word 欄位，開檔時 Word 會詢問是否更新欄位，按「是」就會帶出頁碼。 */
 export async function buildNeimuReportDocx(activities: ActivityRecord[], planScopeLabel: string): Promise<Blob> {

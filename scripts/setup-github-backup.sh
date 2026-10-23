@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一次性設定：讓 GitHub Actions（.github/workflows/backup-parse.yml）每天把 Back4App 備份上傳到 GCS。
+# 一次性設定：讓 GitHub Actions（.github/workflows/backup-parse.yml）每天把 Parse 資料（tcross-parse）備份上傳到 GCS。
 # 沿用前端部署的 Workload Identity pool／provider（setup-github-deploy.sh 建的，只有 main 分支換得到憑證），
 # 另開 github-backup 服務帳號，只在備份桶有 objectCreator：能上傳新備份，不能讀、覆蓋或刪除舊備份。
 # 需要專案 Owner 權限的 gcloud 帳號執行；重複執行時已存在的資源會報錯略過，不影響結果。
@@ -18,12 +18,13 @@ gcloud storage buckets create "$BUCKET" --project "$P" --location asia-east1 \
   --default-storage-class NEARLINE --uniform-bucket-level-access --public-access-prevention
 
 LIFECYCLE=$(mktemp)
-echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":90}}]}' > "$LIFECYCLE"
+# 只刪 parse/（每日資料備份）；attachments/ 是附件備份，不能被 90 天規則刪掉（見 setup-attachments-gcs.sh）
+echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":90,"matchesPrefix":["parse/"]}}]}' > "$LIFECYCLE"
 gcloud storage buckets update "$BUCKET" --lifecycle-file "$LIFECYCLE"
 rm -f "$LIFECYCLE"
 
 gcloud iam service-accounts create github-backup --project "$P" \
-  --display-name "GitHub Actions Back4App 備份"
+  --display-name "GitHub Actions Parse 備份"
 
 gcloud storage buckets add-iam-policy-binding "$BUCKET" \
   --member "serviceAccount:$SA" --role roles/storage.objectCreator --format=none

@@ -10,7 +10,7 @@ _IMG = {"data": "aGVsbG8=", "mimeType": "image/jpeg"}
 
 # 每個需要登入的端點，配一份格式正確的 body，確保回應反映的是驗證結果而不是 body 驗證失敗。
 ENDPOINTS = [
-    ("/signed-url", {"activityId": "act1", "files": [{"folder": "photo", "filename": "a.jpg", "contentType": "image/jpeg"}]}),
+    ("/signed-url", {"activityId": "act1", "files": [{"folder": "photo", "filename": "a.jpg", "contentType": "image/jpeg", "size": 1024}]}),
     ("/download-url", {"objectPath": "activities/act1/photo/a.jpg"}),
     ("/delete-objects", {"objectPaths": ["activities/act1/photo/a.jpg"]}),
     ("/attachments/upload-urls", {"activityId": "act1", "folder": "photo", "files": [{"filename": "a.jpg", "contentType": "image/jpeg", "size": 10}]}),
@@ -117,6 +117,22 @@ def test_tc32_signed_url_for_unreadable_activity_returns_403(client, auth, spy_d
     resp = client.post("/signed-url", json=ENDPOINTS[0][1], headers=auth)
     assert resp.status_code == 403
     assert "generate_signed_upload_url" not in spy_downstream
+
+
+def test_signed_url_rejects_oversized_file(client, auth, spy_downstream):
+    body = {"activityId": "act1", "files": [{"folder": "video", "filename": "big.mp4", "contentType": "video/mp4", "size": main.MAX_UPLOAD_BYTES + 1}]}
+    resp = client.post("/signed-url", json=body, headers=auth)
+    assert resp.status_code == 400
+    assert "generate_signed_upload_url" not in spy_downstream
+
+
+def test_signed_url_signs_size_cap(client, auth, monkeypatch):
+    monkeypatch.setattr(main, "activity_exists", lambda token, aid: True)
+    caps = []
+    monkeypatch.setattr(main, "generate_signed_upload_url", lambda path, ct, max_bytes=None: caps.append(max_bytes) or "https://signed.invalid/up")
+    resp = client.post("/signed-url", json=ENDPOINTS[0][1], headers=auth)
+    assert resp.status_code == 200
+    assert caps == [main.MAX_UPLOAD_BYTES]
 
 
 def test_tc32_attachment_upload_urls_for_unreadable_activity_returns_403(client, auth, spy_downstream, monkeypatch):

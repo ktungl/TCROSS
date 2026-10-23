@@ -1,6 +1,5 @@
-import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
-import { parseCsv } from './registration'
+import { parseCsv, readFirstSheet, stripBom } from './sheet'
 import { resolveAttachmentUrl } from '../lib/attachments'
 import type { FileMeta } from '../types'
 
@@ -61,17 +60,7 @@ async function readDocx(data: ArrayBuffer): Promise<AgendaBlock[]> {
   return blocks
 }
 
-async function readXlsx(data: ArrayBuffer): Promise<AgendaBlock[]> {
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(data)
-  const sheet = workbook.worksheets[0]
-  if (!sheet) return []
-  const rows: string[][] = []
-  sheet.eachRow({ includeEmpty: false }, (row) => {
-    const values: string[] = []
-    for (let c = 1; c <= row.cellCount; c++) values.push(row.getCell(c).text.trim())
-    if (values.some(Boolean)) rows.push(values)
-  })
+function asTable(rows: string[][]): AgendaBlock[] {
   return rows.length ? [{ type: 'table', rows }] : []
 }
 
@@ -80,11 +69,10 @@ async function readAgendaFile(file: FileMeta): Promise<AgendaBlock[]> {
   if (!res.ok) throw new Error(`無法讀取活動流程「${file.name}」`)
   const name = file.name.trim().toLowerCase()
   if (name.endsWith('.docx')) return readDocx(await res.arrayBuffer())
-  if (name.endsWith('.xlsx')) return readXlsx(await res.arrayBuffer())
-  const text = (await res.text()).replace(/^﻿/, '')
+  if (name.endsWith('.xlsx')) return asTable(await readFirstSheet(await res.arrayBuffer()))
+  const text = stripBom(await res.text())
   if (name.endsWith('.csv')) {
-    const rows = parseCsv(text).map((r) => r.map((v) => v.trim())).filter((r) => r.some(Boolean))
-    return rows.length ? [{ type: 'table', rows }] : []
+    return asTable(parseCsv(text).map((r) => r.map((v) => v.trim())).filter((r) => r.some(Boolean)))
   }
   return text
     .split(/\r?\n/)

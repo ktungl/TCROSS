@@ -1,6 +1,6 @@
 # Cloud Run 中介層
 
-前端向這個服務要 GCS Signed URL，不直接握有 GCP 憑證。這個服務是唯一持有 GCP 服務帳戶身分的地方；`PARSE_MASTER_KEY` 也只存在這裡，絕不進前端 bundle。
+前端向這個服務要 GCS Signed URL，不直接握有 GCP 憑證（GCS 簽名用的服務帳戶身分只在這個服務）。`PARSE_MASTER_KEY`（Secret Manager `parse-server-master-key`）只在後端：這個服務、`tcross-parse` 本身與 GitHub 每日備份，絕不進前端 bundle。
 
 - `/signed-url`：驗證呼叫者的 Parse session token 有效後，發一個限時、限路徑的 GCS v4 signed URL（PUT）給前端直傳檔案。
 - `/download-url`：同樣驗證 session token 後，對 `objectPath` 發一個限時的 GCS v4 signed URL（GET）給前端下載/預覽檔案；`objectPath` 必須以 `activities/` 開頭且不含 `..`（`utils.is_valid_object_path()`），避免任何登入使用者拿去簽發桶內任意路徑的下載網址。前端 `AiGenerationModal.vue` 在 `GenerationJob.status === 'done'` 時會呼叫這個端點。
@@ -13,7 +13,7 @@
 1. ✅ GCP 專案已啟用 Vertex AI API（`aiplatform.googleapis.com`）——這是會計費的服務。
 2. ✅ `tcross-middleware-sa` 已授權 `roles/aiplatform.user`。
 3. ✅ Cloud Run 環境變數已補上 `GCP_PROJECT=project-80ac5e1a-2ea4-4000-9ff`／`GCP_LOCATION`／`GEMINI_MODEL=gemini-2.5-flash`。2026-09-28 `GCP_LOCATION` 從 `us-central1` 改成 `asia-northeast1`（東京）——`gemini-2.5-flash` 在 `asia-east1`（台灣）實測回 404 不可用，東京是離 GCS 桶最近、實測可用的 region。另可用 `GEMINI_MEDIA_RESOLUTION`（預設 `LOW`）調整照片／影片送進 Gemini 的解析度，小字辨識不出來再改 `MEDIUM`。**若之後想換模型或 region，記得先到 [Vertex AI 主控台](https://console.cloud.google.com/vertex-ai)確認新的 `GEMINI_MODEL` 在該 `GCP_LOCATION` 是否可用**（Gemini 模型的可用 region 會隨時間變動，這裡沒有寫死驗證）。
-4. ~~已用 `--no-cpu-throttling` 重部署~~（**2026-09-28 已撤銷**：`/generate` 改成在請求內同步做完，不再需要常駐 CPU；revision `tcross-middleware-00012-6nc` 改回 `--cpu-throttling` 按請求計費，並設 `--max-instances 2`、`--timeout 900`，見 [../doc/OPERATIONS.md](../doc/OPERATIONS.md)「費用控制」。以下為原始紀錄）已用 `--no-cpu-throttling` 重部署（revision `tcross-middleware-00011-hdv`，`gcloud run services describe` 確認 `run.googleapis.com/cpu-throttling: 'false'`）——這是必須的：FastAPI 的 `BackgroundTasks` 要在 HTTP 回應送出**之後**繼續跑 Gemini／組裝／寫回這幾步，沒有這個旗標 Cloud Run 預設會在沒有進來的請求時限制 CPU，背景工作可能因此被凍結／跑很慢甚至跑不完。**這個旗標會提高 Cloud Run 的閒置計費**（instance 常駐拿得到 CPU），是用可靠性換取的成本，之後如果覺得不划算可以評估改用 Cloud Tasks 佇列。
+4. ✅ 用 `--cpu-throttling`（按請求計費）、`--max-instances 2`、`--timeout 900` 部署：2026-09-28 起 `/generate` 在請求內同步做完，不需要常駐 CPU（09-17 曾改用 `--no-cpu-throttling` 配合 BackgroundTasks，已撤銷），見 [../doc/OPERATIONS.md](../doc/OPERATIONS.md)「費用控制」。
 5. **✅ 端到端測試已完成**（2026-09-17）：用瀏覽器對一筆測試活動實際跑過「上傳照片→開始生成→下載 `.docx`」全流程，確認 Gemini 呼叫、GCS 寫入、Parse 寫回都正常。過程中第一次觸發遇到 `400 FAILED_PRECONDITION`（Google：「Service agents are being provisioned...please try again in a few minutes」），這是剛啟用 Vertex AI API 後的正常過渡狀態；等了幾分鐘重新觸發後成功，下載的 `.docx` 內容確認 Gemini 正確讀出測試照片裡的文字並填入摘要／重點／KPI 表格。測試資料已清除，不留在正式資料庫。
 6. **已知限制（暫時接受，之後有需要再處理）**：沒有用 Cloud Tasks 佇列。生成超過 `--timeout`（900 秒）或 instance 中途被砍掉時，這筆 `GenerationJob` 會停在 `processing`；20 分鐘後可以從前端「重新觸發」再跑一次（2026-09-28 起），不用再手動改 Parse。若這種情況常發生，之後應該換成 Cloud Tasks（在 Cloud Run 裡呼叫佇列，而不是讓 Parse Cloud Code 持有 GCP 憑證——理由跟 [../README.md](../README.md#資料流向) 說明的信任邊界一致）。
 
@@ -53,18 +53,19 @@ gcloud iam service-accounts create $SA_NAME --display-name="TCROSS Cloud Run 中
 
 SA_EMAIL="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 
-# 2. 允許它讀寫指定的 GCS bucket
-gsutil iam ch serviceAccount:$SA_EMAIL:roles/storage.objectAdmin gs://your-gcs-bucket-name
+# 2. 建立 GCS bucket（若尚未建立），並設定 CORS 讓瀏覽器能直傳檔案
+gcloud storage buckets create gs://your-gcs-bucket-name --location $REGION --uniform-bucket-level-access
+gcloud storage buckets update gs://your-gcs-bucket-name --cors-file cors.json
 
-# 3. 關鍵一步：允許它「自我模擬」以呼叫 IAM signBlob API 簽發 signed URL
+# 3. 允許服務帳戶讀寫這個 bucket
+gcloud storage buckets add-iam-policy-binding gs://your-gcs-bucket-name \
+  --member="serviceAccount:$SA_EMAIL" --role="roles/storage.objectAdmin"
+
+# 4. 關鍵一步：允許它「自我模擬」以呼叫 IAM signBlob API 簽發 signed URL
 #    （這是在 Cloud Run 上不用下載 JSON 金鑰檔就能簽 URL 的作法）
 gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
   --member="serviceAccount:$SA_EMAIL" \
   --role="roles/iam.serviceAccountTokenCreator"
-
-# 4. 建立 GCS bucket（若尚未建立），並設定 CORS 讓瀏覽器能直傳檔案
-gsutil mb -l $REGION gs://your-gcs-bucket-name
-gsutil cors set cors.json gs://your-gcs-bucket-name
 
 # 5.（AI 生成）啟用 Vertex AI API——會計費，執行前請確認
 gcloud services enable aiplatform.googleapis.com
@@ -85,7 +86,8 @@ gcloud run deploy $SERVICE_NAME \
   --cpu-throttling --max-instances 2 --timeout 900 \
   --set-env-vars PARSE_SERVER_URL=https://tcross-parse-502746951565.asia-east1.run.app/parse,PARSE_APP_ID=...,PARSE_JS_KEY=...,GCS_BUCKET=your-gcs-bucket-name,GCS_SIGNING_SERVICE_ACCOUNT=$SA_EMAIL,ALLOWED_ORIGIN=https://your-production-domain.example,GCP_PROJECT=$PROJECT_ID,GCP_LOCATION=asia-northeast1,GEMINI_MODEL=gemini-2.5-flash \
   --set-secrets PARSE_MASTER_KEY=parse-server-master-key:latest \
-  --no-allow-unauthenticated=false
+  --allow-unauthenticated
+# --allow-unauthenticated：瀏覽器直接呼叫這個服務，身分由每個端點驗 Parse session token 把關
 ```
 
 `PARSE_MASTER_KEY` 建議用 [Secret Manager](https://cloud.google.com/secret-manager) 存放（上面指令的 `--set-secrets` 就是這樣接），不要直接用 `--set-env-vars` 明文傳。

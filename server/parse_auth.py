@@ -10,7 +10,7 @@ PARSE_APP_ID = os.environ["PARSE_APP_ID"]
 PARSE_JS_KEY = os.environ["PARSE_JS_KEY"]
 PARSE_MASTER_KEY = os.environ.get("PARSE_MASTER_KEY")
 
-# 共用連線池（keep-alive），避免每次呼叫 Back4App 都重新建一次 TCP/TLS 連線——
+# 共用連線池（keep-alive），避免每次呼叫 Parse Server（tcross-parse）都重新建一次 TCP/TLS 連線——
 # 這在 /signed-url 這種一個請求裡要連打好幾次 Parse REST API 的情境下，能省下
 # 重複交握的延遲與 Cloud Run 計費時長。
 _client = httpx.Client(timeout=10)
@@ -24,8 +24,15 @@ def _user_headers(session_token: str) -> dict:
     }
 
 
+def _master_headers() -> dict:
+    """Master Key 只存在這個服務的環境變數，絕不能進前端 bundle。"""
+    if not PARSE_MASTER_KEY:
+        raise RuntimeError("PARSE_MASTER_KEY 未設定")
+    return {"X-Parse-Application-Id": PARSE_APP_ID, "X-Parse-Master-Key": PARSE_MASTER_KEY}
+
+
 # 驗證通過的 session token 在記憶體快取一小段時間：同一個使用者連續打好幾支端點
-# （例如上傳→觸發生成→下載）不用每次都再問一次 Back4App /users/me，省下往返等待的
+# （例如上傳→觸發生成→下載）不用每次都再問一次 Parse Server /users/me，省下往返等待的
 # Cloud Run 計費時間。只快取「有效」的結果；代價是登出後這支 token 最多還能用
 # _SESSION_CACHE_TTL_SECONDS 秒。key 存 token 的雜湊，不在記憶體留明文 token。
 _SESSION_CACHE_TTL_SECONDS = 60
@@ -58,13 +65,7 @@ def activity_exists(session_token: str, activity_id: str) -> bool:
     their own session token — this automatically respects whatever Parse CLP/ACL is
     in effect, including any per-user restriction added later). Used by /signed-url
     so a valid login can't be used to mint uploads under a made-up activity id."""
-    if not activity_id:
-        return False
-    resp = _client.get(
-        f"{PARSE_SERVER_URL}/classes/Activity/{activity_id}",
-        headers=_user_headers(session_token),
-    )
-    return resp.status_code == 200
+    return bool(activity_id) and get_activity(session_token, activity_id) is not None
 
 
 def find_generation_jobs_for_object_paths(session_token: str, object_paths: list[str]) -> dict[str, dict]:
@@ -190,22 +191,15 @@ def get_generation_job(session_token: str, job_id: str) -> dict | None:
 
 def write_with_master_key(class_name: str, object_id: str, fields: dict) -> dict:
     """
-    Update a Parse object using the Master Key. The Master Key only ever lives in
-    this service's environment — it must never be shipped to the frontend bundle.
+    Update a Parse object using the Master Key.
 
     Used by /generate (Phase 3b) to move a GenerationJob through
     processing/done/error and attach resultFile once Gemini + document assembly
     finish, since that happens after the caller's own request/response cycle.
     """
-    if not PARSE_MASTER_KEY:
-        raise RuntimeError("PARSE_MASTER_KEY 未設定")
     resp = _client.put(
         f"{PARSE_SERVER_URL}/classes/{class_name}/{object_id}",
-        headers={
-            "X-Parse-Application-Id": PARSE_APP_ID,
-            "X-Parse-Master-Key": PARSE_MASTER_KEY,
-            "Content-Type": "application/json",
-        },
+        headers=_master_headers(),
         json=fields,
     )
     resp.raise_for_status()
@@ -219,11 +213,9 @@ def existing_activity_ids(activity_ids: set[str]) -> set[str]:
     ids = [i for i in activity_ids if i]
     if not ids:
         return set()
-    if not PARSE_MASTER_KEY:
-        raise RuntimeError("PARSE_MASTER_KEY 未設定")
     resp = _client.get(
         f"{PARSE_SERVER_URL}/classes/Activity",
-        headers={"X-Parse-Application-Id": PARSE_APP_ID, "X-Parse-Master-Key": PARSE_MASTER_KEY},
+        headers=_master_headers(),
         params={"where": json.dumps({"objectId": {"$in": ids}}), "keys": "objectId", "limit": len(ids)},
     )
     resp.raise_for_status()
@@ -250,9 +242,7 @@ def activities_referencing(urls: set[str]) -> dict[str, set[str]]:
     few hundred activities this is one or two requests."""
     if not urls:
         return {}
-    if not PARSE_MASTER_KEY:
-        raise RuntimeError("PARSE_MASTER_KEY 未設定")
-    headers = {"X-Parse-Application-Id": PARSE_APP_ID, "X-Parse-Master-Key": PARSE_MASTER_KEY}
+    headers = _master_headers()
     found: dict[str, set[str]] = {}
     last_id = ""
     while True:

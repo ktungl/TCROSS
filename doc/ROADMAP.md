@@ -4,7 +4,7 @@
 
 處理完就刪掉。編號固定不重排（其他文件會用編號引用）。
 
-> 最後整理：2026-10-23（10-20 15:43 已切換到 GCP 自架 Parse Server）。下一個里程碑：**10/31 驗收交付**。
+> 最後整理：2026-10-23（10-20 15:43 已切換到 GCP 自架 Parse Server；10-23 全面掃描並整理，見 #25、#30）。下一個里程碑：**10/31 驗收交付**。
 
 ---
 
@@ -32,13 +32,28 @@
   - 已搬到 GCS 的附件原檔（對照表 `backups/attachment-migration-2026-10-09T07-59-51.json`）不用另外清，刪 app 時一起消失。
   - 若在刪除前需要回滾到 Back4App：先到 App Settings 關閉「Allow client class creation」，否則拿到公開 App ID＋JS Key 的人能自己建 class 塞資料（新伺服器已設 `allowClientClassCreation: false`）。
 - **刪除後一次清掉殘留**
-  - `firebase.json` CSP 白名單的 Back4App 網域
-  - `cloud/main.js` 放行舊附件網址的判斷（資料裡已 0 個）與對應測試
-  - 程式註解裡提到 Back4App 的地方
-  - 備份 workflow 名稱「Backup Back4App to GCS」
+  - `firebase.json` CSP `connect-src` 的 Back4App 網域（`img-src`／`media-src` 已在 10-23 拿掉）
+  - `cloud/main.js` 的孤兒檔清理（`isBack4AppFileUrl` 與 afterSave 刪 Parse.File 那段）、附件搬移特例 `isAttachmentMigration`，連同 `cloud/README.md` 的說明與 `cloud/tests` 的舊網址案例
+  - 一次性腳本：`scripts/migrate-attachments-to-gcs.mjs`、`scripts/restore-parse.mjs`（只能還原到 Back4App）
+  - 備份不再需要 `--files`（`backup-parse.yml`、`backup-parse.mjs` 的 `isParseFile`），`OPERATIONS.md`「一份約 216 MB」一起更新
+  - 「回滾到 Back4App」的說明（`OPERATIONS.md`、`cloud/README.md`、`parse-server/README.md` 三處）
   - Secret Manager `parse-master-key`（若 #16 還沒刪）
-  - `.env` 的 `BACK4APP_*`
+  - `.env` 的 `BACK4APP_*`、`RESTORE_PARSE_*`
 - **注意**：自架的 Parse Server（`tcross-parse`）還在用，不能一起刪。
+
+## 系統整理（10-23 全面掃描）
+
+10-23 掃描前端、後端、設定、腳本與文件，#19–#29 大部分已在 10-23 改完（還沒 commit、還沒部署，見 #30）。剩下：
+
+| # | 項目 | 說明 |
+| --- | --- | --- |
+| 30 | ⬜ 部署 10-23 的整理 | 三個部分都要部署：`bash parse-server/scripts/deploy.sh`（`cloud/main.js`）、中介層 Cloud Run（`server/`）、前端（推到 main 自動部署）。**中介層和前端要同一段時間部署**：AI 素材上傳網址改成簽入 50MB 上限，舊前端不會帶這個 header，新舊混用時上傳會被 GCS 擋下。部署後在正式站試：計畫詳情頁封存、AI 成果報告上傳素材、附件上傳、歷史檔案批次操作。畫面用語已統一成「大事紀」「內政部結案成果報告」（10-23 決定），可順便確認。 |
+| 25 | ⬜ 本機舊備份（選做） | `backups/2026-10-05T01-35-00`（約 208 KB，只有資料）看起來是同日 `01-35-17`（含附件）的子集合，確認後可刪。 |
+
+不處理的項目（10-23 評估過）：
+- GenerationJob 的 `deletedAt` 是 Parse 日期欄位、附件的 `deletedAt` 存在 JSON 陣列裡只能用字串，各自是對的型別，統一反而要搬資料。
+- shell 腳本與 workflow 裡寫死的專案 ID：workflow 不能 source 共用檔，抽出來只多一層間接；Node 腳本的伺服器網址已改由 `.env` 讀。
+- `parse-server/scripts/` 的 `smoke-test.mjs`、`clear-database.mjs`、`rehearse-local.mjs` 保留：重新匯入／還原流程還用得到（`OPERATIONS.md`「資料備份」）。
 
 ## 沒有期限
 

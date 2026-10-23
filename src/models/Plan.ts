@@ -18,7 +18,3 @@ export function planToRecord(obj: Parse.Object): PlanRecord {
     ...actorStampOf(obj),
   }
 }
-
-export function applyPlanRecord(obj: Parse.Object, record: Pick<PlanRecord, 'name'>): void {
-  obj.set('name', record.name)
-}

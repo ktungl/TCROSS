@@ -23,7 +23,7 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_SIGN_IN_IMAGES = 6
 _MAX_TEXT_CHARS = 1500
 # 公文 PDF 原檔直接送 Gemini（原生可讀 PDF）。base64 後約 4/3 倍，要留在 Gemini 單次請求
-# 與 Cloud Run 請求大小上限內；前端 DocumentDigestModal.vue 的 MAX_PDF_BYTES 要一起改。
+# 與 Cloud Run 請求大小上限內；前端 src/utils/aiImages.ts 的 MAX_PDF_BYTES 要一起改。
 MAX_PDF_BYTES = 10 * 1024 * 1024
 
 

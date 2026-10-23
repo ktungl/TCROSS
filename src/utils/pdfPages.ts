@@ -1,6 +1,7 @@
-/** 把 PDF 每一頁畫成 JPEG，給成果報告嵌入掃描的簽到表／流程表用（Word 不能直接嵌 PDF）。
- * 用 legacy build（內含 polyfill，舊手機／Safari 也能跑）；pdf.js 很大，只在真的要轉 PDF 時才動態載入，不拖慢一般頁面。 */
-export interface RenderedPage {
+import { openPdf } from './pdfjs'
+
+/** 把 PDF 每一頁畫成 JPEG，給成果報告嵌入掃描的簽到表／流程表用（Word 不能直接嵌 PDF）。 */
+interface RenderedPage {
   data: ArrayBuffer
   width: number
   height: number
@@ -10,12 +11,7 @@ export interface RenderedPage {
 const RENDER_SCALE = 150 / 72
 
 export async function renderPdfPages(data: ArrayBuffer, maxPages: number): Promise<RenderedPage[]> {
-  const [pdfjs, { default: workerUrl }] = await Promise.all([
-    import('pdfjs-dist/legacy/build/pdf.mjs'),
-    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
-  ])
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
-  const task = pdfjs.getDocument({ data })
+  const task = await openPdf(data)
   try {
     const pdf = await task.promise
     const pages: RenderedPage[] = []

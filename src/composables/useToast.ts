@@ -1,8 +1,8 @@
 import { reactive } from 'vue'
 
-export type ToastType = 'success' | 'error'
+type ToastType = 'success' | 'error'
 
-export interface Toast {
+interface Toast {
   id: number
   message: string
   type: ToastType

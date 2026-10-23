@@ -7,11 +7,12 @@ import { checkResults, consistencyConfirmMessage, gaps, googleMapsUrl, kb } from
 import { actorLine } from '../utils/actor'
 import { ATTACHMENT_HINTS, ATTACHMENT_TYPES, LEDGER_PHOTO_MAX, PHOTO_MAX, PHOTO_MIN } from '../types'
 import type { AttachmentKey, AuditLogRecord, Kpi } from '../types'
-import type { GeneratedFormKind } from '../utils/download'
+import type { GeneratedFormKind } from '../utils/exportDocs'
 import { confirm } from '../composables/useConfirm'
 import { onClickOutside } from '../composables/useClickOutside'
 import { downloadFiles } from '../utils/fileDownload'
 import { errorMessage, pushToast } from '../composables/useToast'
+import { useActivityActions } from '../composables/useActivityActions'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import GeneratedDocModal from '../components/GeneratedDocModal.vue'
 import AiGenerationModal from '../components/AiGenerationModal.vue'
@@ -256,7 +257,7 @@ async function onLedgerToggle(folder: AttachmentKey, i: number, e: Event) {
   const ledger = input.checked
   if (ledger && ledgerCount.value >= LEDGER_PHOTO_MAX) {
     input.checked = false
-    pushToast(`大紀事照片最多 ${LEDGER_PHOTO_MAX} 張，請先取消其他照片`, 'error')
+    pushToast(`大事紀照片最多 ${LEDGER_PHOTO_MAX} 張，請先取消其他照片`, 'error')
     return
   }
   try {
@@ -310,30 +311,16 @@ watch(
 
 const archived = computed(() => !!activity.value?.archivedAt)
 
+const activityActions = useActivityActions()
+
 async function toggleArchive() {
-  if (!activity.value) return
-  const next = !archived.value
-  const message = next
-    ? `確定要封存「${activity.value.name}」嗎？封存後內容仍可檢視，但不能編輯、上傳或刪除，需要時可再解除封存。`
-    : `確定要解除封存「${activity.value.name}」嗎？解除後就可以再編輯。`
-  if (!(await confirm(message, next ? '封存' : '解除封存'))) return
-  try {
-    await db.setActivityArchived(activity.value.id, next)
-    pushToast(next ? '已封存活動' : '已解除封存，可以編輯了')
-  } catch (e) {
-    pushToast(errorMessage(e), 'error')
-  }
+  if (activity.value) await activityActions.toggleArchive(activity.value)
 }
 
 async function duplicateActivity() {
   if (!activity.value) return
-  try {
-    const created = await db.duplicateActivity(activity.value.id)
-    pushToast('已複製活動，請填寫新日期')
-    router.push({ name: 'detail', params: { id: created.id } })
-  } catch (e) {
-    pushToast(errorMessage(e), 'error')
-  }
+  const created = await activityActions.duplicate(activity.value.id)
+  if (created) router.push({ name: 'detail', params: { id: created.id } })
 }
 </script>
 
@@ -431,7 +418,7 @@ async function duplicateActivity() {
         :hint="ATTACHMENT_HINTS[key]"
         :count-label="
           key === 'photo'
-            ? `${activity.files[key].length} 個（需 ${PHOTO_MIN}–${PHOTO_MAX} 張）　大紀事 ${ledgerCount}/${LEDGER_PHOTO_MAX}`
+            ? `${activity.files[key].length} 個（需 ${PHOTO_MIN}–${PHOTO_MAX} 張）　大事紀 ${ledgerCount}/${LEDGER_PHOTO_MAX}`
             : `${activity.files[key].length} 個`
         "
         pick-label="上傳"
@@ -482,13 +469,13 @@ async function duplicateActivity() {
                       <option v-for="n in featuredUrls.length" :key="n" :value="n">{{ n }}</option>
                     </select>
                   </label>
-                  <label class="chk nowrap" title="勾選的照片會放進大紀事 Excel，最多 3 張">
+                  <label class="chk nowrap" :title="`勾選的照片會放進大事紀 Excel，最多 ${LEDGER_PHOTO_MAX} 張`">
                     <input
                       type="checkbox"
                       :checked="f.ledger"
                       :disabled="archived"
                       @change="onLedgerToggle(key, i, $event)"
-                    >大紀事照片
+                    >大事紀照片
                   </label>
                 </div>
                 <div v-if="captionStatus.get(f.url)" class="actor-stamp" style="margin-top:4px">

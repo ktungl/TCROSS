@@ -105,9 +105,6 @@ nav button[aria-current="true"]{
   letter-spacing:.02em}
 .logout-btn:hover{color:#fff;background:rgba(255,255,255,.07)}
 
-.note{position:absolute;bottom:20px;width:184px;font-size:10.5px;
-  color:#8B7855;line-height:1.6}
-
 main{padding:34px 48px 80px;max-width:1440px;margin:0 auto;width:100%}
 
 h1{font-family:var(--f-display);font-size:26px;font-weight:700;
@@ -302,7 +299,8 @@ label.btn{margin:0;letter-spacing:0}
 .modal h2:first-child{margin-top:0}
 .modal .card.confirm-card{max-width:400px}
 .modal .card.wide{max-width:760px}
-.hide{display:none!important}
+/* AI 視窗裡「選一個附件」的清單 */
+.pick-list{display:flex;flex-direction:column;gap:6px}
 
 /* ---------- 下拉動作選單（活動詳細頁「產生文件」） ---------- */
 .detail-toolbar{margin-bottom:6px}
@@ -441,7 +439,6 @@ table.out tbody tr:hover{background:var(--gold-100)}
   aside::after{top:auto;bottom:0;left:0;right:0;width:auto;height:3px;
     background:linear-gradient(90deg,var(--gold-200),var(--gold-400),var(--gold-600))}
   .brand::before{width:28px;height:24px;margin-bottom:6px}
-  .note{position:static;width:auto;margin-top:24px}
   .nav-toggle{display:flex}
   .nav-wrap{margin-top:0;max-height:0;overflow:hidden;transition:max-height .25s ease}
   /* 上限用整個螢幕高度，選單項目變多也不會把「登出」切掉 */

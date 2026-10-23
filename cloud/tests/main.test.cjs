@@ -282,7 +282,7 @@ test('TC-21 新附件 url 不是 gcs:attachments/ 被拒', async () => {
     'beforeSave',
     'Activity',
     { changes: { ...baseActivity, photoFiles: [{ name: 'x.jpg', size: 10, url: 'javascript:alert(1)' }] } },
-    /url 必須是/,
+    /檔案網址必須是/,
   );
 });
 
@@ -469,4 +469,41 @@ test('TC-24 非 master 修改 displayName 也被拒；改其他欄位可以；ma
   );
   await run('beforeSave', '_User', { originalAttrs, changes: { password: 'newpass' } });
   await run('beforeSave', '_User', { originalAttrs, changes: { username: 'bob' }, user: null, master: true });
+});
+
+// ───────────────── 跨語言清單一致性 ─────────────────
+// 同一份清單在前端（TS）、Cloud Code、中介層（Python）各寫一份，讀原始碼比對內容，改一邊忘了改另一邊就會失敗。
+
+function listLiteral(file, name) {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
+  const m = new RegExp(`\\b${name}\\s*=\\s*[\\[{(]`).exec(src);
+  assert.ok(m, `${file} 找不到 ${name}`);
+  const open = m.index + m[0].length - 1;
+  const close = src.indexOf({ '[': ']', '{': '}', '(': ')' }[src[open]], open);
+  const body = src.slice(open + 1, close).replace(/(\/\/|#).*$/gm, '');
+  return [...body.matchAll(/['"]([A-Za-z0-9]+)['"]/g)].map((x) => x[1]).sort();
+}
+
+test('禁止上傳的副檔名：前端、Cloud Code、中介層一致', () => {
+  const cloud = listLiteral('cloud/main.js', 'BLOCKED_EXTENSIONS');
+  assert.ok(cloud.includes('exe') && cloud.includes('svg'));
+  assert.deepEqual(listLiteral('src/types.ts', 'BLOCKED_EXTENSIONS'), cloud);
+  assert.deepEqual(listLiteral('server/utils.py', 'BLOCKED_EXTENSIONS'), cloud);
+});
+
+test('附件欄位：Cloud Code 與中介層一致', () => {
+  const cloud = listLiteral('cloud/main.js', 'FOLDER_FIELDS');
+  assert.equal(cloud.length, 13);
+  assert.deepEqual(listLiteral('server/parse_auth.py', 'ATTACHMENT_FIELDS'), cloud);
+});
+
+test('AI 生成種類：前端、Cloud Code、中介層一致', () => {
+  const kinds = (file, re) => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
+    return [...re.exec(src)[1].matchAll(/['"]([^'"]+)['"]/g)].map((x) => x[1]).sort();
+  };
+  const cloud = kinds('cloud/main.js', /GENERATION_JOB_KINDS = \[([^\]]+)\]/);
+  assert.deepEqual(cloud, ['會議紀錄', '成果報告'].sort());
+  assert.deepEqual(kinds('src/types.ts', /type GenerationJobKind = ([^\n]+)/), cloud);
+  assert.deepEqual(kinds('server/main.py', /GENERATION_KINDS = \{([^}]+)\}/), cloud);
 });

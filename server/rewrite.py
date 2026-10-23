@@ -6,6 +6,7 @@
 
 from google.genai import types
 
+from charts import headcount_of
 from report import generate_json
 
 FORMATS: dict[str, str] = {
@@ -55,9 +56,8 @@ def activity_context(activity: dict, plan_names: list[str]) -> str:
     """把 Parse REST 回傳的 Activity 整理成給模型讀的條列文字（空白欄位不列）。"""
     male = activity.get("maleCount") or 0
     female = activity.get("femaleCount") or 0
-    total = activity.get("totalCount")
-    if not isinstance(total, (int, float)):
-        total = male + female
+    # 合計人數跟報告圖表同一套規則（沒填合計用男＋女）
+    total = int(headcount_of(activity) or 0)
     time_range = "～".join(t for t in [_clip(activity.get("time")), _clip(activity.get("timeEnd"))] if t)
     kpis = "；".join(
         f"{_clip(k.get('k'))} {_clip(k.get('v'))}{_clip(k.get('u'))}"

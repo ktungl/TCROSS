@@ -27,7 +27,7 @@ const root = ref<HTMLElement | null>(null)
     </span>
     <div class="dial">
       <div class="bars">
-        <i v-for="i in 5" :key="i" :class="i - 1 < 5 - gaps(activity).length ? 'on' : 'gap'"></i>
+        <i v-for="i in 5" :key="i" :class="{ on: i - 1 < 5 - gaps(activity).length }"></i>
       </div>
       <span class="pct mono">{{ score(activity) }}%</span>
     </div>

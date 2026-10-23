@@ -13,7 +13,7 @@ const THIN_BORDER = {
   right: { style: 'thin' as const },
 }
 
-export interface StatsRow {
+interface StatsRow {
   label: string
   sessions: number
   male: number
@@ -49,7 +49,7 @@ function groupBy(
   return [...groups.values()]
 }
 
-export interface OutcomeStats {
+interface OutcomeStats {
   overall: StatsRow
   byPlan: StatsRow[]
   byCategory: StatsRow[]

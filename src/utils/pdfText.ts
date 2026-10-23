@@ -1,36 +1,20 @@
 import { resolveAttachmentUrl } from '../lib/attachments'
 import type { FileMeta } from '../types'
-
-/** 中文 PDF 常用的 CJK 字型編碼需要 cMap 才解得出字；版本取自實際載入的 pdfjs，升級套件不用跟著改。 */
-const cmapUrl = (version: string) => `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/cmaps/`
+import { isPdfFile } from './file'
+import { openPdf } from './pdfjs'
 
 /** 單一檔案放進報告的文字上限，避免一份很長的 PDF 把 Excel 儲存格／Word 版面撐爆。 */
 const MAX_TEXT_LENGTH = 3000
-
-export function isPdf(name: string): boolean {
-  return name.toLowerCase().endsWith('.pdf')
-}
-
-/** pdfjs 約 1MB，只有匯出時遇到 PDF 才載入，不放進主程式包。用 legacy build，同 pdfPages.ts（內含 polyfill，舊手機／Safari 也能跑）。 */
-async function loadPdfjs() {
-  const [pdfjs, worker] = await Promise.all([
-    import('pdfjs-dist/legacy/build/pdf.mjs'),
-    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
-  ])
-  pdfjs.GlobalWorkerOptions.workerSrc = worker.default
-  return pdfjs
-}
 
 /** 擷取 PDF 的文字。掃描成圖片的 PDF 沒有文字層、或下載／解析失敗時回傳 null，
  * 由呼叫端改顯示檔名，不讓整份匯出失敗。 */
 export async function extractPdfText(url: string, name = ''): Promise<string | null> {
   try {
-    const pdfjs = await loadPdfjs()
     // GCS 附件要先換成簽名網址才下載得到
     const res = await fetch(await resolveAttachmentUrl(url, name))
     if (!res.ok) return null
     const data = await res.arrayBuffer()
-    const task = pdfjs.getDocument({ data, cMapUrl: cmapUrl(pdfjs.version), cMapPacked: true })
+    const task = await openPdf(data)
     const pages: string[] = []
     // 解析到一半失敗也要釋放 worker 端的文件，同 pdfPages.ts
     try {
@@ -56,7 +40,7 @@ export async function extractPdfText(url: string, name = ''): Promise<string | n
   }
 }
 
-export interface AttachmentText {
+interface AttachmentText {
   name: string
   /** PDF 擷取出的文字；非 PDF、掃描檔或解析失敗為 null */
   text: string | null
@@ -68,7 +52,7 @@ export async function readAttachmentTexts(files: FileMeta[]): Promise<Attachment
   return Promise.all(
     active.map(async (f) => ({
       name: f.name,
-      text: f.url && isPdf(f.name) ? await extractPdfText(f.url, f.name) : null,
+      text: f.url && isPdfFile(f.name) ? await extractPdfText(f.url, f.name) : null,
     })),
   )
 }

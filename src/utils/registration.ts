@@ -1,6 +1,6 @@
-import ExcelJS from 'exceljs'
 import type { FileMeta } from '../types'
 import { resolveAttachmentUrl } from '../lib/attachments'
+import { parseCsv, readFirstSheet, stripBom } from './sheet'
 
 export interface Participant {
   unit: string
@@ -20,61 +20,11 @@ const HEADER_MATCHERS: [keyof Participant, RegExp][] = [
   ['unit', /單位|機關|公司|組織|所屬|服務處/i],
 ]
 
-export function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let field = ''
-  let quoted = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (quoted) {
-      if (ch === '"' && text[i + 1] === '"') {
-        field += '"'
-        i++
-      } else if (ch === '"') {
-        quoted = false
-      } else {
-        field += ch
-      }
-    } else if (ch === '"') {
-      quoted = true
-    } else if (ch === ',') {
-      row.push(field)
-      field = ''
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++
-      row.push(field)
-      rows.push(row)
-      row = []
-      field = ''
-    } else {
-      field += ch
-    }
-  }
-  if (field || row.length) {
-    row.push(field)
-    rows.push(row)
-  }
-  return rows
-}
-
 async function readRows(file: FileMeta): Promise<string[][]> {
   const res = await fetch(await resolveAttachmentUrl(file.url, file.name))
   if (!res.ok) throw new Error(`無法讀取報名表「${file.name}」`)
-  if (/\.csv$/i.test(file.name.trim())) {
-    return parseCsv((await res.text()).replace(/^﻿/, ''))
-  }
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(await res.arrayBuffer())
-  const sheet = workbook.worksheets[0]
-  if (!sheet) return []
-  const rows: string[][] = []
-  sheet.eachRow({ includeEmpty: false }, (row) => {
-    const values: string[] = []
-    for (let c = 1; c <= row.cellCount; c++) values.push(row.getCell(c).text)
-    rows.push(values)
-  })
-  return rows
+  if (/\.csv$/i.test(file.name.trim())) return parseCsv(stripBom(await res.text()))
+  return readFirstSheet(await res.arrayBuffer())
 }
 
 /** 讀報名表第一個工作表：在前 10 列裡找有「姓名」的那列當表頭，之後有姓名的列就是參加者。 */

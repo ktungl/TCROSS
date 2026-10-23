@@ -9,7 +9,7 @@
 | 前端 SPA（Vue） | `src/`，部署在 Firebase Hosting，正式網址 `https://tacc-iip.web.app`（見「部署前端」），尚未綁自訂網域 | 瀏覽器持有 Parse App ID／JS Key（設計上本來就公開，靠 Parse ACL／CLP 把關） |
 | 自架 Parse Server `tcross-parse`（**2026-10-20 起為正式資料庫**） | `parse-server/`，Cloud Run `asia-east1`＋Firestore MongoDB 相容模式資料庫 `tcross`，掛 `cloud/main.js`，見 [parse-server/README.md](../parse-server/README.md) | Master Key 與資料庫連線字串只在 Secret Manager（`parse-server-master-key`／`parse-db-uri`），服務帳號 `tcross-parse-sa` |
 | Back4App（**10-20 起停用，保留當備份**） | 停在 10-20 15:43 切換當下的資料，回滾用 | Master Key 在 Back4App Dashboard、Secret Manager `parse-master-key`（已不掛在任何服務上）、本機 `.env` 的 `BACK4APP_PARSE_MASTER_KEY` |
-| Cloud Run 中介層 `tcross-middleware` | `server/`，GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`，region `asia-east1` | 唯一持有 GCP 服務帳戶身分（`tcross-middleware-sa`）與 `PARSE_MASTER_KEY`（Secret Manager） |
+| Cloud Run 中介層 `tcross-middleware` | `server/`，GCP 專案 `project-80ac5e1a-2ea4-4000-9ff`，region `asia-east1` | 唯一持有 GCS 簽名用的服務帳戶身分（`tcross-middleware-sa`）；`PARSE_MASTER_KEY` 掛 Secret Manager `parse-server-master-key`（與 `tcross-parse`、GitHub 每日備份共用同一把，見「密鑰輪替」） |
 
 ## 日常健康檢查
 
@@ -51,7 +51,7 @@ gcloud logging read \
 
 前端是純靜態 SPA，部署到 GCP 專案 `project-80ac5e1a-2ea4-4000-9ff` 的 Firebase Hosting（設定見 `firebase.json`／`.firebaserc`，所有路徑改寫回 `/index.html`）。
 
-`VITE_*` 環境變數是**建置當下**寫進 bundle 的，所以一定要在有完整 `.env`（含 `VITE_GOOGLE_MAPS_API_KEY`）的機器上建置。部署會把本機 `dist/` 原樣上傳，**請先確認工作目錄是要上線的 commit、沒有未提交的半成品**。
+`VITE_*` 環境變數是**建置當下**寫進 bundle 的，所以一定要在有完整 `.env`（含 `VITE_GOOGLE_MAPS_API_KEY`）的機器上建置。部署會把本機 `dist/` 原樣上傳，**請先確認工作目錄是要上線的 commit、沒有未提交的半成品，並且一定要先 `npm run build`**（本機 `dist/` 可能是很久以前的舊版）。
 
 ```bash
 # 第一次：Firebase CLI 要用有該 GCP 專案權限的帳號登入
@@ -77,7 +77,7 @@ Firebase Console → Hosting → 版本記錄 → 選上一個好的版本「復
 
 ### 換網域時
 
-新網域要同步加進 Cloud Run `ALLOWED_ORIGIN`（見下方，要帶 `--update-env-vars`，值含逗號時用 `^;^` 換分隔符）與 Google Maps 金鑰的網站限制白名單。
+新網域要同步加進 Cloud Run `ALLOWED_ORIGIN`（見下方，要帶 `--update-env-vars`，值含逗號時用 `^;^` 換分隔符）與 Google Maps 金鑰的網站限制白名單。Maps 金鑰另外只放行本機 `http://localhost:5173/*`（Vite 預設埠），本機開發換埠地點建議會失效。
 
 ## 部署一支新版 Cloud Run 中介層
 
@@ -139,7 +139,7 @@ node scripts/setup-users.mjs --apply --clp   # 連同資料表權限（CLP）一
 ```bash
 curl https://tcross-parse-502746951565.asia-east1.run.app/health   # 應回傳 {"ok":true}
 bash parse-server/scripts/deploy.sh                                  # 部署／更新（含 cloud/main.js）
-node parse-server/scripts/smoke-test.mjs <已匯入的備份資料夾>       # 行為檢查＋耗時
+npm run test:e2e                                                     # 行為檢查（用 Test123 登入，見 TESTING.md）
 ```
 
 改 `cloud/main.js` 後跑 `bash parse-server/scripts/deploy.sh` 部署，不用再手動貼 Back4App Dashboard。
@@ -156,7 +156,7 @@ GitHub Actions（`.github/workflows/backup-parse.yml`）每天台灣時間 02:00
 - **活動附件**：存在 GCS 主桶 `attachments/`，由 Storage Transfer Service 每天增量複製到備份桶 `attachments/`（只新增／更新、不同步刪除、不套 90 天規則），設定見 `scripts/setup-attachments-gcs.sh`。
 - **權限**：`github-backup` 服務帳號只有該桶的 `storage.objectCreator`，只能新增備份、不能讀取／覆蓋／刪除既有備份。用 Workload Identity Federation，不存 JSON 金鑰；GCP 端一次性設定見 `scripts/setup-github-backup.sh`。
 - **不含密碼**：`_User` 匯出不含密碼雜湊（Parse 不會回傳），還原後帳號需要重設密碼。也不含 GCS 主桶的 AI 生成素材（另有 30 天保存規則）。
-- **確認有在跑**：GitHub → Actions → 「Backup Back4App to GCS」（名稱沿用舊稱，ROADMAP #17 時改名），或 `gh run list --workflow backup-parse.yml`。失敗時 GitHub 會寄信給觸發者。
+- **確認有在跑**：GitHub → Actions → 「Backup Parse data to GCS」，或 `gh run list --workflow backup-parse.yml`。失敗時 GitHub 會寄信給觸發者。
 - **手動備一份**：Actions 頁按「Run workflow」；或本機 `node scripts/backup-parse.mjs --files`（存在 `backups/`，已列入 `.gitignore`）。
 - **下載備份**：`gcloud storage ls gs://project-80ac5e1a-2ea4-4000-9ff-backup/parse/` 找檔名，再 `gcloud storage cp` 下載後 `tar -xzf` 解開。下載需要專案 Owner／Storage 管理權限的帳號。
 
@@ -214,19 +214,19 @@ node scripts/restore-parse.mjs <備份資料夾> --apply   # 實際還原，最�
 
 ## 已知限制
 
-- **沒有 CI**：單元測試（前端 Vitest、Cloud Code、`server/` pytest）都要手動執行，見 [TESTING.md](TESTING.md)；每次部署後仍要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
+- **CI 只跑單元測試**：每次 push 由 `.github/workflows/test.yml` 跑前端 Vitest、Cloud Code、`server/` pytest，前端部署前也會先跑前端測試（見 [TESTING.md](TESTING.md)）；中介層與 Parse Server 仍是手動部署，部署後要手動跑健康檢查＋端點 curl（見上方）確認沒有回歸
 - **Rate limit 是單 instance 記憶體內限流**：`server/main.py` 的 `enforce_rate_limit` 狀態不共享、重啟歸零，多 instance 情況下不是精確的硬上限，只拉高濫用門檻
 - **npm `uuid` 中風險漏洞（接受風險）**：經 `exceljs` 引入，官方修法是降到 `exceljs@3.4.0`，不建議
 - **備份不含 GCS 主桶**：AI 生成素材與 `.docx` 產出不在每日備份範圍（素材本來就 30 天刪除）；還原後帳號需重設密碼、`createdAt` 會變成還原時間（見「資料備份」）
-- **正式網址**：`https://tacc-iip.web.app`（10-09 起，Firebase Hosting 網站 `tacc-iip`），尚未綁自訂網域。舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 是同專案的預設網站，10-16 起改為與新網址內容相同、同時部署（`firebase.json` 的第二個 hosting 設定與第一個相同，原本的 301 轉址會讓首頁 JS 被跨網域擋下而空白）。`ALLOWED_ORIGIN`、GCS 主桶 CORS、Maps 金鑰網站限制都同時列新舊兩組網域（Netlify 已於 09-29 停用並移除）
+- **正式網址**：`https://tacc-iip.web.app`（10-09 起，Firebase Hosting 網站 `tacc-iip`），尚未綁自訂網域。舊網址 `project-80ac5e1a-2ea4-4000-9ff.web.app` 是同專案的預設網站，10-16 起改為與新網址內容相同、同時部署（`firebase.json` 的第二個 hosting 設定與第一個相同，原本的 301 轉址會讓首頁 JS 被跨網域擋下而空白；**改 CSP 或 headers 時兩段都要改**）。`ALLOWED_ORIGIN`、GCS 主桶 CORS、Maps 金鑰網站限制都同時列新舊兩組網域（Netlify 已於 09-29 停用並移除）
 
 ## 範本修改流程
 
-大事紀 Excel／內政部結案 Word／簽到表／領據／活動紀錄表的產出邏輯全部在 `src/utils/download.ts`，用 `exceljs`（xlsx）與 `docx`（Word）組字串樣板，不是套現成的 Office 檔案模板。
+大事紀 Excel／內政部結案成果報告 Word／簽到表／領據／活動紀錄表的產出邏輯全部在 `src/utils/exportDocs.ts`，用 `exceljs`（xlsx）與 `docx`（Word）組字串樣板，不是套現成的 Office 檔案模板。
 
 **要改欄位、排版、抬頭文字**：
 
-1. 找到對應的 `build*` 函式（例如大事紀是 `buildLedgerXlsx()`，內政部結案是 `buildNeimuReportDocx()`）
+1. 找到對應的 `build*` 函式（例如大事紀是 `buildLedgerXlsx()`，內政部結案成果報告是 `buildNeimuReportDocx()`）
 2. 改樣板內容（儲存格文字、欄寬、標題）
 3. 本機 `npm run dev` 起服務，登入後到「匯出成果」頁面實際跑一次匯出，打開產出的 `.xlsx`/`.docx` 肉眼核對
 4. 如果改動涉及圖片內嵌，參考 2026-09-04 驗證圖片內嵌排版的做法：在瀏覽器 devtools 攔截 `URL.createObjectURL()` 拿到匯出的 `Blob`，解壓內部 zip 比對圖片位元組是否跟原始檔案一致，比單純肉眼看排版更可靠

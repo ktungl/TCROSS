@@ -2,15 +2,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
-import { requestDownloadUrl } from '../lib/middleware'
+import { useReportDownload } from '../composables/useReportDownload'
 import { attachmentSrc } from '../lib/attachments'
 import { confirm } from '../composables/useConfirm'
 import { useEscape } from '../composables/useEscape'
 import { errorMessage, pushToast } from '../composables/useToast'
-import { kb } from '../utils/activity'
-import { fileExt, isImageFile } from '../utils/file'
+import { activityName, kb } from '../utils/activity'
 import { UNRECORDED, actorLine, formatDateTime } from '../utils/actor'
 import StampLine from '../components/StampLine.vue'
+import FileThumb from '../components/FileThumb.vue'
 import { downloadFiles, todayStamp } from '../utils/fileDownload'
 import { ATTACHMENT_TYPES, GENERATION_STATUS_LABELS } from '../types'
 import type { ActivityFiles, ActivityRecord, AttachmentKey, GenerationJobRecord, GenerationJobStatus } from '../types'
@@ -183,23 +183,37 @@ async function hardDeleteUploadedFile(row: FileRow) {
   }
 }
 
+/** 批次操作逐筆執行（同一活動的附件陣列要依序寫入），成功與失敗各彙整成一則提示。
+ * action 回傳 false 代表這筆已經不在原處，略過不算。 */
+async function runBatch<T>(
+  targets: T[],
+  doneLabel: string,
+  unit: '個' | '筆',
+  action: (target: T) => Promise<boolean | void>,
+): Promise<void> {
+  let ok = 0
+  const errors: string[] = []
+  for (const t of targets) {
+    try {
+      if ((await action(t)) !== false) ok++
+    } catch (e) {
+      errors.push(errorMessage(e))
+    }
+  }
+  if (ok) pushToast(`${doneLabel}（${ok} ${unit}）`)
+  if (errors.length) pushToast(`有 ${errors.length} ${unit}失敗：${[...new Set(errors)].join('；')}`, 'error')
+}
+
 async function batchTrashUploaded() {
   const targets = uploadedRows.value.filter((r) => uploadedSel.isSelected(fileRowKey(r)))
   if (!targets.length) return
   if (!(await confirm(`確定要把選取的 ${targets.length} 個檔案移到垃圾桶嗎？`, '移到垃圾桶'))) return
-  let ok = 0
-  for (const r of targets) {
+  await runBatch(targets, '已移到垃圾桶', '個', async (r) => {
     const idx = currentFileIndex(r.activityId, r.type, r.url, 'files')
-    if (idx === -1) continue
-    try {
-      await db.trashFile(r.activityId, r.type, idx)
-      ok++
-    } catch (e) {
-      pushToast(errorMessage(e), 'error')
-    }
-  }
+    if (idx === -1) return false
+    await db.trashFile(r.activityId, r.type, idx)
+  })
   uploadedSel.clear()
-  if (ok) pushToast(`已移到垃圾桶（${ok} 個）`)
 }
 
 /** 下載中的進度文字（例如「下載中 3/12…」），空字串代表沒在下載 */
@@ -215,7 +229,7 @@ async function batchDownloadUploaded() {
       targets.map((r) => ({
         name: r.name,
         url: r.url,
-        folder: `${r.activityName || '未命名活動'}/${attachmentLabel[r.type]}`,
+        folder: `${activityName(r.activityName)}/${attachmentLabel[r.type]}`,
       })),
       `歷史檔案_${todayStamp()}`,
       (done, total) => (downloadingSelected.value = `下載中 ${done}/${total}…`),
@@ -231,38 +245,24 @@ async function batchDownloadUploaded() {
 async function batchRestoreFiles() {
   const targets = trashedFileRows.value.filter((r) => trashedFileSel.isSelected(fileRowKey(r)))
   if (!targets.length) return
-  let ok = 0
-  for (const r of targets) {
+  await runBatch(targets, '已復原', '個', async (r) => {
     const idx = currentFileIndex(r.activityId, r.type, r.url, 'trash')
-    if (idx === -1) continue
-    try {
-      await db.restoreFile(r.activityId, r.type, idx)
-      ok++
-    } catch (e) {
-      pushToast(errorMessage(e), 'error')
-    }
-  }
+    if (idx === -1) return false
+    await db.restoreFile(r.activityId, r.type, idx)
+  })
   trashedFileSel.clear()
-  if (ok) pushToast(`已復原（${ok} 個）`)
 }
 
 async function batchHardDeleteFiles() {
   const targets = trashedFileRows.value.filter((r) => trashedFileSel.isSelected(fileRowKey(r)))
   if (!targets.length) return
   if (!(await confirm(`確定要永久刪除選取的 ${targets.length} 個檔案嗎？此動作無法復原。`, '永久刪除', true))) return
-  let ok = 0
-  for (const r of targets) {
+  await runBatch(targets, '已永久刪除', '個', async (r) => {
     const idx = currentFileIndex(r.activityId, r.type, r.url, 'trash')
-    if (idx === -1) continue
-    try {
-      await db.hardDeleteFile(r.activityId, r.type, idx)
-      ok++
-    } catch (e) {
-      pushToast(errorMessage(e), 'error')
-    }
-  }
+    if (idx === -1) return false
+    await db.hardDeleteFile(r.activityId, r.type, idx)
+  })
   trashedFileSel.clear()
-  if (ok) pushToast(`已永久刪除（${ok} 個）`)
 }
 
 /** ---------- 各計畫已有生成的匯出檔案（AI 成果報告 GenerationJob） ---------- */
@@ -293,20 +293,7 @@ const trashedGenerationRows = computed(() => {
 const generationSel = useSelection()
 const trashedGenerationSel = useSelection()
 
-const downloadingId = ref<string | null>(null)
-
-/** downloadingId 存「工作 id:格式」，Word／PDF 兩顆按鈕各自顯示取得中。 */
-async function download(jobId: string, resultFile: string, pdf = false) {
-  downloadingId.value = `${jobId}:${pdf ? 'pdf' : 'docx'}`
-  try {
-    const url = await requestDownloadUrl(resultFile, pdf)
-    window.open(url, '_blank')
-  } catch (e) {
-    pushToast(errorMessage(e), 'error')
-  } finally {
-    downloadingId.value = null
-  }
-}
+const { downloading: downloadingId, download } = useReportDownload()
 
 /** 「檢視」彈窗：不管工作是否完成都能看狀態／錯誤訊息／素材清單，完成的話還能直接下載。 */
 const viewingJob = ref<{ job: GenerationJobRecord; activity: ActivityRecord | undefined } | null>(null)
@@ -355,50 +342,23 @@ async function batchTrashJobs() {
   const targets = generationRows.value.filter(({ job }) => generationSel.isSelected(job.id)).map((x) => x.job)
   if (!targets.length) return
   if (!(await confirm(`確定要把選取的 ${targets.length} 筆生成工作移到垃圾桶嗎？`, '移到垃圾桶'))) return
-  let ok = 0
-  for (const job of targets) {
-    try {
-      await db.trashGenerationJob(job.id)
-      ok++
-    } catch (e) {
-      pushToast(errorMessage(e), 'error')
-    }
-  }
+  await runBatch(targets, '已移到垃圾桶', '筆', (job) => db.trashGenerationJob(job.id))
   generationSel.clear()
-  if (ok) pushToast(`已移到垃圾桶（${ok} 筆）`)
 }
 
 async function batchRestoreJobs() {
   const targets = trashedGenerationRows.value.filter(({ job }) => trashedGenerationSel.isSelected(job.id)).map((x) => x.job)
   if (!targets.length) return
-  let ok = 0
-  for (const job of targets) {
-    try {
-      await db.restoreGenerationJob(job.id)
-      ok++
-    } catch (e) {
-      pushToast(errorMessage(e), 'error')
-    }
-  }
+  await runBatch(targets, '已復原', '筆', (job) => db.restoreGenerationJob(job.id))
   trashedGenerationSel.clear()
-  if (ok) pushToast(`已復原（${ok} 筆）`)
 }
 
 async function batchHardDeleteJobs() {
   const targets = trashedGenerationRows.value.filter(({ job }) => trashedGenerationSel.isSelected(job.id)).map((x) => x.job)
   if (!targets.length) return
   if (!(await confirm(`確定要永久刪除選取的 ${targets.length} 筆生成工作嗎？已上傳的素材與產出檔案會一併從雲端清掉，此動作無法復原。`, '永久刪除', true))) return
-  let ok = 0
-  for (const job of targets) {
-    try {
-      await db.hardDeleteGenerationJob(job.id)
-      ok++
-    } catch (e) {
-      pushToast(errorMessage(e), 'error')
-    }
-  }
+  await runBatch(targets, '已永久刪除', '筆', (job) => db.hardDeleteGenerationJob(job.id))
   trashedGenerationSel.clear()
-  if (ok) pushToast(`已永久刪除（${ok} 筆）`)
 }
 </script>
 
@@ -458,7 +418,7 @@ async function batchHardDeleteJobs() {
         <tr v-for="r in uploadedRows" :key="`${fileRowKey(r)}:${r.index}`">
           <td><input type="checkbox" :checked="uploadedSel.isSelected(fileRowKey(r))" @change="uploadedSel.toggle(fileRowKey(r))"></td>
           <td>
-            <button class="link" @click="openDetail(r.activityId)">{{ r.activityName || '（未命名活動）' }}</button>
+            <button class="link" @click="openDetail(r.activityId)">{{ activityName(r.activityName) }}</button>
             <span v-if="r.archived" class="tag" style="margin-left:6px">已封存</span>
           </td>
           <td>
@@ -491,16 +451,13 @@ async function batchHardDeleteJobs() {
             @click.stop
             @change="uploadedSel.toggle(fileRowKey(r))"
           >
-          <a class="file-thumb" :href="attachmentSrc(r.url, r.name)" target="_blank" rel="noopener" :title="r.name">
-            <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy" decoding="async">
-            <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
-          </a>
+          <FileThumb :name="r.name" :url="r.url" link />
           <button v-if="!r.archived" class="x" title="移到垃圾桶" @click="trashUploadedFile(r)">×</button>
         </span>
         <span class="file-cell-body">
           <span class="file-cell-name">{{ r.name }}</span>
           <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ kb(r.size) }}</span>
-          <span class="file-cell-meta">{{ r.activityName || '（未命名活動）' }}<template v-if="r.archived">（已封存）</template></span>
+          <span class="file-cell-meta">{{ activityName(r.activityName) }}<template v-if="r.archived">（已封存）</template></span>
           <span class="file-cell-meta">上傳：{{ r.uploadedByName || UNRECORDED }}</span>
         </span>
       </div>
@@ -518,7 +475,7 @@ async function batchHardDeleteJobs() {
   <div class="card">
     <p class="sub card-intro">
       這裡列出 AI 自動生成的成果報告與會議紀錄（活動詳情頁「AI 自動生成成果報告」「AI 會議音檔轉錄紀錄」建立的工作）。
-      「匯出成果」頁的大事紀 Excel／內政部結案 Word，以及活動詳情頁產生的簽到表、領據、公文等，都是即時產生、不會保存在伺服器，因此不會出現在這裡。
+      「匯出成果」頁的大事紀 Excel／內政部結案成果報告 Word，以及活動詳情頁產生的簽到表、領據、公文等，都是即時產生、不會保存在伺服器，因此不會出現在這裡。
     </p>
     <div class="row toolbar">
       <select class="f-plan" v-model="gPlan">
@@ -555,7 +512,7 @@ async function batchHardDeleteJobs() {
         <tr v-for="{ job, activity } in generationRows" :key="job.id">
           <td><input type="checkbox" :checked="generationSel.isSelected(job.id)" @change="generationSel.toggle(job.id)"></td>
           <td>
-            <button v-if="activity" class="link" @click="openDetail(activity.id)">{{ activity.name || '（未命名活動）' }}</button>
+            <button v-if="activity" class="link" @click="openDetail(activity.id)">{{ activityName(activity.name) }}</button>
             <span v-else>—</span>
           </td>
           <td>
@@ -574,10 +531,10 @@ async function batchHardDeleteJobs() {
             <div class="row" style="gap:10px;flex-wrap:nowrap">
               <button class="btn ghost sm" @click="openJobView({ job, activity })">檢視</button>
               <template v-if="job.status === 'done' && job.resultFile">
-                <button class="btn ghost sm" :disabled="!!downloadingId" @click="download(job.id, job.resultFile)">
+                <button class="btn ghost sm" :disabled="!!downloadingId" @click="download(job)">
                   {{ downloadingId === `${job.id}:docx` ? '取得中…' : 'Word' }}
                 </button>
-                <button class="btn ghost sm" :disabled="!!downloadingId" @click="download(job.id, job.resultFile, true)">
+                <button class="btn ghost sm" :disabled="!!downloadingId" @click="download(job, true)">
                   {{ downloadingId === `${job.id}:pdf` ? '取得中…' : 'PDF' }}
                 </button>
               </template>
@@ -627,7 +584,7 @@ async function batchHardDeleteJobs() {
         <tr v-for="r in trashedFileRows" :key="`${fileRowKey(r)}:${r.index}`">
           <td><input v-if="!r.archived" type="checkbox" :checked="trashedFileSel.isSelected(fileRowKey(r))" @change="trashedFileSel.toggle(fileRowKey(r))"></td>
           <td>
-            {{ r.activityName || '（未命名活動）' }}
+            {{ activityName(r.activityName) }}
             <span v-if="r.archived" class="tag" style="margin-left:6px">已封存</span>
           </td>
           <td>
@@ -664,14 +621,11 @@ async function batchHardDeleteJobs() {
             @click.stop
             @change="trashedFileSel.toggle(fileRowKey(r))"
           >
-          <a class="file-thumb" :href="attachmentSrc(r.url, r.name)" target="_blank" rel="noopener" :title="r.name">
-            <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy" decoding="async">
-            <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
-          </a>
+          <FileThumb :name="r.name" :url="r.url" link />
         </span>
         <span class="file-cell-body">
           <span class="file-cell-name">{{ r.name }}</span>
-          <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ r.activityName || '（未命名活動）' }}<template v-if="r.archived">（已封存）</template></span>
+          <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ activityName(r.activityName) }}<template v-if="r.archived">（已封存）</template></span>
           <span class="file-cell-meta">{{ r.deletedAt ? formatDateTime(r.deletedAt) : '—' }}</span>
           <span class="file-cell-meta">刪除者：{{ r.deletedByName || UNRECORDED }}</span>
           <span v-if="r.archived" class="file-cell-meta">解除封存後才能復原或刪除</span>
@@ -713,7 +667,7 @@ async function batchHardDeleteJobs() {
       <tbody>
         <tr v-for="{ job, activity } in trashedGenerationRows" :key="job.id">
           <td><input type="checkbox" :checked="trashedGenerationSel.isSelected(job.id)" @change="trashedGenerationSel.toggle(job.id)"></td>
-          <td>{{ activity?.name || '（未命名活動）' }}</td>
+          <td>{{ activityName(activity?.name) }}</td>
           <td>
             <span class="plans">
               <span v-for="pid in activity?.plans ?? []" :key="pid" class="tag">{{ planName(pid) }}</span>
@@ -743,7 +697,7 @@ async function batchHardDeleteJobs() {
     <div class="card">
       <h2>{{ viewingJob.job.kind }}</h2>
       <p class="sub card-intro">
-        {{ viewingJob.activity?.name || '（未命名活動）' }}
+        {{ activityName(viewingJob.activity?.name) }}
         <span v-if="viewingJob.activity?.plans.length">　·　{{ viewingJob.activity.plans.map(planName).join('、') }}</span>
       </p>
 
@@ -768,10 +722,10 @@ async function batchHardDeleteJobs() {
 
       <div class="row actions">
         <template v-if="viewingJob.job.status === 'done' && viewingJob.job.resultFile">
-          <button class="btn" :disabled="!!downloadingId" @click="download(viewingJob.job.id, viewingJob.job.resultFile)">
+          <button class="btn" :disabled="!!downloadingId" @click="download(viewingJob.job)">
             {{ downloadingId === `${viewingJob.job.id}:docx` ? '取得中…' : `下載${viewingJob.job.kind}（Word）` }}
           </button>
-          <button class="btn ghost" :disabled="!!downloadingId" @click="download(viewingJob.job.id, viewingJob.job.resultFile, true)">
+          <button class="btn ghost" :disabled="!!downloadingId" @click="download(viewingJob.job, true)">
             {{ downloadingId === `${viewingJob.job.id}:pdf` ? '取得中…' : 'PDF' }}
           </button>
         </template>

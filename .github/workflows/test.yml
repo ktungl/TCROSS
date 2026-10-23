@@ -1,0 +1,57 @@
+# 每次 push／PR 跑三組測試：前端單元測試（Vitest）、Cloud Code（node:test）、中介層（pytest）。
+# 全部 mock 外部服務，不需要任何 secret。前端部署（deploy-hosting.yml）另外會在建置前跑前端測試。
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx vue-tsc -b
+
+      - name: Frontend unit tests
+        run: npm test
+
+      - name: Cloud Code tests
+        run: npm run test:cloud
+
+  server:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/requirements*.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Middleware tests
+        run: python -m pytest -q

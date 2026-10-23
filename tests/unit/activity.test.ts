@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { activity } from './fixtures'
-import { averageScore, checkBasicInfo, dateMentionMismatches, gaps, score } from '../../src/utils/activity'
+import { checkBasicInfo, dateMentionMismatches, gaps, score } from '../../src/utils/activity'
 import type { BasicInfoInput } from '../../src/utils/activity'
 
 vi.mock('../../src/lib/attachments', () => ({ resolveAttachmentUrl: async (url: string) => url }))
-const { parseCsv, readParticipants } = await import('../../src/utils/registration')
+const { readParticipants } = await import('../../src/utils/registration')
+const { parseCsv } = await import('../../src/utils/sheet')
 
 describe('gaps / score', () => {
   it('TC-11 資料齊全時沒有缺漏、100 分', () => {
@@ -33,10 +34,6 @@ describe('gaps / score', () => {
     expect(gaps(empty)).toHaveLength(4)
     expect(score(empty)).toBe(20)
   })
-
-  it('TC-13 averageScore 空陣列回傳 0', () => {
-    expect(averageScore([])).toBe(0)
-  })
 })
 
 describe('dateMentionMismatches', () => {
@@ -60,7 +57,7 @@ describe('checkBasicInfo', () => {
     time: '09:00',
     timeEnd: '12:00',
     placeMode: 'physical',
-    address: '臺南市',
+    place: '臺南市',
     meetingUrl: '',
     participantDesc: '',
     remark: '',

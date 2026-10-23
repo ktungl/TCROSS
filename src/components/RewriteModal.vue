@@ -6,7 +6,7 @@ import type { RewriteFormat, RewriteResult } from '../lib/middleware'
 import { confirm } from '../composables/useConfirm'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
-import { downloadBlob } from '../utils/download'
+import { downloadBlob } from '../utils/exportDocs'
 import type { ActivityRecord } from '../types'
 
 const props = defineProps<{ activity: ActivityRecord }>()

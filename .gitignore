@@ -46,3 +46,10 @@ playwright-report/
 
 # 自架 Parse Server：部署時從 cloud/main.js 複製，見 parse-server/scripts/deploy.sh
 parse-server/cloud/
+
+
+# pytest 快取（server/）
+.pytest_cache/
+
+# Claude Code 個人設定
+.claude/settings.local.json

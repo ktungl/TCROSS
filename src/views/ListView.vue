@@ -2,16 +2,15 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDbStore } from '../stores/db'
-import { errorMessage, pushToast } from '../composables/useToast'
-import { confirm } from '../composables/useConfirm'
+import { useActivityActions } from '../composables/useActivityActions'
 import { gaps } from '../utils/activity'
-import type { ActivityRecord } from '../types'
 import ActivityFormModal from '../components/ActivityFormModal.vue'
 import ActivityEntry from '../components/ActivityEntry.vue'
 
 const route = useRoute()
 const router = useRouter()
 const db = useDbStore()
+const { duplicate, toggleArchive } = useActivityActions()
 
 const fPlan = ref('')
 const fMonth = ref('')
@@ -49,29 +48,6 @@ function clearFilters() {
 function openDetail(id: string) {
   router.push({ name: 'detail', params: { id } })
 }
-
-async function onDuplicate(id: string) {
-  try {
-    await db.duplicateActivity(id)
-    pushToast('已複製活動，請填寫新日期')
-  } catch (e) {
-    pushToast(errorMessage(e), 'error')
-  }
-}
-
-async function onToggleArchive(a: ActivityRecord) {
-  const next = !a.archivedAt
-  const message = next
-    ? `確定要封存「${a.name}」嗎？封存後內容仍可檢視，但不能編輯、上傳或刪除，需要時可再解除封存。`
-    : `確定要解除封存「${a.name}」嗎？解除後就可以再編輯。`
-  if (!(await confirm(message, next ? '封存' : '解除封存'))) return
-  try {
-    await db.setActivityArchived(a.id, next)
-    pushToast(next ? '已封存活動' : '已解除封存，可以編輯了')
-  } catch (e) {
-    pushToast(errorMessage(e), 'error')
-  }
-}
 </script>
 
 <template>
@@ -101,8 +77,8 @@ async function onToggleArchive(a: ActivityRecord) {
       :activity="a"
       :plan-name="db.planName"
       @click="openDetail(a.id)"
-      @duplicate="onDuplicate(a.id)"
-      @archive="onToggleArchive(a)"
+      @duplicate="duplicate(a.id)"
+      @archive="toggleArchive(a)"
     />
   </div>
   <p v-if="!rows.length" class="empty">{{ db.loading ? '載入中…' : '目前篩選條件下沒有活動。' }}</p>

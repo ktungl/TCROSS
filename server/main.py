@@ -82,10 +82,16 @@ GENERATION_KINDS = {"成果報告", "會議紀錄"}
 MAX_MEETING_FILES = 3
 
 
+# 單一檔案上傳上限（AI 素材與活動附件共用），簽進上傳網址，GCS 會實際擋下超過的檔案。
+# 與 src/types.ts MAX_FILE_SIZE_BYTES、cloud/main.js 一致。
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
 class SignedUrlFile(BaseModel):
     folder: str
     filename: str
     contentType: str
+    size: int
 
 
 class SignedUrlRequest(BaseModel):
@@ -112,9 +118,8 @@ class DeleteObjectsRequest(BaseModel):
 
 
 # 活動附件（/attachments/*）：前端 FileMeta.url 存成 "gcs:" + GCS 路徑，跟舊的 Back4App
-# 網址區分。上限與 src/types.ts MAX_FILE_SIZE_BYTES、cloud/main.js 一致。
+# 網址區分。
 ATTACHMENT_URL_PREFIX = "gcs:"
-MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 MAX_ATTACHMENT_UPLOADS_PER_REQUEST = 50
 MAX_ATTACHMENT_VIEWS_PER_REQUEST = 300
 
@@ -211,6 +216,19 @@ def enforce_rate_limit(user: dict = Depends(require_user)) -> dict:
 
 
 # 這裡已經把原本會被 GCP 攔截的 /healthz 替換成了 /status
+def require_readable_activity(user: dict, activity_id: str) -> None:
+    """呼叫者用自己的 session 讀不到這個活動就回 403，並留下拒絕紀錄。
+    不存在和無權存取回同一個訊息，不透露活動是否存在。"""
+    if not activity_exists(user["sessionToken"], activity_id):
+        audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), activity_id)
+        raise HTTPException(403, "活動不存在或無權存取")
+
+
+def _plan_ids(activity: dict) -> list[str]:
+    """活動掛的計畫 objectId（Parse Pointer 陣列）"""
+    return [p.get("objectId") for p in (activity.get("plans") or []) if isinstance(p, dict) and p.get("objectId")]
+
+
 @app.get("/status")
 def status():
     return {"ok": True}
@@ -219,24 +237,24 @@ def status():
 @app.post("/signed-url")
 def signed_url(body: SignedUrlRequest, user: dict = Depends(enforce_rate_limit)):
     if not body.files:
-        raise HTTPException(400, "files 不能為空")
+        raise HTTPException(400, "請至少選擇一個檔案")
     if len(body.files) > MAX_SOURCE_FILES:
         raise HTTPException(400, f"一次最多只能上傳 {MAX_SOURCE_FILES} 個檔案")
     for f in body.files:
         if f.folder not in ALLOWED_FOLDERS:
-            raise HTTPException(400, f"folder 必須是 {sorted(ALLOWED_FOLDERS)} 其中之一")
+            raise HTTPException(400, f"資料夾必須是 {sorted(ALLOWED_FOLDERS)} 其中之一")
         if is_extension_blocked(f.filename) or not is_content_type_allowed(f.contentType):
             raise HTTPException(400, "此檔案類型不允許上傳")
-    if not activity_exists(user["sessionToken"], body.activityId):
-        audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
-        raise HTTPException(403, "activityId 不存在或無權存取")
+        if f.size > MAX_UPLOAD_BYTES:
+            raise HTTPException(400, f"「{f.filename}」超過上傳大小上限（50MB）")
+    require_readable_activity(user, body.activityId)
 
     results = []
     object_paths = []
     for f in body.files:
         unique_name = f"{uuid.uuid4().hex[:8]}_{sanitize_filename(f.filename)}"
         object_path = f"activities/{body.activityId}/{f.folder}/{unique_name}"
-        upload_url = generate_signed_upload_url(object_path, f.contentType)
+        upload_url = generate_signed_upload_url(object_path, f.contentType, MAX_UPLOAD_BYTES)
         results.append({"uploadUrl": upload_url, "objectPath": object_path})
         object_paths.append(object_path)
 
@@ -250,11 +268,11 @@ def signed_url(body: SignedUrlRequest, user: dict = Depends(enforce_rate_limit))
 @app.post("/download-url")
 def download_url(body: DownloadUrlRequest, user: dict = Depends(enforce_rate_limit)):
     if not is_valid_object_path(body.objectPath):
-        raise HTTPException(400, "objectPath 不合法")
+        raise HTTPException(400, "檔案路徑不合法")
     matched = find_generation_jobs_for_object_paths(user["sessionToken"], [body.objectPath])
     if body.objectPath not in matched:
         audit_log.warning("rejected: unauthorized objectPath user=%s objectPath=%s", user.get("username"), body.objectPath)
-        raise HTTPException(403, "objectPath 不存在或無權存取")
+        raise HTTPException(403, "檔案不存在或無權存取")
 
     path = body.objectPath
     if body.pdf:
@@ -274,23 +292,21 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
     deleted from Parse — called by the frontend before it destroys the job record."""
     invalid = [p for p in body.objectPaths if not is_valid_object_path(p)]
     if invalid:
-        raise HTTPException(400, "objectPath 不合法")
+        raise HTTPException(400, "檔案路徑不合法")
 
     if body.activityId is not None:
-        if not activity_exists(user["sessionToken"], body.activityId):
-            audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
-            raise HTTPException(403, "activityId 不存在或無權存取")
+        require_readable_activity(user, body.activityId)
         # 只限素材資料夾：這條路是清剛上傳的素材，不能拿來刪 generated/ 底下別人的 AI 報告
         prefixes = tuple(f"activities/{body.activityId}/{folder}/" for folder in ALLOWED_FOLDERS)
         mismatched = [p for p in body.objectPaths if not p.startswith(prefixes)]
         if mismatched:
-            raise HTTPException(400, "objectPath 與 activityId 不符")
+            raise HTTPException(400, "檔案不屬於這個活動")
     else:
         matched = find_generation_jobs_for_object_paths(user["sessionToken"], body.objectPaths)
         unauthorized = [p for p in body.objectPaths if p not in matched]
         if unauthorized:
             audit_log.warning("rejected: unauthorized objectPaths user=%s objectPaths=%s", user.get("username"), unauthorized)
-            raise HTTPException(403, "部分 objectPath 不存在或無權存取")
+            raise HTTPException(403, "部分檔案不存在或無權存取")
 
     # AI 報告的 PDF 版跟著 .docx 一起刪（舊工作沒有 PDF，delete_object 會略過）
     pdf_siblings = [_pdf_path(p) for p in body.objectPaths if "/generated/" in p and p.endswith(".docx")]
@@ -303,27 +319,25 @@ def delete_objects(body: DeleteObjectsRequest, user: dict = Depends(enforce_rate
 @app.post("/attachments/upload-urls")
 def attachment_upload_urls(body: AttachmentUploadRequest, user: dict = Depends(enforce_rate_limit)):
     """Signed PUT URLs for activity attachments. Same checks as /signed-url (session,
-    activity readable, blocked extensions), plus a GCS-enforced 50MB cap."""
+    activity readable, blocked extensions, GCS-enforced 50MB cap)."""
     if body.folder not in ATTACHMENT_FOLDERS:
-        raise HTTPException(400, f"folder 必須是 {sorted(ATTACHMENT_FOLDERS)} 其中之一")
+        raise HTTPException(400, f"附件類型必須是 {sorted(ATTACHMENT_FOLDERS)} 其中之一")
     if not body.files:
-        raise HTTPException(400, "files 不能為空")
+        raise HTTPException(400, "請至少選擇一個檔案")
     if len(body.files) > MAX_ATTACHMENT_UPLOADS_PER_REQUEST:
         raise HTTPException(400, f"一次最多只能上傳 {MAX_ATTACHMENT_UPLOADS_PER_REQUEST} 個檔案")
     for f in body.files:
         if is_extension_blocked(f.filename) or not is_content_type_allowed(f.contentType):
             raise HTTPException(400, f"「{f.filename}」的檔案類型不允許上傳")
-        if f.size > MAX_ATTACHMENT_BYTES:
+        if f.size > MAX_UPLOAD_BYTES:
             raise HTTPException(400, f"「{f.filename}」超過上傳大小上限（50MB）")
-    if not activity_exists(user["sessionToken"], body.activityId):
-        audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), body.activityId)
-        raise HTTPException(403, "activityId 不存在或無權存取")
+    require_readable_activity(user, body.activityId)
 
     results = []
     for f in body.files:
         object_path = f"attachments/{body.activityId}/{body.folder}/{uuid.uuid4().hex[:8]}_{sanitize_filename(f.filename)}"
         results.append({
-            "uploadUrl": generate_signed_upload_url(object_path, f.contentType, MAX_ATTACHMENT_BYTES),
+            "uploadUrl": generate_signed_upload_url(object_path, f.contentType, MAX_UPLOAD_BYTES),
             "url": ATTACHMENT_URL_PREFIX + object_path,
         })
     audit_log.info(
@@ -394,7 +408,7 @@ def attachment_delete(body: AttachmentDeleteRequest, user: dict = Depends(enforc
     for path in body.paths:
         info = parse_attachment_path(path)
         if not info:
-            raise HTTPException(400, "path 不合法")
+            raise HTTPException(400, "附件路徑不合法")
         parsed[path] = info
     activity_ids = {a for a, _ in parsed.values()}
     allowed = readable_activity_ids(user["sessionToken"], activity_ids)
@@ -423,13 +437,12 @@ def rewrite(activity_id: str, body: RewriteRequest, user: dict = Depends(enforce
     活動內容由這裡用呼叫者的 session 讀取，不接受前端送來的文字，避免被拿來任意呼叫 Gemini。
     只送文字、幾秒內完成，所以同步回傳，不建 GenerationJob。"""
     if body.format not in REWRITE_FORMATS:
-        raise HTTPException(400, f"format 必須是 {list(REWRITE_FORMATS)} 其中之一")
+        raise HTTPException(400, f"改寫格式必須是 {list(REWRITE_FORMATS)} 其中之一")
     activity = get_activity(user["sessionToken"], activity_id)
     if not activity:
         audit_log.warning("rejected: unauthorized rewrite user=%s activityId=%s", user.get("username"), activity_id)
         raise HTTPException(403, "活動不存在或無權存取")
-    plan_ids = [p.get("objectId") for p in (activity.get("plans") or []) if isinstance(p, dict) and p.get("objectId")]
-    plan_names = get_plan_names(user["sessionToken"], plan_ids)
+    plan_names = get_plan_names(user["sessionToken"], _plan_ids(activity))
     audit_log.info("rewrite user=%s activityId=%s format=%s", user.get("username"), activity_id, body.format)
     try:
         return rewrite_activity(body.format, activity, plan_names)
@@ -448,8 +461,7 @@ def assist_sign_in(body: SignInAssistRequest, user: dict = Depends(enforce_rate_
     """doc/AI_UPGRADE_PLAN.md 1-2：簽到表照片 → 名單。只回傳辨識結果，寫入由前端在使用者確認後做。"""
     if not body.images or len(body.images) > MAX_SIGN_IN_IMAGES:
         raise HTTPException(400, f"簽到表照片要 1～{MAX_SIGN_IN_IMAGES} 張")
-    if not activity_exists(user["sessionToken"], body.activityId):
-        raise HTTPException(403, "活動不存在或無權存取")
+    require_readable_activity(user, body.activityId)
     try:
         images = [(decode_image(i.data, i.mimeType), i.mimeType) for i in body.images]
     except ValueError as exc:
@@ -496,8 +508,7 @@ def assist_classify(body: ClassifyAssistRequest, user: dict = Depends(enforce_ra
 @app.post("/assist/document")
 def assist_document(body: DocumentAssistRequest, user: dict = Depends(enforce_rate_limit)):
     """doc/AI_UPGRADE_PLAN.md 1-5：公文／企劃書 → 重點摘要＋需人工核對清單。只回傳結果、不存檔。"""
-    if not activity_exists(user["sessionToken"], body.activityId):
-        raise HTTPException(403, "活動不存在或無權存取")
+    require_readable_activity(user, body.activityId)
     try:
         raw = decode_document(body.document.data, body.document.mimeType)
     except ValueError as exc:
@@ -532,7 +543,7 @@ def trigger_generation(job_id: str, user: dict = Depends(enforce_rate_limit)):
     job = get_generation_job(user["sessionToken"], job_id)
     if not job or not job["activityId"]:
         audit_log.warning("rejected: unauthorized generationJob user=%s jobId=%s", user.get("username"), job_id)
-        raise HTTPException(403, "generationJob 不存在或無權存取")
+        raise HTTPException(403, "AI 生成工作不存在或無權存取")
     if job["status"] != "pending" and not _is_stale_processing(job):
         raise HTTPException(409, f"這筆工作目前狀態是「{job['status']}」，無法重複觸發")
     if len(job["sourceFiles"]) > MAX_SOURCE_FILES:
@@ -576,7 +587,7 @@ MAX_COMPARISON_PLANS = 3
 
 def _plan_activities(session_token: str, activity: dict) -> list[tuple[str, list[dict]]]:
     """[(計畫名稱, 該計畫的活動)]，用呼叫者自己的 session 查，跟畫面上看得到的範圍一致。"""
-    plan_ids = [p.get("objectId") for p in (activity.get("plans") or []) if isinstance(p, dict) and p.get("objectId")]
+    plan_ids = _plan_ids(activity)
     if not plan_ids:
         return []
     try:

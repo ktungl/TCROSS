@@ -41,7 +41,7 @@ function isEmpty(v: unknown): boolean {
 function formatValue(change: AuditChange, value: unknown): string {
   if (isEmpty(value)) return '（空白）'
   if (change.field === 'plans' && Array.isArray(value)) {
-    return value.map((id) => db.plans.find((p) => p.id === id)?.name ?? '（已刪除的計畫）').join('、')
+    return value.map(db.planName).join('、')
   }
   if (change.field === 'activity' && typeof value === 'string') {
     return db.activities.find((a) => a.id === value)?.name ?? '（已刪除的活動）'

@@ -7,12 +7,13 @@
 // 加環境變數 REHEARSE_DATABASE_URI（或寫在 .env）時，改用那個真正的資料庫做相容性測試
 // （例如 Firestore MongoDB 相容模式）。該資料庫必須是空的（匯入會檢查），測完會刪掉所有 collection。
 import { spawn } from 'child_process'
-import { copyFileSync, mkdirSync, readFileSync } from 'fs'
+import { copyFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { MongoClient } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import { runChecks } from './checks.mjs'
+import { loadEnv } from '../../scripts/lib/env.mjs'
 
 const dir = process.argv[2]
 if (!dir) {
@@ -20,11 +21,7 @@ if (!dir) {
   process.exit(1)
 }
 const root = fileURLToPath(new URL('..', import.meta.url))
-const env = {}
-for (const line of readFileSync(join(root, '..', '.env'), 'utf8').split(/\r?\n/)) {
-  const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line)
-  if (m) env[m[1]] = m[2].trim()
-}
+const env = loadEnv()
 const APP_ID = env.VITE_PARSE_APP_ID
 const JS_KEY = env.VITE_PARSE_JS_KEY
 const PORT = 18080
@@ -37,7 +34,7 @@ function run(cmd, args, extraEnv) {
   })
 }
 
-const externalUri = process.env.REHEARSE_DATABASE_URI || env.REHEARSE_DATABASE_URI
+const externalUri = env.REHEARSE_DATABASE_URI
 const mongod = externalUri ? null : await MongoMemoryServer.create()
 const uri = externalUri || mongod.getUri('tcross')
 let imported = false

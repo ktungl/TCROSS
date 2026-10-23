@@ -4,6 +4,7 @@ import { assistPoster } from '../lib/middleware'
 import type { PosterField, PosterSuggestion } from '../lib/middleware'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { prepareImageForAi } from '../utils/aiImages'
+import { localDateString } from '../utils/date'
 
 /** 表單目前的值（只用來顯示「目前 → 建議」與決定預設勾選） */
 const props = defineProps<{ current: Record<PosterField, string> }>()
@@ -28,11 +29,6 @@ const FIELD_LABELS: [PosterField, string][] = [
 const loading = ref(false)
 const suggestion = ref<Partial<Record<PosterField, string>> | null>(null)
 const checked = ref<PosterField[]>([])
-
-function localToday(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 function toFields(s: PosterSuggestion): Partial<Record<PosterField, string>> {
   const fields: Partial<Record<PosterField, string>> = {
@@ -75,7 +71,7 @@ async function onPick(e: Event) {
   try {
     const image = await prepareImageForAi(file)
     previewUrl = image.previewUrl
-    const result = await assistPoster({ data: image.data, mimeType: image.mimeType }, localToday())
+    const result = await assistPoster({ data: image.data, mimeType: image.mimeType }, localDateString())
     suggestion.value = toFields(result)
     // 表單已經有值的欄位預設不勾，避免蓋掉使用者打好的內容
     checked.value = rows.value.filter((r) => !r.current || (r.key === 'placeMode' && r.next === r.current)).map((r) => r.key)

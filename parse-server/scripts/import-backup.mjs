@@ -23,18 +23,9 @@ import { join } from 'path'
 import express from 'express'
 import { MongoClient } from 'mongodb'
 import { ParseServer } from 'parse-server'
+import { loadEnv, requireEnv } from '../../scripts/lib/env.mjs'
 
-const env = {}
-const envFile = new URL('../../.env', import.meta.url)
-if (existsSync(envFile)) {
-  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z_]+)\s*=\s*(.*)\s*$/.exec(line)
-    if (m) env[m[1]] = m[2].trim()
-  }
-}
-for (const key of ['VITE_PARSE_APP_ID', 'VITE_PARSE_JS_KEY', 'TARGET_DATABASE_URI']) {
-  if (process.env[key]) env[key] = process.env[key]
-}
+const env = loadEnv()
 
 const APP_ID = env.VITE_PARSE_APP_ID
 const JS_KEY = env.VITE_PARSE_JS_KEY
@@ -46,10 +37,7 @@ const args = process.argv.slice(2)
 const apply = args.includes('--apply')
 const dir = args.find((a) => !a.startsWith('--'))
 
-if (!APP_ID || !JS_KEY || !DATABASE_URI) {
-  console.error('缺少 VITE_PARSE_APP_ID／VITE_PARSE_JS_KEY／TARGET_DATABASE_URI（.env 或環境變數）')
-  process.exit(1)
-}
+requireEnv(env, ['VITE_PARSE_APP_ID', 'VITE_PARSE_JS_KEY', 'TARGET_DATABASE_URI'])
 if (!dir || !existsSync(join(dir, 'manifest.json'))) {
   console.error('用法：node scripts/import-backup.mjs <備份資料夾> [--apply]（資料夾裡要有 manifest.json）')
   process.exit(1)

@@ -10,9 +10,9 @@ export interface FileMeta {
   url: string
   /** 圖說（照片類型必填每張圖說） */
   caption?: string
-  /** 精選照片標記（成果報告／內政部結案報告優先放這些照片） */
+  /** 精選照片標記（成果報告／內政部結案成果報告優先放這些照片） */
   featured?: boolean
-  /** 大紀事照片標記（大紀事 Excel 放這些照片，每場活動最多 LEDGER_PHOTO_MAX 張） */
+  /** 大事紀照片標記（大事紀 Excel 放這些照片，每場活動最多 LEDGER_PHOTO_MAX 張） */
   ledger?: boolean
   /** 軟刪除時間戳記（ISO 字串）。有值代表在垃圾桶裡，正常畫面（含匯出、缺漏檢核）都會濾掉，
    * 只有「歷史檔案」頁的垃圾桶會列出，可以復原或從那裡永久刪除。 */
@@ -116,7 +116,7 @@ export const ATTACHMENT_HINTS: Partial<Record<AttachmentKey, string>> = {
   signIn: PDF_TEXT_HINT,
 }
 
-/** 大紀事 Excel 每場活動最多放幾張照片（同 cloud/main.js 的伺服器端檢查） */
+/** 大事紀 Excel 每場活動最多放幾張照片（同 cloud/main.js 的伺服器端檢查） */
 export const LEDGER_PHOTO_MAX = 3
 
 export const PHOTO_MIN = 3
@@ -127,7 +127,7 @@ export const PHOTO_MAX = 15
  * cloud/main.js 的 beforeSave('Activity')；這裡只是讓使用者在前端就能
  * 得到即時錯誤訊息，不用等存檔失敗。 */
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
-export const BLOCKED_EXTENSIONS = [
+const BLOCKED_EXTENSIONS = [
   'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
   'vbs', 'vbe', 'js', 'jse', 'jar', 'apk', 'sh', 'app', 'cpl', 'gadget',
   'pif', 'wsf', 'wsh', 'hta', 'lnk', 'reg',
@@ -235,7 +235,7 @@ export interface ActivityRecord extends ActorStamp {
   archivedByName: string
 }
 
-export type GenerationJobKind = '成果報告' | '會議紀錄' | '其他'
+export type GenerationJobKind = '成果報告' | '會議紀錄'
 export type GenerationJobStatus = 'pending' | 'processing' | 'done' | 'error'
 
 /** 生成工作狀態的顯示文字；AI 生成彈窗、歷史檔案頁、操作紀錄共用同一套。 */
@@ -246,7 +246,8 @@ export const GENERATION_STATUS_LABELS: Record<GenerationJobStatus, string> = {
   error: '失敗',
 }
 
-export interface GenerationJobRecord {
+/** 移到垃圾桶的工作，最後修改者（updatedByName）就是把它移進垃圾桶的人。 */
+export interface GenerationJobRecord extends ActorStamp {
   id: string
   activityId: string
   kind: GenerationJobKind
@@ -254,11 +255,6 @@ export interface GenerationJobRecord {
   sourceFiles: string[]
   resultFile: string
   errorMessage: string
-  createdAt: string
-  updatedAt: string
-  createdByName: string
-  /** 移到垃圾桶的工作，最後修改者就是把它移進垃圾桶的人 */
-  updatedByName: string
   /** 軟刪除時間戳記（ISO 字串），語意同 FileMeta.deletedAt。 */
   deletedAt?: string
 }

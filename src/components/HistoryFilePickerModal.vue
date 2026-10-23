@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useDbStore } from '../stores/db'
-import { attachmentSrc } from '../lib/attachments'
 import { errorMessage, pushToast } from '../composables/useToast'
 import { useEscape } from '../composables/useEscape'
 import { confirm } from '../composables/useConfirm'
-import { kb } from '../utils/activity'
-import { fileExt, isImageFile } from '../utils/file'
+import { activityName, kb } from '../utils/activity'
+import FileThumb from './FileThumb.vue'
 import { ATTACHMENT_TYPES } from '../types'
 import type { AttachmentKey } from '../types'
 
@@ -123,7 +122,7 @@ async function attach() {
           <tbody>
             <tr v-for="r in rows" :key="rowKey(r)" style="cursor:pointer" @click="toggle(rowKey(r))">
               <td><input type="checkbox" :checked="selected.has(rowKey(r))" @click.stop @change="toggle(rowKey(r))"></td>
-              <td>{{ r.activityName || '（未命名活動）' }}</td>
+              <td>{{ activityName(r.activityName) }}</td>
               <td>{{ attachmentLabel[r.type] }}</td>
               <td>{{ r.name }}</td>
               <td class="mono">{{ kb(r.size) }}</td>
@@ -142,14 +141,11 @@ async function attach() {
           >
             <span class="thumb-wrap file-thumb-wrap">
               <input type="checkbox" class="select-check" :checked="selected.has(rowKey(r))" @click.stop @change="toggle(rowKey(r))">
-              <span class="file-thumb">
-                <img v-if="isImageFile(r.name)" :src="attachmentSrc(r.url, r.name)" :alt="r.name" loading="lazy">
-                <span v-else class="file-icon">.{{ fileExt(r.name) || '—' }}</span>
-              </span>
+              <FileThumb :name="r.name" :url="r.url" />
             </span>
             <span class="file-cell-body">
               <span class="file-cell-name">{{ r.name }}</span>
-              <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ r.activityName || '（未命名活動）' }}</span>
+              <span class="file-cell-meta">{{ attachmentLabel[r.type] }}　{{ activityName(r.activityName) }}</span>
               <span class="file-cell-meta">{{ r.planIds.map(db.planName).join('、') || '—' }}</span>
             </span>
           </div>

@@ -1,4 +1,4 @@
-// Back4App Cloud Code：伺服器端資料驗證。
+// Parse Cloud Code（自架 Parse Server tcross-parse 執行）：伺服器端資料驗證。
 //
 // 前端的 ActivityFormModal.vue／PlansView.vue 已經有欄位檢查，但那只擋得住「正常
 // 使用畫面的人」。CLP 開放給所有登入使用者讀寫後，任何拿到有效帳號的人都能繞過前端
@@ -29,7 +29,7 @@ const ACTIVITY_CATEGORY_MAX_LENGTH = 50;
 // 前端 src/types.ts 的 fileUploadRejectionReason() 有同樣規則做即時提示，但那邊能被繞過
 // （直打 REST API），這裡才是真正擋得住的最後防線。
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-// 大紀事 Excel 每場活動最多放幾張照片，同 src/types.ts 的 LEDGER_PHOTO_MAX
+// 大事紀 Excel 每場活動最多放幾張照片，同 src/types.ts 的 LEDGER_PHOTO_MAX
 const LEDGER_PHOTO_MAX = 3;
 const BLOCKED_EXTENSIONS = [
   'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'msp', 'dll', 'ps1', 'psm1',
@@ -38,7 +38,7 @@ const BLOCKED_EXTENSIONS = [
   // 瀏覽器會當成網頁執行的格式
   'html', 'htm', 'xhtml', 'xht', 'shtml', 'svg', 'svgz', 'mht', 'mhtml',
 ];
-const GENERATION_JOB_KINDS = ['成果報告', '會議紀錄', '其他'];
+const GENERATION_JOB_KINDS = ['成果報告', '會議紀錄'];
 const GENERATION_JOB_STATUSES = ['pending', 'processing', 'done', 'error'];
 
 function isNonNegativeNumber(v) {
@@ -143,7 +143,7 @@ function fieldLabel(className, field) {
 const AUDIT_SKIP_FIELDS = new Set(['objectId', 'createdAt', 'updatedAt', 'ACL', ...ACTOR_FIELDS, ...FOLDER_FIELDS]);
 
 /** 目前這個請求是誰做的。Master Key 請求沒有使用者：Cloud Run 更新 AI 生成狀態、
- * 或有人從 Back4App Dashboard 直接改資料。 */
+ * 或有人用 Master Key 直接改資料（維運腳本、Parse Dashboard）。 */
 function actorOf(request, className) {
   const user = request.user;
   if (user) {
@@ -277,7 +277,7 @@ function attachmentSummaries(object, original) {
     const restored = after.filter((f) => !f.deletedAt && beforeMap.has(f.url) && beforeMap.get(f.url).deletedAt);
     const edited = after.filter((f) => {
       const prev = beforeMap.get(f.url);
-      // 移到垃圾桶／復原時前端會一併拿掉大紀事標記，那些已列在上面，不算「修改」
+      // 移到垃圾桶／復原時前端會一併拿掉大事紀標記，那些已列在上面，不算「修改」
       return (
         prev &&
         !!prev.deletedAt === !!f.deletedAt &&
@@ -291,7 +291,7 @@ function attachmentSummaries(object, original) {
     if (trashed.length) lines.push(`將「${label}」的 ${trashed.length} 個檔案移到垃圾桶：${fileNames(trashed)}`);
     if (restored.length) lines.push(`從垃圾桶復原「${label}」的 ${restored.length} 個檔案：${fileNames(restored)}`);
     if (removed.length) lines.push(`永久刪除「${label}」的 ${removed.length} 個檔案：${fileNames(removed)}`);
-    if (edited.length) lines.push(`修改「${label}」的 ${edited.length} 個檔案圖說／精選／大紀事：${fileNames(edited)}`);
+    if (edited.length) lines.push(`修改「${label}」的 ${edited.length} 個檔案圖說／精選／大事紀：${fileNames(edited)}`);
     // 精選照片的「呈現順序」：檔案沒有增減、勾選也沒變，只有精選照片的先後變了
     const featuredOrder = (files) => files.filter((f) => f.featured && !f.deletedAt).map((f) => f.url).join('\n');
     if (
@@ -483,7 +483,7 @@ Parse.Cloud.beforeSave('Category', (request) => {
   // plans：這個分類所屬的計畫（可複選，可留空＝不限計畫）。
   const plans = object.get('plans');
   if (plans !== undefined && !Array.isArray(plans)) {
-    fail('plans 必須是陣列');
+    fail('所屬計畫格式錯誤（必須是計畫清單）');
   }
   stampActor(request, 'Category');
 });
@@ -549,7 +549,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   // 第一個分類，繼續驗證，不主動刪除欄位。
   const category = object.get('category');
   if (typeof category === 'string' && category.length > ACTIVITY_CATEGORY_MAX_LENGTH) {
-    fail(`category 過長（上限 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字）`);
+    fail(`${FIELD_LABELS.category}過長（上限 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字）`);
   }
 
   const categories = object.get('categories');
@@ -558,13 +558,13 @@ Parse.Cloud.beforeSave('Activity', (request) => {
       !Array.isArray(categories) ||
       categories.some((c) => typeof c !== 'string' || !c.trim() || c.length > ACTIVITY_CATEGORY_MAX_LENGTH)
     ) {
-      fail(`categories 必須是陣列，且每個項目都是不超過 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字的非空字串`);
+      fail(`分類格式錯誤：每個分類都要是不超過 ${ACTIVITY_CATEGORY_MAX_LENGTH} 字、不是空白的文字`);
     }
   }
 
   const placeMode = object.get('placeMode');
   if (placeMode !== undefined && placeMode !== null && !['physical', 'online', 'hybrid'].includes(placeMode)) {
-    fail('placeMode 必須是 physical、online 或 hybrid');
+    fail('實體／線上只能是實體、線上或實體＋線上');
   }
   checkOptionalString(object, 'place', 200);
   checkOptionalString(object, 'venue', 100);
@@ -582,13 +582,13 @@ Parse.Cloud.beforeSave('Activity', (request) => {
 
   const plans = object.get('plans');
   if (plans !== undefined && !Array.isArray(plans)) {
-    fail('plans 必須是陣列');
+    fail('對應計畫格式錯誤（必須是計畫清單）');
   }
 
   const kpis = object.get('kpis');
   if (kpis !== undefined) {
     if (!Array.isArray(kpis)) {
-      fail('kpis 必須是陣列');
+      fail('KPI 格式錯誤（必須是清單）');
     }
     for (const kpi of kpis) {
       if (
@@ -598,7 +598,7 @@ Parse.Cloud.beforeSave('Activity', (request) => {
         typeof kpi.v !== 'string' ||
         typeof kpi.u !== 'string'
       ) {
-        fail('kpis 陣列項目格式不正確（需要 { k, v, u } 皆為字串）');
+        fail('KPI 項目格式錯誤（項目、數值、單位都要是文字）');
       }
     }
   }
@@ -610,8 +610,9 @@ Parse.Cloud.beforeSave('Activity', (request) => {
   for (const field of FOLDER_FIELDS) {
     const files = object.get(field);
     if (files === undefined) continue;
+    const label = FOLDER_LABELS[field] || field;
     if (!Array.isArray(files)) {
-      fail(`${field} 必須是陣列`);
+      fail(`${label}格式錯誤（必須是檔案清單）`);
     }
     for (const file of files) {
       if (
@@ -621,24 +622,24 @@ Parse.Cloud.beforeSave('Activity', (request) => {
         typeof file.size !== 'number' ||
         typeof file.url !== 'string'
       ) {
-        fail(`${field} 陣列項目格式不正確（需要 { name, size, url }）`);
+        fail(`${label}的檔案資料格式錯誤（需要檔名、大小、網址）`);
       }
       // url 會直接當成連結渲染（歷史檔案頁的「開啟」），只接受 http(s)，擋掉 javascript: 之類；
       // gcs:attachments/… 是存在 GCS 的附件，畫面上一律先換成 Cloud Run 簽的臨時網址
       if (!/^https?:\/\//i.test(file.url) && !file.url.startsWith('gcs:attachments/')) {
-        fail(`${field} 的 url 必須是 http(s) 網址或 gcs:attachments/ 路徑`);
+        fail(`${label}的檔案網址必須是 http(s) 網址或系統上傳的附件`);
       }
       if (!request.master && !file.url.startsWith('gcs:attachments/') && !knownUrls.has(file.url)) {
         fail(`「${file.name}」不是透過系統上傳的檔案`);
       }
       if (file.caption !== undefined && typeof file.caption !== 'string') {
-        fail(`${field} 的 caption 必須是字串`);
+        fail(`${label}的照片說明必須是文字`);
       }
       if (file.featured !== undefined && typeof file.featured !== 'boolean') {
-        fail(`${field} 的 featured 必須是布林值`);
+        fail(`${label}的精選標記格式錯誤`);
       }
       if (file.ledger !== undefined && typeof file.ledger !== 'boolean') {
-        fail(`${field} 的 ledger 必須是布林值`);
+        fail(`${label}的大事紀照片標記格式錯誤`);
       }
       if (file.size > MAX_FILE_SIZE_BYTES) {
         fail(`「${file.name}」超過上傳大小上限（${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB）`);
@@ -649,18 +650,18 @@ Parse.Cloud.beforeSave('Activity', (request) => {
         fail(`「${file.name}」的檔案類型不允許上傳`);
       }
       if (file.deletedAt !== undefined && typeof file.deletedAt !== 'string') {
-        fail(`${field} 的 deletedAt 必須是字串`);
+        fail(`${label}的刪除時間格式錯誤`);
       }
     }
     // 同 src/types.ts 的 LEDGER_PHOTO_MAX；垃圾桶裡的不算
     if (files.filter((f) => f.ledger && !f.deletedAt).length > LEDGER_PHOTO_MAX) {
-      fail(`大紀事照片最多 ${LEDGER_PHOTO_MAX} 張`);
+      fail(`大事紀照片最多 ${LEDGER_PHOTO_MAX} 張`);
     }
   }
 
   const archivedAt = object.get('archivedAt');
   if (archivedAt !== undefined && archivedAt !== null && typeof archivedAt !== 'string') {
-    fail('archivedAt 必須是字串');
+    fail('封存時間格式錯誤');
   }
 
   // 附件從 Back4App 搬到 GCS（scripts/migrate-attachments-to-gcs.mjs）只是換網址，
@@ -782,34 +783,34 @@ Parse.Cloud.beforeSave('GenerationJob', (request) => {
 
   const activity = object.get('activity');
   if (!activity || typeof activity.id !== 'string') {
-    fail('activity 不能為空');
+    fail('所屬活動不能為空');
   }
 
   const kind = object.get('kind');
   if (kind !== undefined && !GENERATION_JOB_KINDS.includes(kind)) {
-    fail(`kind 必須是 ${GENERATION_JOB_KINDS.join('/')} 其中之一`);
+    fail(`種類必須是 ${GENERATION_JOB_KINDS.join('／')} 其中之一`);
   }
 
   const status = object.get('status');
   if (status !== undefined && !GENERATION_JOB_STATUSES.includes(status)) {
-    fail(`status 必須是 ${GENERATION_JOB_STATUSES.join('/')} 其中之一`);
+    fail(`狀態必須是 ${GENERATION_JOB_STATUSES.join('／')} 其中之一`);
   }
 
   const sourceFiles = object.get('sourceFiles');
   if (sourceFiles !== undefined) {
     if (!Array.isArray(sourceFiles) || sourceFiles.some((f) => typeof f !== 'string')) {
-      fail('sourceFiles 必須是字串陣列');
+      fail('素材檔案格式錯誤（必須是檔案路徑清單）');
     }
   }
 
   const resultFile = object.get('resultFile');
   if (resultFile !== undefined && typeof resultFile !== 'string') {
-    fail('resultFile 必須是字串');
+    fail('產出檔案格式錯誤');
   }
 
   const errorMessage = object.get('errorMessage');
   if (errorMessage !== undefined && typeof errorMessage !== 'string') {
-    fail('errorMessage 必須是字串');
+    fail('錯誤訊息必須是文字');
   }
 
   // Cloud Run 的 /download-url、/delete-objects 以「路徑掛在某筆讀得到的工作上」授權，所以
