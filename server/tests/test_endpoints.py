@@ -119,6 +119,16 @@ def test_tc32_signed_url_for_unreadable_activity_returns_403(client, auth, spy_d
     assert "generate_signed_upload_url" not in spy_downstream
 
 
+@pytest.mark.parametrize("bad_id", ["act1/../GenerationJob/job1", "../x", "a b", "", "x" * 33])
+@pytest.mark.parametrize("path, body", [e for e in ENDPOINTS if e[1] and "activityId" in e[1]], ids=lambda v: v if isinstance(v, str) else "")
+def test_malformed_activity_id_returns_403(client, auth, spy_downstream, path, body, bad_id):
+    """activityId 會拼進 Parse 網址與 GCS 路徑：不是 objectId 格式就直接擋，不查 Parse、不簽網址。"""
+    resp = client.post(path, json={**body, "activityId": bad_id}, headers=auth)
+    assert resp.status_code == 403
+    assert "activity_exists" not in spy_downstream
+    assert "generate_signed_upload_url" not in spy_downstream
+
+
 def test_signed_url_rejects_oversized_file(client, auth, spy_downstream):
     body = {"activityId": "act1", "files": [{"folder": "video", "filename": "big.mp4", "contentType": "video/mp4", "size": main.MAX_UPLOAD_BYTES + 1}]}
     resp = client.post("/signed-url", json=body, headers=auth)

@@ -43,6 +43,9 @@ const server = new ParseServer({
   allowAggregationForReadOnlyMasterKey: false,
   installation: { duplicateDeviceTokenActionEnforceAuth: true },
   enableLiveQueryClassLevelPermissionRoles: true,
+  // 觸發器成功時預設會把完整 Input／Result 印進 log（afterLogin 的 Input 含 sessionToken），
+  // Cloud Run 會收進 Cloud Logging。操作紀錄已有 AuditLog，這裡只留錯誤。
+  logLevels: { triggerAfter: 'silent', triggerBeforeSuccess: 'silent' },
 })
 
 await server.start()

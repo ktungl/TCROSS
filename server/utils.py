@@ -87,6 +87,14 @@ def is_extension_blocked(filename: str) -> bool:
 ATTACHMENT_FOLDERS = {"registration", "content", "photo", "signIn", "record", "agenda", "document", "receipt", "social", "media"}
 # 檔名段不能含「/」，所以檔名裡的「..」（例如 sanitize_filename 留下的「v1..2.pdf」）不會造成路徑穿越，
 # 只擋整段都是點的名稱。
+_OBJECT_ID = re.compile(r"^[A-Za-z0-9]{1,32}$")
+
+
+def is_valid_object_id(value: str) -> bool:
+    """Parse objectId 的格式（英數字），跟下面附件路徑裡的 activityId 段一致。"""
+    return isinstance(value, str) and bool(_OBJECT_ID.match(value))
+
+
 _ATTACHMENT_PATH = re.compile(r"^attachments/([A-Za-z0-9]{1,32})/([A-Za-z]+)/(?!\.+$)[A-Za-z0-9._-]+$")
 
 

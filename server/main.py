@@ -40,6 +40,7 @@ from utils import (
     ATTACHMENT_FOLDERS,
     is_content_type_allowed,
     is_extension_blocked,
+    is_valid_object_id,
     is_valid_object_path,
     parse_attachment_path,
     sanitize_filename,
@@ -217,8 +218,9 @@ def enforce_rate_limit(user: dict = Depends(require_user)) -> dict:
 # 這裡已經把原本會被 GCP 攔截的 /healthz 替換成了 /status
 def require_readable_activity(user: dict, activity_id: str) -> None:
     """呼叫者用自己的 session 讀不到這個活動就回 403，並留下拒絕紀錄。
-    不存在和無權存取回同一個訊息，不透露活動是否存在。"""
-    if not activity_exists(user["sessionToken"], activity_id):
+    不存在和無權存取回同一個訊息，不透露活動是否存在。
+    activity_id 會拼進 Parse REST 網址與 GCS 路徑，先擋掉不是 objectId 格式的字串（例如含「/」「..」）。"""
+    if not is_valid_object_id(activity_id) or not activity_exists(user["sessionToken"], activity_id):
         audit_log.warning("rejected: unauthorized activityId user=%s activityId=%s", user.get("username"), activity_id)
         raise HTTPException(403, "活動不存在或無權存取")
 
