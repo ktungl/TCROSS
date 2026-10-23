@@ -274,15 +274,32 @@ def download_url(body: DownloadUrlRequest, user: dict = Depends(enforce_rate_lim
         raise HTTPException(403, "檔案不存在或無權存取")
 
     path = body.objectPath
+    job = matched[path]
+    is_result = job.get("resultFile") == path
     if body.pdf:
-        if matched[path].get("resultFile") != path or not path.endswith(".docx"):
+        if not is_result or not path.endswith(".docx"):
             raise HTTPException(400, "只有 AI 產出的報告有 PDF 版")
         path = _pdf_path(path)
         if not object_exists(path):
             raise HTTPException(404, "這份報告是加入 PDF 功能前產生的，沒有 PDF 版；需要的話請重新產生")
 
+    filename = _report_filename(user["sessionToken"], job, path) if is_result else None
     audit_log.info("download-url issued user=%s objectPath=%s", user.get("username"), path)
-    return {"downloadUrl": generate_signed_download_url(path)}
+    return {"downloadUrl": generate_signed_download_url(path, filename)}
+
+
+# Windows／macOS 檔名不能用的字元
+_FILENAME_UNSAFE = str.maketrans({c: "_" for c in '\\/:*?"<>|'})
+
+
+def _report_filename(session_token: str, job: dict, path: str) -> str:
+    """AI 報告下載時的檔名「活動名_種類.docx／.pdf」，取代物件名稱裡的工作 ID。"""
+    try:
+        name = (get_activity(session_token, job.get("activityId", "")) or {}).get("name", "")
+    except Exception:  # noqa: BLE001 — 查不到活動名就用預設，不影響下載
+        name = ""
+    stem = f"{name.strip() or '活動'}_{job.get('kind') or '報告'}".translate(_FILENAME_UNSAFE)
+    return f"{stem}.{path.rsplit('.', 1)[-1]}"
 
 
 @app.post("/delete-objects")

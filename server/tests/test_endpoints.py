@@ -279,3 +279,20 @@ def test_tc34_stale_rerun_full_pipeline_with_mocks(client, auth, monkeypatch):
     assert uploads == ["activities/act1/generated/job1.docx", "activities/act1/generated/job1.pdf"]
     assert writes[0] == {"status": "processing"}
     assert writes[-1] == {"status": "done", "resultFile": "activities/act1/generated/job1.docx"}
+
+
+def test_report_download_uses_activity_and_kind_as_filename(client, auth, monkeypatch):
+    """AI 報告下載檔名是「活動名_種類」，不是物件名稱裡的工作 ID；檔名不能用的字元換成底線。"""
+    path = "activities/act1/generated/job1.docx"
+    signed = []
+    monkeypatch.setattr(main, "find_generation_jobs_for_object_paths",
+                        lambda token, paths: {path: {"activityId": "act1", "kind": "成果報告", "resultFile": path}})
+    monkeypatch.setattr(main, "get_activity", lambda token, aid: {"objectId": aid, "name": "會務/2026大事紀"})
+    monkeypatch.setattr(main, "object_exists", lambda p: True)
+    monkeypatch.setattr(main, "generate_signed_download_url", lambda p, name=None: signed.append((p, name)) or "u")
+    assert client.post("/download-url", json={"objectPath": path}, headers=auth).status_code == 200
+    assert client.post("/download-url", json={"objectPath": path, "pdf": True}, headers=auth).status_code == 200
+    assert signed == [
+        (path, "會務_2026大事紀_成果報告.docx"),
+        ("activities/act1/generated/job1.pdf", "會務_2026大事紀_成果報告.pdf"),
+    ]
