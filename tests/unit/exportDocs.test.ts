@@ -19,6 +19,7 @@ const {
   buildReceiptXlsx,
   buildSignInSheetDocx,
   buildLedgerXlsx,
+  buildResultReportDocx,
   missingImagesMessage,
   SIGN_IN_LAYOUTS,
   takeImageLoadFailures,
@@ -134,6 +135,49 @@ describe('大事紀照片挑選', () => {
     expect(missingImagesMessage()).toBe('有 2 張圖片沒能放進檔案（「1.jpg」、「2.jpg」），請稍後重新下載')
     // 取過一次就清空，下一次產生檔案重新計算
     expect(missingImagesMessage()).toBeNull()
+  })
+})
+
+describe('成果報告的活動流程表', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  async function reportXml(mutate: (a: ReturnType<typeof activity>) => void): Promise<string> {
+    vi.stubGlobal('fetch', async () => new Response(null, { status: 404 }))
+    const a = activity()
+    a.files.photo = []
+    mutate(a)
+    const blob = await buildResultReportDocx(a, '')
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer())
+    return zip.file('word/document.xml')!.async('string')
+  }
+
+  it('沒上傳活動流程時不列「活動流程表」，簽到表遞補為九、且不換頁', async () => {
+    const xml = await reportXml((a) => {
+      a.files.agenda = []
+      a.files.signIn = []
+    })
+    expect(xml).not.toContain('活動流程表')
+    expect(xml).toContain('九、簽到表：')
+    expect(xml).not.toContain('十、')
+    expect(xml).not.toContain('pageBreakBefore')
+  })
+
+  it('活動流程只有 Word 時不列「活動流程表」，也不再註明「內容已整理於」', async () => {
+    const xml = await reportXml((a) => {
+      a.files.agenda = [{ name: '0626流程表.docx', size: 1000, url: 'gcs:attachments/0626流程表.docx' }]
+    })
+    expect(xml).not.toContain('活動流程表')
+    expect(xml).not.toContain('內容已整理於')
+  })
+
+  it('活動流程的原始檔嵌不進去時，提示放在「六、活動流程」底下', async () => {
+    const xml = await reportXml((a) => {
+      a.files.agenda = [photo('行程.png')]
+      a.files.signIn = []
+    })
+    expect(xml).not.toContain('活動流程表')
+    expect(xml).toContain('行程.png：無法讀取文字，請另行附上')
+    expect(xml).toContain('以下檔案無法嵌入報告，請另行附上：行程.png')
   })
 })
 

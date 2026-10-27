@@ -372,7 +372,8 @@ export async function buildReceiptXlsx(a: ActivityRecord, opts: ReceiptOptions):
     const sheet = workbook.addWorksheet(`領據${idx + 1}${label ? ` ${label}` : ''}`.slice(0, 31), {
       pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true },
     })
-    sheet.columns = [26, 16.46, 14.07, 10.6, 9, 9, 5.6, 5.6, 5.6, 5.6, 5.6, 5.6].map((width) => ({ width }))
+    // E、F 欄範本沒設寬度（用範本預設字型的寬度），這裡的預設字型較窄，要放寬才放得下 18 號字的「單位：」
+    sheet.columns = [26, 16.46, 14.07, 10.6, 11, 9, 5.6, 5.6, 5.6, 5.6, 5.6, 5.6].map((width) => ({ width }))
     ;[41.65, 33, 40.45, 40.45, 40.45, 40.45, 40.45, 40.45, 40.45, 33, 28.15, 41.65, 31.15].forEach(
       (h, i) => (sheet.getRow(i + 1).height = h),
     )
@@ -981,13 +982,15 @@ function reportSectionBody(
 /** 單場活動的內容區塊（比照《成果報告書範本》）：
  * 一、活動名稱 二、活動日期 三、活動地點 四、參與人數 五、活動內容 六、活動流程 七、活動效益
  * 八、活動照片，再附上 九、活動流程表 十、簽到表 的原始檔（PDF／圖片逐頁嵌入）。
+ * 活動流程沒有原始檔要附（沒上傳、或只有 Word／Excel）時不列「活動流程表」，簽到表遞補為九。
  * 活動內容、活動流程分別取自「活動內容」「活動流程」附件的文字與表格；活動效益是成果摘要加上 KPI。
  * 內政部結案成果報告（多場活動彙整）跟單場活動的成果報告共用同一份內容格式。 */
 async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph | Table)[]> {
   const hc = a.headcount
-  const [content, agenda] = await Promise.all([
+  const [content, agenda, agendaAttachments] = await Promise.all([
     readReportSection(a.files.content ?? []),
     readReportSection(a.files.agenda ?? []),
+    loadAttachmentSection(a.files.agenda ?? [], isAgendaReadable),
   ])
   const benefits = [
     ...(a.summary.trim() ? a.summary.trim().split(/\r?\n/).filter(Boolean).map(reportBody) : []),
@@ -1001,7 +1004,12 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     reportItem(5, '活動內容：'),
     ...reportSectionBody(content, '（活動內容待補：請在「活動內容」上傳 Word 或 PDF 檔）', '無法讀取文字，請另行附上'),
     reportItem(6, '活動流程：'),
-    ...reportSectionBody(agenda, '（活動流程待補：請在「活動流程」上傳 Word／Excel 或 PDF 檔）', '無法讀取文字，原始檔見「九、活動流程表」'),
+    ...reportSectionBody(
+      agenda,
+      '（活動流程待補：請在「活動流程」上傳 Word／Excel 或 PDF 檔）',
+      agendaAttachments.pages.length ? '無法讀取文字，原始檔見「九、活動流程表」' : '無法讀取文字，請另行附上',
+    ),
+    ...skippedAttachmentsNote(agendaAttachments.skipped),
     reportItem(7, '活動效益：'),
     ...(benefits.length ? benefits : [reportBody('（尚未填寫成果摘要與效益指標）')]),
   ]
@@ -1025,13 +1033,16 @@ async function buildActivityReportBlock(a: ActivityRecord): Promise<(Paragraph |
     )
   }
 
-  children.push(
-    ...(await buildAttachmentSection(9, '活動流程表', a.files.agenda ?? [], {
-      isInlined: isAgendaReadable,
-      inlinedNote: '內容已整理於「六、活動流程」',
-    })),
-    ...(await buildAttachmentSection(10, '簽到表', a.files.signIn ?? [])),
-  )
+  // 活動流程表只有需要附原始檔（掃描檔、圖片、PDF）時才另立一項並換頁；沒上傳或只有
+  // Word／Excel（已整理進「六、活動流程」）就不列，簽到表往前遞補編號
+  let no = 9
+  if (agendaAttachments.pages.length) {
+    children.push(reportItem(no++, '活動流程表：', true), ...attachmentPageParagraphs(agendaAttachments.pages))
+  }
+  const signIn = await loadAttachmentSection(a.files.signIn ?? [])
+  children.push(reportItem(no, '簽到表：', signIn.pages.length > 0))
+  if (!a.files.signIn?.length) children.push(reportBody('（尚未上傳簽到表）'))
+  children.push(...attachmentPageParagraphs(signIn.pages), ...skippedAttachmentsNote(signIn.skipped))
 
   // 簽到表是有文字層的 PDF 時，把抽出的文字接在嵌入的頁面後面，方便複製與搜尋；
   // 掃描檔沒有文字，頁面圖片已經嵌在上面，不另外處理
@@ -1077,50 +1088,38 @@ async function loadAttachmentPages(file: FileMeta): Promise<ImageAsset[] | null>
   return null
 }
 
-/** 「八、活動流程表」「九、簽到表」：把掃描檔／照片／PDF 逐頁嵌入，一頁一張、從新的一頁開始。
- * Word／Excel 等嵌不進去的檔案列出檔名提醒另附；inlinedNote 是已經整理進報告其他段落的說明。 */
-async function buildAttachmentSection(
-  no: number,
-  label: string,
+/** 把「活動流程表」「簽到表」的附件轉成要嵌進報告的頁面圖片（掃描檔／照片／PDF）。
+ * isInlined 的檔案（Word／Excel 等）內容已經整理進報告其他段落，不必另附；其餘嵌不進去的列進 skipped。 */
+async function loadAttachmentSection(
   files: FileMeta[],
-  opts: { isInlined?: (f: FileMeta) => boolean; inlinedNote?: string } = {},
-): Promise<(Paragraph | Table)[]> {
-  const children: (Paragraph | Table)[] = [reportItem(no, `${label}：`, true)]
-  if (!files.length) {
-    children.push(reportBody(`（尚未上傳${label}）`))
-    return children
+  isInlined: (f: FileMeta) => boolean = () => false,
+): Promise<{ pages: ImageAsset[]; skipped: string[] }> {
+  const pages: ImageAsset[] = []
+  const skipped: string[] = []
+  for (const file of files) {
+    const loaded = await loadAttachmentPages(file)
+    if (loaded === null ? !isInlined(file) : !loaded.length) skipped.push(file.name)
+    if (loaded) pages.push(...loaded)
   }
+  return { pages, skipped }
+}
+
+/** 附件頁面逐頁嵌入：第一張接在項目標題底下，之後每張各自一頁 */
+function attachmentPageParagraphs(pages: ImageAsset[]): Paragraph[] {
   const maxW = cmToPx(ATTACHMENT_MAX_WIDTH_CM)
   const maxH = cmToPx(ATTACHMENT_MAX_HEIGHT_CM)
-  const inlined: string[] = []
-  const skipped: string[] = []
-  let embedded = 0
-  for (const file of files) {
-    const pages = await loadAttachmentPages(file)
-    if (pages === null) {
-      ;(opts.isInlined?.(file) ? inlined : skipped).push(file.name)
-      continue
-    }
-    if (!pages.length) {
-      skipped.push(file.name)
-      continue
-    }
-    for (const page of pages) {
-      const { width, height } = scaleToBox(page.width, page.height, maxW, maxH)
-      children.push(
-        new Paragraph({
-          // 第一張接在項目標題底下，之後每張各自一頁
-          pageBreakBefore: embedded > 0,
-          alignment: AlignmentType.CENTER,
-          children: [new ImageRun({ type: page.docxType, data: page.data, transformation: { width, height } })],
-        }),
-      )
-      embedded++
-    }
-  }
-  if (inlined.length && opts.inlinedNote) children.push(reportBody(`（${inlined.join('、')}：${opts.inlinedNote}）`))
-  if (skipped.length) children.push(reportBody(`（以下檔案無法嵌入報告，請另行附上：${skipped.join('、')}）`))
-  return children
+  return pages.map((page, i) => {
+    const { width, height } = scaleToBox(page.width, page.height, maxW, maxH)
+    return new Paragraph({
+      pageBreakBefore: i > 0,
+      alignment: AlignmentType.CENTER,
+      children: [new ImageRun({ type: page.docxType, data: page.data, transformation: { width, height } })],
+    })
+  })
+}
+
+function skippedAttachmentsNote(skipped: string[]): Paragraph[] {
+  return skipped.length ? [reportBody(`（以下檔案無法嵌入報告，請另行附上：${skipped.join('、')}）`)] : []
 }
 
 /** 「壹、活動一」這類大標題；用 Heading 1 樣式，目錄才抓得到 */
